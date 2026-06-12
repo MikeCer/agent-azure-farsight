@@ -20,6 +20,9 @@ param privateDnsZoneResourceIds object = {}
 @description('Link agent gateway private endpoints to the provided existing private DNS zones.')
 param linkExistingPrivateDnsZones bool = true
 
+@description('Create a NAT Gateway for outbound internet from agent gateway service subnets.')
+param enableNatGateway bool = false
+
 var normalizedPrefix = replace(toLower(namePrefix), '-', '')
 var unique = take(uniqueString(resourceGroup().id, namePrefix, location, 'agent-gateway'), 8)
 var workspaceName = 'law-${namePrefix}-agent-${location}'
@@ -42,6 +45,7 @@ module networking 'networking.bicep' = if (enablePrivateEndpoints) {
     containerAppsInfrastructureSubnetAddressPrefix: containerAppsInfrastructureSubnetPrefix
     privateEndpointsSubnetAddressPrefix: privateEndpointSubnetPrefix
     enableApiManagementSubnet: false
+    enableNatGateway: enableNatGateway
     existingPrivateDnsZoneResourceIds: privateDnsZoneResourceIds
     linkExistingPrivateDnsZones: linkExistingPrivateDnsZones
   }
@@ -243,4 +247,5 @@ output agentToolGatewayPrincipalId string = toolIdentity.properties.principalId
 output vnetId string = enablePrivateEndpoints ? networking!.outputs.vnetId : ''
 output subnetIds object = enablePrivateEndpoints ? networking!.outputs.subnetIds : {}
 output privateDnsZoneIds object = enablePrivateEndpoints ? networking!.outputs.privateDnsZoneIds : {}
+output natGatewayId string = enablePrivateEndpoints && enableNatGateway ? networking!.outputs.natGatewayId : ''
 output monitorPrivateLinkScopeName string = enablePrivateEndpoints ? monitorPrivateLinkScope.name : ''

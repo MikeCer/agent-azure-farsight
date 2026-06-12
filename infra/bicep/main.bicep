@@ -46,6 +46,9 @@ param privateDnsZoneResourceIds object = {
 @description('Link collector/control-plane private endpoints to the provided existing private DNS zones.')
 param linkExistingPrivateDnsZones bool = true
 
+@description('Create a NAT Gateway for collector/control-plane outbound internet from delegated service subnets.')
+param enableNatGateway bool = false
+
 @description('Agent gateway virtual network address prefix.')
 param agentGatewayVnetAddressPrefix string = '10.20.0.0/16'
 
@@ -73,6 +76,9 @@ param agentGatewayPrivateDnsZoneResourceIds object = {
 
 @description('Link agent gateway private endpoints to the provided existing private DNS zones.')
 param agentGatewayLinkExistingPrivateDnsZones bool = true
+
+@description('Create a NAT Gateway for agent gateway outbound internet from delegated service subnets.')
+param agentGatewayEnableNatGateway bool = false
 
 @description('Enable optional API Management front door.')
 param enableApim bool = false
@@ -119,6 +125,7 @@ module core 'modules/core.bicep' = {
     apimSubnetPrefix: apimSubnetPrefix
     privateDnsZoneResourceIds: privateDnsZoneResourceIds
     linkExistingPrivateDnsZones: linkExistingPrivateDnsZones
+    enableNatGateway: enableNatGateway
   }
 }
 
@@ -136,6 +143,7 @@ module agentGateway 'modules/agent-gateway.bicep' = {
     privateEndpointSubnetPrefix: agentGatewayPrivateEndpointSubnetPrefix
     privateDnsZoneResourceIds: agentGatewayPrivateDnsZoneResourceIds
     linkExistingPrivateDnsZones: agentGatewayLinkExistingPrivateDnsZones
+    enableNatGateway: agentGatewayEnableNatGateway
   }
 }
 
@@ -148,6 +156,8 @@ output serviceBusNamespaceName string = core.outputs.serviceBusNamespaceName
 output collectorVnetId string = core.outputs.vnetId
 output collectorSubnetIds object = core.outputs.subnetIds
 output collectorPrivateDnsZoneIds object = core.outputs.privateDnsZoneIds
+output collectorNatGatewayId string = core.outputs.natGatewayId
 output agentGatewayVnetId string = agentGateway.outputs.vnetId
 output agentGatewaySubnetIds object = agentGateway.outputs.subnetIds
 output agentGatewayPrivateDnsZoneIds object = agentGateway.outputs.privateDnsZoneIds
+output agentGatewayNatGatewayId string = agentGateway.outputs.natGatewayId

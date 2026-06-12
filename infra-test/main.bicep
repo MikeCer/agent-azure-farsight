@@ -33,6 +33,9 @@ param enablePublicIp bool = false
 @description('Allowed source prefixes for RDP when public IPs are enabled. Leave empty to deny internet RDP.')
 param allowedRdpSourceAddressPrefixes array = []
 
+@description('Create a NAT Gateway for outbound internet from the Windows 11 VM subnet. This is useful for Intune enrollment when VMs have no public IPs.')
+param enableNatGateway bool = false
+
 @description('Windows 11 image publisher.')
 param imagePublisher string = 'MicrosoftWindowsDesktop'
 
@@ -62,6 +65,21 @@ var tags = {
   purpose: 'intune-collector-test-lab'
   costProfile: 'low-cost-dev-test'
 }
+var allRdpAllowRules = [for (prefix, index) in allowedRdpSourceAddressPrefixes: {
+  name: 'AllowRdpFromApprovedSource${index}'
+  properties: {
+    priority: 100 + index
+    access: 'Allow'
+    direction: 'Inbound'
+    protocol: 'Tcp'
+    sourceAddressPrefix: prefix
+    sourcePortRange: '*'
+    destinationAddressPrefix: '*'
+    destinationPortRange: '3389'
+    description: 'Break-glass RDP source explicitly approved for the test lab.'
+  }
+}]
+var rdpAllowRules = enablePublicIp ? allRdpAllowRules : []
 
 resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
   name: 'vnet-${namePrefix}'
@@ -73,6 +91,35 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
         vnetAddressPrefix
       ]
     }
+  }
+}
+
+resource natPublicIp 'Microsoft.Network/publicIPAddresses@2024-07-01' = if (enableNatGateway) {
+  name: 'pip-nat-${namePrefix}'
+  location: location
+  tags: tags
+  sku: {
+    name: 'Standard'
+  }
+  properties: {
+    publicIPAllocationMethod: 'Static'
+  }
+}
+
+resource natGateway 'Microsoft.Network/natGateways@2024-07-01' = if (enableNatGateway) {
+  name: 'nat-${namePrefix}'
+  location: location
+  tags: tags
+  sku: {
+    name: 'Standard'
+  }
+  properties: {
+    idleTimeoutInMinutes: 4
+    publicIpAddresses: [
+      {
+        id: natPublicIp.id
+      }
+    ]
   }
 }
 
@@ -98,20 +145,7 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2024-07-01' = {
           }
         }
       ],
-      enablePublicIp ? [for (prefix, index) in allowedRdpSourceAddressPrefixes: {
-        name: 'AllowRdpFromApprovedSource${index}'
-        properties: {
-          priority: 100 + index
-          access: 'Allow'
-          direction: 'Inbound'
-          protocol: 'Tcp'
-          sourceAddressPrefix: prefix
-          sourcePortRange: '*'
-          destinationAddressPrefix: '*'
-          destinationPortRange: '3389'
-          description: 'Break-glass RDP source explicitly approved for the test lab.'
-        }
-      }] : []
+      rdpAllowRules
     )
   }
 }
@@ -119,12 +153,16 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2024-07-01' = {
 resource subnet 'Microsoft.Network/virtualNetworks/subnets@2024-07-01' = {
   name: vmSubnetName
   parent: vnet
-  properties: {
+  properties: union({
     addressPrefix: subnetAddressPrefix
     networkSecurityGroup: {
       id: nsg.id
     }
-  }
+  }, enableNatGateway ? {
+    natGateway: {
+      id: natGateway.id
+    }
+  } : {})
 }
 
 resource publicIps 'Microsoft.Network/publicIPAddresses@2024-07-01' = [for i in range(0, vmCount): if (enablePublicIp) {
@@ -226,4 +264,5 @@ output virtualNetworkName string = vnet.name
 output subnetName string = subnet.name
 output vmNames array = [for i in range(0, vmCount): vms[i].name]
 output privateIpAddresses array = [for i in range(0, vmCount): nics[i].properties.ipConfigurations[0].properties.privateIPAddress]
+output natGatewayId string = enableNatGateway ? natGateway.id : ''
 output intuneEnrollmentNote string = 'After deployment, sign in with licensed Entra users and complete Entra join/Intune enrollment according to tenant policy. Bicep does not enroll these VMs into Intune by itself.'

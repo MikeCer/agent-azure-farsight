@@ -36,6 +36,8 @@ azd env set AZURE_COLLECTOR_LOCATION italynorth
 azd env set AZURE_AGENT_LOCATION swedencentral
 azd env set FARSIGHT_ENABLE_PUBLIC_INGRESS true
 azd env set FARSIGHT_ENABLE_PRIVATE_ENDPOINTS false
+azd env set FARSIGHT_ENABLE_NAT_GATEWAY false
+azd env set FARSIGHT_AGENT_GATEWAY_ENABLE_NAT_GATEWAY false
 azd env set FARSIGHT_ENABLE_APIM false
 azd provision --preview
 ```
@@ -50,4 +52,5 @@ azd up
 
 - Container image references currently use safe placeholder images. Replace them with built application images when the service deployment pipeline is finalized.
 - Private endpoint and APIM support are parameterized but intentionally skeletal for early implementation.
+- NAT Gateway is optional and disabled by default to avoid extra cost. Enable it when private Container Apps subnets need controlled outbound internet egress.
 - Azure SRE Agent service deployment is documented as an integration step until the service-specific Bicep/ARM contract is confirmed.

@@ -6,6 +6,8 @@ FarSight development is currently skeleton-first: validation scripts are guarded
 
 Use repository-provided build, test, and lint entry points. Do not introduce new tooling unless the project adopts it. Keep local setup instructions in component READMEs instead of duplicating command blocks across docs.
 
+For end-to-end lab validation, follow [Set up a FarSight test lab in Azure](setup-lab.md).
+
 ## Coding standards
 
 - Keep module and tool inputs typed and schema-validated.

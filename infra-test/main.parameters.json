@@ -31,6 +31,9 @@
     },
     "allowedRdpSourceAddressPrefixes": {
       "value": []
+    },
+    "enableNatGateway": {
+      "value": false
     }
   }
 }

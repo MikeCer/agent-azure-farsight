@@ -28,6 +28,9 @@ param privateDnsZoneResourceIds object = {}
 @description('Link collector/control-plane private endpoints to the provided existing private DNS zones.')
 param linkExistingPrivateDnsZones bool = true
 
+@description('Create a NAT Gateway for outbound internet from collector/control-plane service subnets.')
+param enableNatGateway bool = false
+
 var normalizedPrefix = replace(toLower(namePrefix), '-', '')
 var unique = take(uniqueString(resourceGroup().id, namePrefix), 8)
 var storageAccountName = 'st${take(normalizedPrefix, 10)}${unique}'
@@ -61,6 +64,7 @@ module networking 'networking.bicep' = if (enablePrivateEndpoints) {
     privateEndpointsSubnetAddressPrefix: privateEndpointSubnetPrefix
     enableApiManagementSubnet: enableApim
     apiManagementSubnetAddressPrefix: apimSubnetPrefix
+    enableNatGateway: enableNatGateway
     existingPrivateDnsZoneResourceIds: privateDnsZoneResourceIds
     linkExistingPrivateDnsZones: linkExistingPrivateDnsZones
   }
@@ -902,4 +906,5 @@ output acrName string = acr.name
 output vnetId string = enablePrivateEndpoints ? networking!.outputs.vnetId : ''
 output subnetIds object = enablePrivateEndpoints ? networking!.outputs.subnetIds : {}
 output privateDnsZoneIds object = enablePrivateEndpoints ? networking!.outputs.privateDnsZoneIds : {}
+output natGatewayId string = enablePrivateEndpoints && enableNatGateway ? networking!.outputs.natGatewayId : ''
 output monitorPrivateLinkScopeName string = enablePrivateEndpoints ? monitorPrivateLinkScope.name : ''

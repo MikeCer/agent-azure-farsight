@@ -48,6 +48,9 @@
     "linkExistingPrivateDnsZones": {
       "value": "${FARSIGHT_LINK_EXISTING_PRIVATE_DNS_ZONES=true}"
     },
+    "enableNatGateway": {
+      "value": "${FARSIGHT_ENABLE_NAT_GATEWAY=false}"
+    },
     "agentGatewayVnetAddressPrefix": {
       "value": "${FARSIGHT_AGENT_GATEWAY_VNET_ADDRESS_PREFIX=10.20.0.0/16}"
     },
@@ -75,6 +78,9 @@
     },
     "agentGatewayLinkExistingPrivateDnsZones": {
       "value": "${FARSIGHT_AGENT_GATEWAY_LINK_EXISTING_PRIVATE_DNS_ZONES=true}"
+    },
+    "agentGatewayEnableNatGateway": {
+      "value": "${FARSIGHT_AGENT_GATEWAY_ENABLE_NAT_GATEWAY=false}"
     },
     "enableApim": {
       "value": "${FARSIGHT_ENABLE_APIM=false}"

@@ -9,10 +9,13 @@
 - Two Windows 11 VMs by default.
 - One NIC and OS disk per VM.
 - Optional public IPs for break-glass testing only.
+- Optional NAT Gateway for outbound internet from the VM subnet.
 
 ## Cost posture
 
 The default VM size is `Standard_B2s`, which is intended for intermittent low-cost dev/test use. Stop or delete the VMs when they are not being used. Override `vmSize` if Windows 11 performance is not acceptable for your test scenario.
+
+NAT Gateway is optional and disabled by default because it adds cost. Enable `enableNatGateway` when lab VMs need outbound internet for Intune enrollment, Windows updates, or package download while remaining private with no public IPs.
 
 ## Security defaults
 
@@ -47,6 +50,7 @@ Required planning values:
 | `vnetAddressPrefix` | `10.70.0.0/16` | Must not overlap connected networks. |
 | `subnetAddressPrefix` | `10.70.1.0/24` | Windows test VM subnet. |
 | `enablePublicIp` | `false` | Keep disabled unless approved for break-glass testing. |
+| `enableNatGateway` | `false` | Enable for controlled outbound internet without public IPs. |
 
 ## Cleanup
 
