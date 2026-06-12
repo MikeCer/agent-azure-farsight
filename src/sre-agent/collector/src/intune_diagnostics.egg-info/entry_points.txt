@@ -1,2 +1,0 @@
-[console_scripts]
-intune-diagnostics = intune_diagnostics.cli:main

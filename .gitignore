@@ -35,3 +35,9 @@ Thumbs.db
 .idea/
 # Bicep build artifacts
 infra/bicep/main.json
+
+# Generated package metadata
+**/*.egg-info/
+
+# Nested Bicep build artifacts
+**/infra/main.json
