@@ -35,7 +35,8 @@ FarSight is in early implementation. Some pages describe intended behavior and g
 
 ## Documentation maintenance
 
-- Update the relevant doc with every component change.
+- Update the relevant doc with every component change. This is a repository rule: code, infrastructure, policy, sample, deployment, security, and operations changes must include matching Markdown updates under `docs/` in the same change set.
+- If a change has no matching documentation page, create one in the closest `docs/` section and link it from this index.
 - Prefer Mermaid diagrams in Markdown; keep PowerPoint as presentation material only.
 - Use "Current state" or "Known gaps" sections for unfinished behavior.
 - Validate Markdown, links, Mermaid, OpenAPI, schemas, and examples in CI when practical.
