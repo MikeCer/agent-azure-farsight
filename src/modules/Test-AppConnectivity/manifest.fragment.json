@@ -1,0 +1,11 @@
+{
+  "name": "Test-AppConnectivity",
+  "version": "0.1.0",
+  "riskLevel": "read-only",
+  "scriptPath": "Test-AppConnectivity/Test-AppConnectivity.ps1",
+  "sha256": "sha256-placeholder",
+  "timeoutSeconds": 45,
+  "maxArtifactBytes": 262144,
+  "allowedPathProfiles": [],
+  "schemaRef": "Test-AppConnectivity/input.schema.json"
+}

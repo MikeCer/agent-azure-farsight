@@ -1,6 +1,6 @@
 # Azure Deployment and Implementation Plan
 
-> **Status:** Planning
+> **Status:** Executing
 
 Generated: 2026-06-12T12:01:48+02:00
 
@@ -995,18 +995,18 @@ agent-azure-farsight/
 - [x] Scan codebase
 - [x] Select recipe
 - [x] Plan architecture
-- [ ] User approved this plan
+- [x] User approved this plan
 
 ### Phase 2: Execution
 
 - [ ] Research final service-specific implementation references
-- [ ] Generate `azure.yaml`
-- [ ] Generate Bicep modules under `infra/bicep`
-- [ ] Generate app, collector, tool gateway, and admin web skeletons
-- [ ] Generate Dockerfiles
-- [ ] Generate full Markdown documentation under `docs/`
-- [ ] Generate extension samples under `samples/extensions/`
-- [ ] Add GitHub Actions with OIDC
+- [x] Generate `azure.yaml`
+- [x] Generate Bicep modules under `infra/bicep`
+- [x] Generate app, collector, tool gateway, and admin web skeletons
+- [x] Generate Dockerfiles
+- [x] Generate full Markdown documentation under `docs/`
+- [x] Generate extension samples under `samples/extensions/`
+- [x] Add GitHub Actions with OIDC
 - [ ] Update plan status to `Ready for Validation`
 
 ### Phase 3: Validation

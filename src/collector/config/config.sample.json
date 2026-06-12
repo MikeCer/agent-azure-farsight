@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0",
+  "collectorVersion": "0.1.0",
+  "api": {
+    "baseUrl": "https://farsight-api.example.contoso",
+    "timeoutSeconds": 30,
+    "certificateThumbprint": "replace-with-device-certificate-thumbprint"
+  },
+  "device": {
+    "tenantId": "tenant-guid",
+    "deviceId": "aad-device-guid",
+    "hostnameHash": "sha256:replace-with-hashed-hostname"
+  },
+  "runtime": {
+    "maxSingleRunSeconds": 300,
+    "artifactRoot": "C:\\ProgramData\\Company\\SreCollector\\artifacts",
+    "logPath": "C:\\ProgramData\\Company\\SreCollector\\logs\\collector.ndjson"
+  },
+  "redaction": {
+    "enabled": true,
+    "additionalPatterns": []
+  }
+}

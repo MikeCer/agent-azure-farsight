@@ -1,1 +1,35 @@
-.venv
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+build/
+coverage/
+.npm/
+
+# PowerShell
+*.ps1xml.bak
+
+# Azure / local environment
+.azure/*/.env
+.env
+.env.*
+!.env.example
+
+# Build and test output
+*.log
+*.tmp
+tmp/
+out/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,134 @@
+name: FarSight validation skeleton
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_azure_preview:
+        description: "Run guarded Azure login and preview checks when federated credentials are configured."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+
+env:
+  FARSIGHT_ENVIRONMENT: dev
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID || '' }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID || '' }}
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID || '' }}
+  AZURE_COLLECTOR_LOCATION: italynorth
+  AZURE_AGENT_LOCATION: swedencentral
+  RUN_AZURE_PREVIEW: ${{ inputs.run_azure_preview || 'false' }}
+
+jobs:
+  skeleton:
+    name: Validate repository skeleton
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify CI/test skeleton files
+        run: bash scripts/validation/check-skeleton.sh
+
+  bicep:
+    name: Bicep build and what-if placeholders
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Explain Azure OIDC placeholders
+        run: |
+          echo "OIDC is intentionally configured with repository variables, not secrets."
+          echo "Required vars when enabling preview: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID."
+          echo "Target locations: ${AZURE_COLLECTOR_LOCATION}, ${AZURE_AGENT_LOCATION}."
+
+      - name: Azure login placeholder
+        if: ${{ env.RUN_AZURE_PREVIEW == 'true' && env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Guarded Bicep build and what-if plan
+        run: bash scripts/validation/validate-bicep.sh
+
+  python:
+    name: Python lint and test placeholders
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Guarded Python validation
+        run: bash scripts/validation/validate-python.sh
+
+  powershell:
+    name: PowerShell Pester placeholder
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Guarded Pester validation
+        shell: pwsh
+        run: |
+          if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
+            Write-Host "PowerShell is unavailable; skipping early skeleton Pester placeholder."
+            exit 0
+          }
+          if (-not (Get-Module -ListAvailable -Name Pester)) {
+            Write-Host "Pester is not installed; future module tests will run here once tooling is adopted."
+            exit 0
+          }
+          $tests = Get-ChildItem -Path . -Recurse -Filter "*.Tests.ps1" -ErrorAction SilentlyContinue
+          if (-not $tests) {
+            Write-Host "No Pester tests yet. Planned scope: module validation, allowlists, redaction, output envelopes."
+            exit 0
+          }
+          Invoke-Pester -Path $tests.FullName -CI
+
+  docs:
+    name: Markdown and docs placeholder
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Guarded Markdown validation
+        run: bash scripts/validation/validate-markdown.sh
+
+  mermaid:
+    name: Mermaid render validation placeholder
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Guarded Mermaid validation
+        run: bash scripts/validation/validate-mermaid.sh
+
+  extension-samples:
+    name: Extension sample validation placeholder
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Guarded extension sample validation
+        run: bash scripts/validation/validate-extension-samples.sh

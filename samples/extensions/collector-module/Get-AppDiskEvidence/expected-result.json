@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0",
+  "moduleId": "Get-AppDiskEvidence",
+  "status": "succeeded",
+  "summary": {
+    "profile": "contoso-app",
+    "existingPathCount": 1,
+    "totalBytes": 1048576,
+    "fileSampleCount": 1
+  },
+  "findings": [
+    {
+      "type": "path_summary",
+      "severity": "info",
+      "path": "C:\\ProgramData\\Contoso\\App",
+      "fileCount": 10,
+      "totalBytes": 1048576
+    }
+  ],
+  "artifacts": [],
+  "redactions": ["username", "userProfile"],
+  "collectedAtUtc": "2026-06-12T13:00:00Z"
+}

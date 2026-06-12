@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/farsight/schemas/Get-AppDiskEvidence.input.schema.json",
+  "title": "Get-AppDiskEvidence input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["profile"],
+  "properties": {
+    "profile": {
+      "type": "string",
+      "enum": ["contoso-app", "winget-cache"],
+      "description": "Allowlisted application profile. The module maps this to fixed paths internally."
+    },
+    "includeFileSamples": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, return bounded metadata for the largest files. File contents are never collected."
+    },
+    "maxFileSamples": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20,
+      "default": 5
+    }
+  }
+}

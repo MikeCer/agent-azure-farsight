@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/farsight/tools/create_app_disk_evidence_job.schema.json",
+  "title": "Create app disk evidence job",
+  "description": "Azure SRE Agent tool contract for creating a Get-AppDiskEvidence job.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targetDeviceId", "profile", "justification"],
+  "properties": {
+    "targetDeviceId": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "profile": {
+      "type": "string",
+      "enum": ["contoso-app", "winget-cache"]
+    },
+    "includeFileSamples": {
+      "type": "boolean",
+      "default": false
+    },
+    "maxFileSamples": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20,
+      "default": 5
+    },
+    "justification": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 512
+    },
+    "approvalId": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    }
+  }
+}

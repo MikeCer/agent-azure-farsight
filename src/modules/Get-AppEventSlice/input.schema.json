@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.farsight.local/modules/Get-AppEventSlice/input.schema.json",
+  "title": "Get-AppEventSlice input",
+  "description": "Reads a bounded slice from allowlisted Windows Event Logs.",
+  "type": "object",
+  "required": ["appId", "logName", "startTime", "endTime", "maxEvents"],
+  "properties": {
+    "appId": { "type": "string", "minLength": 1 },
+    "logName": { "type": "string", "enum": ["Application", "System"] },
+    "providerName": { "type": "string", "minLength": 1 },
+    "startTime": { "type": "string", "format": "date-time" },
+    "endTime": { "type": "string", "format": "date-time" },
+    "maxEvents": { "type": "integer", "minimum": 1, "maximum": 500 }
+  },
+  "additionalProperties": false
+}

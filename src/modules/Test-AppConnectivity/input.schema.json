@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.farsight.local/modules/Test-AppConnectivity/input.schema.json",
+  "title": "Test-AppConnectivity input",
+  "description": "Performs bounded connectivity checks to allowlisted host and port targets.",
+  "type": "object",
+  "required": ["appId", "targets"],
+  "properties": {
+    "appId": { "type": "string", "minLength": 1 },
+    "targets": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "required": ["host", "port"],
+        "properties": {
+          "host": { "type": "string", "minLength": 1 },
+          "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "timeoutMilliseconds": { "type": "integer", "minimum": 100, "maximum": 5000 }
+  },
+  "additionalProperties": false
+}

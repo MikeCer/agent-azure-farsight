@@ -1,0 +1,55 @@
+version: "2026-06-12.1"
+description: "Sample AGT policy for FarSight extension tools."
+defaults:
+  outcome: deny
+  reason: "No matching allow rule."
+rules:
+  - id: deny-arbitrary-input
+    outcome: deny
+    reason: "Arbitrary paths, shell tokens, and command text are not allowed."
+    when:
+      anyInputContains:
+        - "\\"
+        - "/"
+        - ";"
+        - "|"
+        - "&"
+        - "$("
+        - "powershell"
+        - "cmd.exe"
+  - id: allow-low-risk-single-device
+    outcome: allow
+    reason: "Read-only low-risk module for a single device and allowlisted profile."
+    when:
+      moduleId: "Get-AppDiskEvidence"
+      riskTier: "low"
+      targetType: "device"
+      profiles:
+        - "contoso-app"
+        - "winget-cache"
+      maxFileSamplesLessThanOrEqual: 10
+  - id: require-approval-broad-or-large
+    outcome: require_approval
+    reason: "Broad target scope or larger metadata sample requires approval."
+    when:
+      moduleId: "Get-AppDiskEvidence"
+      any:
+        - targetType: "group"
+        - maxFileSamplesGreaterThan: 10
+        - targetSensitivity:
+            - "executive"
+            - "regulated"
+approval:
+  requiredFields:
+    - "justification"
+    - "approver"
+    - "expiresAtUtc"
+  denyIfExpired: true
+audit:
+  logFields:
+    - "actor"
+    - "moduleId"
+    - "target"
+    - "profile"
+    - "outcome"
+    - "reason"

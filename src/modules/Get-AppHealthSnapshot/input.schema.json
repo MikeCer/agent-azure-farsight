@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.farsight.local/modules/Get-AppHealthSnapshot/input.schema.json",
+  "title": "Get-AppHealthSnapshot input",
+  "description": "Captures read-only process, service, and resource health signals for an allowlisted application profile.",
+  "type": "object",
+  "required": ["appId"],
+  "properties": {
+    "appId": { "type": "string", "minLength": 1 },
+    "serviceNames": { "type": "array", "items": { "type": "string" }, "maxItems": 20 },
+    "processNames": { "type": "array", "items": { "type": "string" }, "maxItems": 20 }
+  },
+  "additionalProperties": false
+}

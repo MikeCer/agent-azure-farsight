@@ -1,0 +1,11 @@
+{
+  "name": "Get-AppEventSlice",
+  "version": "0.1.0",
+  "riskLevel": "read-only",
+  "scriptPath": "Get-AppEventSlice/Get-AppEventSlice.ps1",
+  "sha256": "sha256-placeholder",
+  "timeoutSeconds": 90,
+  "maxArtifactBytes": 1048576,
+  "allowedPathProfiles": [],
+  "schemaRef": "Get-AppEventSlice/input.schema.json"
+}

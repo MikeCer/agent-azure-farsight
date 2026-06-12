@@ -2,7 +2,7 @@
 
 Generated: 2026-06-12
 
-These diagrams document the planned Agent-Azure-FarSight V1 architecture before implementation begins.
+These diagrams document the intended Agent-Azure-FarSight V1 architecture during early implementation.
 
 ## 1. High-level regional architecture
 

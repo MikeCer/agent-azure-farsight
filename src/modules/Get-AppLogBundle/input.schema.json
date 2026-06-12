@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.farsight.local/modules/Get-AppLogBundle/input.schema.json",
+  "title": "Get-AppLogBundle input",
+  "description": "Collects a bounded bundle of allowlisted application log files.",
+  "type": "object",
+  "required": ["appId", "pathProfile", "startTime", "endTime", "maxBytes"],
+  "properties": {
+    "appId": { "type": "string", "minLength": 1 },
+    "pathProfile": { "type": "string", "enum": ["default"] },
+    "startTime": { "type": "string", "format": "date-time" },
+    "endTime": { "type": "string", "format": "date-time" },
+    "maxBytes": { "type": "integer", "minimum": 1, "maximum": 10485760 }
+  },
+  "additionalProperties": false
+}

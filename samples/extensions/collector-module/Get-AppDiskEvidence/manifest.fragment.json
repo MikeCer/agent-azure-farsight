@@ -1,0 +1,20 @@
+{
+  "modules": [
+    {
+      "id": "Get-AppDiskEvidence",
+      "version": "0.1.0",
+      "displayName": "Get application disk evidence",
+      "description": "Read-only sample module that summarizes disk usage for allowlisted application profiles.",
+      "riskTier": "low",
+      "entryPoint": "Get-AppDiskEvidence.ps1",
+      "timeoutSeconds": 30,
+      "maxArtifactBytes": 0,
+      "scriptSha256": "SHA256_PLACEHOLDER_REPLACE_IN_RELEASE_PIPELINE",
+      "inputSchema": "input.schema.json",
+      "resultEnvelopeVersion": "1.0",
+      "allowedProfiles": ["contoso-app", "winget-cache"],
+      "requiresApproval": false,
+      "readOnly": true
+    }
+  ]
+}

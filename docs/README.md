@@ -1,0 +1,40 @@
+# Agent-Azure-FarSight documentation
+
+This directory is the user-facing documentation set for FarSight. It explains the current skeleton, intended architecture, operational model, and extension rules without requiring access to internal planning artifacts.
+
+## Learning path
+
+1. [Architecture](architecture/README.md) - system components, deployment topology, data flows, trust boundaries, and decision records.
+2. [Security](security/README.md) - threat model, identity, approvals, artifact protection, audit, and retention controls.
+3. [Collector](collector/README.md) - endpoint layout, scheduled task model, configuration, local state, and troubleshooting.
+4. [Intune](intune/README.md) - collector packaging, assignment rings, remediation checks, certificates, and pilot rollout.
+5. [API](api/README.md) - REST contracts, authentication, idempotency, errors, and versioning.
+6. [Agent tools](agent-tools/README.md) - Azure SRE Agent integration through governed AGT tools and approval behavior.
+7. [Modules](modules/README.md) - diagnostic module catalog, schema rules, result envelopes, and redaction expectations.
+8. [Operations](operations/README.md) - dashboards, alerts, KQL examples, runbooks, backup/restore, and incident response.
+9. [Development](development/README.md) - local setup, coding standards, testing, CI/CD, and release notes.
+10. [Extension guide](extension-guide/README.md) - walkthroughs for adding safe modules and matching agent tools.
+
+## Start here by role
+
+- **SRE operator:** Read [Architecture](architecture/README.md), [Agent tools](agent-tools/README.md), and [Operations](operations/README.md).
+- **Endpoint/Intune engineer:** Read [Collector](collector/README.md), [Intune](intune/README.md), and [Security](security/README.md).
+- **API or platform engineer:** Read [API](api/README.md), [Architecture](architecture/README.md), and [Development](development/README.md).
+- **Extension author:** Read [Modules](modules/README.md) and [Extension guide](extension-guide/README.md) before writing code.
+- **Security reviewer:** Read [Security](security/README.md), [Trust boundaries](architecture/trust-boundaries.md), and [Decision records](architecture/decisions.md).
+
+## Current implementation notes
+
+FarSight is in early implementation. Some pages describe intended behavior and guardrails before all code and deployment assets are complete. Pages should clearly call out current-state gaps instead of implying finished production behavior.
+
+## Additional assets
+
+- [Architecture diagrams](architecture/architecture-diagrams.md)
+- Presentation material: `docs/presentations/`
+
+## Documentation maintenance
+
+- Update the relevant doc with every component change.
+- Prefer Mermaid diagrams in Markdown; keep PowerPoint as presentation material only.
+- Use "Current state" or "Known gaps" sections for unfinished behavior.
+- Validate Markdown, links, Mermaid, OpenAPI, schemas, and examples in CI when practical.

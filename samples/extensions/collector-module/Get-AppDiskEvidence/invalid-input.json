@@ -1,0 +1,6 @@
+{
+  "profile": "C:\\Users\\Alice\\Downloads",
+  "includeFileSamples": true,
+  "maxFileSamples": 500,
+  "script": "Get-ChildItem C:\\ -Recurse"
+}

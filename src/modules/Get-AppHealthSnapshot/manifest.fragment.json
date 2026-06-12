@@ -1,0 +1,11 @@
+{
+  "name": "Get-AppHealthSnapshot",
+  "version": "0.1.0",
+  "riskLevel": "read-only",
+  "scriptPath": "Get-AppHealthSnapshot/Get-AppHealthSnapshot.ps1",
+  "sha256": "sha256-placeholder",
+  "timeoutSeconds": 60,
+  "maxArtifactBytes": 524288,
+  "allowedPathProfiles": [],
+  "schemaRef": "Get-AppHealthSnapshot/input.schema.json"
+}

@@ -1,0 +1,15 @@
+[CmdletBinding()]
+param([string]$InstallRoot = "$env:ProgramData\Company\SreCollector")
+
+Set-StrictMode -Version 2.0
+$required = @(
+    $InstallRoot,
+    (Join-Path $InstallRoot 'config\config.json'),
+    (Join-Path $InstallRoot 'config\module-manifest.json'),
+    (Join-Path $InstallRoot 'logs'),
+    (Join-Path $InstallRoot 'state')
+)
+$missing = @($required | Where-Object { -not (Test-Path -LiteralPath $_) })
+$result = [pscustomobject]@{ healthy = ($missing.Count -eq 0); missing = $missing; checkedAtUtc = [DateTime]::UtcNow.ToString('o') }
+$result | ConvertTo-Json -Depth 4
+if (-not $result.healthy) { exit 1 }

@@ -1,0 +1,25 @@
+name: agent-azure-farsight
+metadata:
+  template: agent-azure-farsight@0.1.0
+infra:
+  provider: bicep
+  path: infra/bicep
+services:
+  api:
+    project: ./src/api
+    host: containerapp
+    language: python
+    docker:
+      path: Dockerfile
+  admin-web:
+    project: ./src/admin-web
+    host: containerapp
+    language: js
+    docker:
+      path: Dockerfile
+  agent-tools:
+    project: ./src/agent-tools/gateway
+    host: containerapp
+    language: python
+    docker:
+      path: Dockerfile

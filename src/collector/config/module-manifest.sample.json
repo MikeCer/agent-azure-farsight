@@ -1,0 +1,60 @@
+{
+  "manifestVersion": "2026-06-12.1",
+  "modules": [
+    {
+      "name": "Get-AppLogBundle",
+      "version": "0.1.0",
+      "riskLevel": "read-only",
+      "scriptPath": "Get-AppLogBundle/Get-AppLogBundle.ps1",
+      "sha256": "sha256-placeholder",
+      "timeoutSeconds": 120,
+      "maxArtifactBytes": 10485760,
+      "allowedPathProfiles": ["default"],
+      "schemaRef": "Get-AppLogBundle/input.schema.json"
+    },
+    {
+      "name": "Get-AppEventSlice",
+      "version": "0.1.0",
+      "riskLevel": "read-only",
+      "scriptPath": "Get-AppEventSlice/Get-AppEventSlice.ps1",
+      "sha256": "sha256-placeholder",
+      "timeoutSeconds": 90,
+      "maxArtifactBytes": 1048576,
+      "allowedPathProfiles": [],
+      "schemaRef": "Get-AppEventSlice/input.schema.json"
+    },
+    {
+      "name": "Get-AppHealthSnapshot",
+      "version": "0.1.0",
+      "riskLevel": "read-only",
+      "scriptPath": "Get-AppHealthSnapshot/Get-AppHealthSnapshot.ps1",
+      "sha256": "sha256-placeholder",
+      "timeoutSeconds": 60,
+      "maxArtifactBytes": 524288,
+      "allowedPathProfiles": [],
+      "schemaRef": "Get-AppHealthSnapshot/input.schema.json"
+    },
+    {
+      "name": "Test-AppConnectivity",
+      "version": "0.1.0",
+      "riskLevel": "read-only",
+      "scriptPath": "Test-AppConnectivity/Test-AppConnectivity.ps1",
+      "sha256": "sha256-placeholder",
+      "timeoutSeconds": 45,
+      "maxArtifactBytes": 262144,
+      "allowedPathProfiles": [],
+      "schemaRef": "Test-AppConnectivity/input.schema.json"
+    },
+    {
+      "name": "Get-ConfigEvidence",
+      "version": "0.1.0",
+      "riskLevel": "read-only",
+      "scriptPath": "Get-ConfigEvidence/Get-ConfigEvidence.ps1",
+      "sha256": "sha256-placeholder",
+      "timeoutSeconds": 60,
+      "maxArtifactBytes": 524288,
+      "allowedPathProfiles": [],
+      "schemaRef": "Get-ConfigEvidence/input.schema.json"
+    }
+  ]
+}

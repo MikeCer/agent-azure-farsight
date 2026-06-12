@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "collectorLocation": {
+      "value": "${AZURE_COLLECTOR_LOCATION=italynorth}"
+    },
+    "agentLocation": {
+      "value": "${AZURE_AGENT_LOCATION=swedencentral}"
+    },
+    "enablePublicIngress": {
+      "value": "${FARSIGHT_ENABLE_PUBLIC_INGRESS=true}"
+    },
+    "enablePrivateEndpoints": {
+      "value": "${FARSIGHT_ENABLE_PRIVATE_ENDPOINTS=false}"
+    },
+    "enableApim": {
+      "value": "${FARSIGHT_ENABLE_APIM=false}"
+    },
+    "enableDevEnrollmentApi": {
+      "value": "${FARSIGHT_ENABLE_DEV_ENROLLMENT_API=true}"
+    },
+    "cosmosJobRetentionDays": {
+      "value": "${FARSIGHT_COSMOS_JOB_RETENTION_DAYS=30}"
+    },
+    "artifactRetentionDays": {
+      "value": "${FARSIGHT_ARTIFACT_RETENTION_DAYS=30}"
+    },
+    "logAnalyticsRetentionDays": {
+      "value": "${FARSIGHT_LOG_ANALYTICS_RETENTION_DAYS=90}"
+    },
+    "adminGroupObjectIds": {
+      "value": []
+    }
+  }
+}
