@@ -2,6 +2,8 @@
 
 This folder contains the AZD/Bicep deployment scaffold for the Agent-Azure-FarSight cloud control plane.
 
+For a production-style private deployment, start with the [greenfield Azure deployment guide](../docs/azure-greenfield-deployment.md).
+
 ## What it deploys
 
 - Italy North collector/control-plane resources:

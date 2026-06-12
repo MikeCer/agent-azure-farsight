@@ -2,12 +2,50 @@ param namePrefix string
 param location string
 param tags object
 param logAnalyticsRetentionDays int
+param enablePublicIngress bool
+param enablePrivateEndpoints bool
 
+@description('Agent gateway virtual network address prefix.')
+param vnetAddressPrefix string = '10.20.0.0/16'
+
+@description('Agent gateway Container Apps infrastructure subnet prefix.')
+param containerAppsInfrastructureSubnetPrefix string = '10.20.0.0/23'
+
+@description('Agent gateway private endpoint subnet prefix.')
+param privateEndpointSubnetPrefix string = '10.20.2.0/24'
+
+@description('Existing private DNS zone resource IDs keyed by service name for agent gateway private endpoint links.')
+param privateDnsZoneResourceIds object = {}
+
+@description('Link agent gateway private endpoints to the provided existing private DNS zones.')
+param linkExistingPrivateDnsZones bool = true
+
+var normalizedPrefix = replace(toLower(namePrefix), '-', '')
+var unique = take(uniqueString(resourceGroup().id, namePrefix, location, 'agent-gateway'), 8)
 var workspaceName = 'law-${namePrefix}-agent-${location}'
 var appInsightsName = 'appi-${namePrefix}-agent-${location}'
 var environmentName = 'cae-${namePrefix}-agent-${location}'
 var toolGatewayName = 'ca-${namePrefix}-tools-${location}'
 var identityName = 'id-${namePrefix}-tools-${location}'
+var privateEndpointNamePrefix = 'pe-${take(normalizedPrefix, 24)}-${take(unique, 6)}-agent'
+var monitorPrivateLinkScopeName = 'ampls-${namePrefix}-agent-${take(unique, 4)}'
+var publicNetworkAccess = enablePrivateEndpoints ? 'Disabled' : 'Enabled'
+var toolGatewayIngressExternal = enablePrivateEndpoints ? false : enablePublicIngress
+
+module networking 'networking.bicep' = if (enablePrivateEndpoints) {
+  name: 'networking-${namePrefix}-agent-${location}'
+  params: {
+    namePrefix: '${namePrefix}-agent'
+    location: location
+    tags: tags
+    virtualNetworkAddressPrefix: vnetAddressPrefix
+    containerAppsInfrastructureSubnetAddressPrefix: containerAppsInfrastructureSubnetPrefix
+    privateEndpointsSubnetAddressPrefix: privateEndpointSubnetPrefix
+    enableApiManagementSubnet: false
+    existingPrivateDnsZoneResourceIds: privateDnsZoneResourceIds
+    linkExistingPrivateDnsZones: linkExistingPrivateDnsZones
+  }
+}
 
 resource toolIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
   name: identityName
@@ -21,6 +59,8 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2025-02-01' = {
   tags: tags
   properties: {
     retentionInDays: logAnalyticsRetentionDays
+    publicNetworkAccessForIngestion: publicNetworkAccess
+    publicNetworkAccessForQuery: publicNetworkAccess
     sku: {
       name: 'PerGB2018'
     }
@@ -35,6 +75,8 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   properties: {
     Application_Type: 'web'
     WorkspaceResourceId: workspace.id
+    publicNetworkAccessForIngestion: publicNetworkAccess
+    publicNetworkAccessForQuery: publicNetworkAccess
   }
 }
 
@@ -42,7 +84,7 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: environmentName
   location: location
   tags: tags
-  properties: {
+  properties: union({
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
@@ -50,7 +92,12 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
         sharedKey: workspace.listKeys().primarySharedKey
       }
     }
-  }
+  }, enablePrivateEndpoints ? {
+    vnetConfiguration: {
+      infrastructureSubnetId: networking!.outputs.containerAppsInfrastructureSubnetId
+      internal: true
+    }
+  } : {})
 }
 
 resource toolGateway 'Microsoft.App/containerApps@2024-03-01' = {
@@ -68,7 +115,7 @@ resource toolGateway 'Microsoft.App/containerApps@2024-03-01' = {
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: {
-        external: true
+        external: toolGatewayIngressExternal
         targetPort: 8000
         transport: 'http'
         allowInsecure: false
@@ -99,6 +146,93 @@ resource toolGateway 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
+resource monitorPrivateLinkScope 'Microsoft.Insights/privateLinkScopes@2021-07-01-preview' = if (enablePrivateEndpoints) {
+  name: monitorPrivateLinkScopeName
+  location: 'global'
+  tags: tags
+  properties: {
+    accessModeSettings: {
+      ingestionAccessMode: 'PrivateOnly'
+      queryAccessMode: 'PrivateOnly'
+    }
+  }
+}
+
+resource workspaceScopedResource 'Microsoft.Insights/privateLinkScopes/scopedResources@2021-07-01-preview' = if (enablePrivateEndpoints) {
+  parent: monitorPrivateLinkScope
+  name: 'law-${take(unique, 4)}'
+  properties: {
+    linkedResourceId: workspace.id
+  }
+}
+
+resource appInsightsScopedResource 'Microsoft.Insights/privateLinkScopes/scopedResources@2021-07-01-preview' = if (enablePrivateEndpoints) {
+  parent: monitorPrivateLinkScope
+  name: 'appi-${take(unique, 4)}'
+  properties: {
+    linkedResourceId: appInsights.id
+  }
+}
+
+resource monitorPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = if (enablePrivateEndpoints) {
+  name: '${privateEndpointNamePrefix}-ampls'
+  location: location
+  tags: tags
+  properties: {
+    subnet: {
+      id: networking!.outputs.privateEndpointsSubnetId
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'azure-monitor'
+        properties: {
+          privateLinkServiceId: monitorPrivateLinkScope.id
+          groupIds: [
+            'azuremonitor'
+          ]
+        }
+      }
+    ]
+  }
+}
+
+resource monitorPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-07-01' = if (enablePrivateEndpoints) {
+  parent: monitorPrivateEndpoint
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'azureMonitor'
+        properties: {
+          privateDnsZoneId: networking!.outputs.privateDnsZoneIds.azureMonitor
+        }
+      }
+      {
+        name: 'logAnalyticsOms'
+        properties: {
+          privateDnsZoneId: networking!.outputs.privateDnsZoneIds.logAnalyticsOms
+        }
+      }
+      {
+        name: 'logAnalyticsOds'
+        properties: {
+          privateDnsZoneId: networking!.outputs.privateDnsZoneIds.logAnalyticsOds
+        }
+      }
+      {
+        name: 'azureMonitorAgentSvc'
+        properties: {
+          privateDnsZoneId: networking!.outputs.privateDnsZoneIds.azureMonitorAgentSvc
+        }
+      }
+    ]
+  }
+}
+
+// Private Sweden Central ingress keeps the tool gateway off the public internet. The Italy North
+// FarSight API still needs routable private connectivity (for example VNet peering or hub transit)
+// plus DNS forwarding between these regional VNets; that cross-region routing is intentionally not
+// modeled in this standalone module.
 // Azure SRE Agent service provisioning is intentionally not modeled here yet.
 // The service currently creates its own managed identity, Application Insights,
 // and Log Analytics resources. Wire its managed identity to FarSight once the
@@ -106,3 +240,7 @@ resource toolGateway 'Microsoft.App/containerApps@2024-03-01' = {
 
 output agentToolGatewayName string = toolGateway.name
 output agentToolGatewayPrincipalId string = toolIdentity.properties.principalId
+output vnetId string = enablePrivateEndpoints ? networking!.outputs.vnetId : ''
+output subnetIds object = enablePrivateEndpoints ? networking!.outputs.subnetIds : {}
+output privateDnsZoneIds object = enablePrivateEndpoints ? networking!.outputs.privateDnsZoneIds : {}
+output monitorPrivateLinkScopeName string = enablePrivateEndpoints ? monitorPrivateLinkScope.name : ''

@@ -115,6 +115,7 @@ These validation scripts are intentionally guarded for early implementation; som
 ## Documentation
 
 - [Documentation index and learning path](docs/README.md)
+- [Greenfield Azure deployment with private networking](docs/azure-greenfield-deployment.md)
 - [Architecture](docs/architecture/README.md)
 - [Security](docs/security/README.md)
 - [Collector](docs/collector/README.md)

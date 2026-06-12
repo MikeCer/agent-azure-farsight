@@ -17,6 +17,65 @@
     "enablePrivateEndpoints": {
       "value": "${FARSIGHT_ENABLE_PRIVATE_ENDPOINTS=false}"
     },
+    "vnetAddressPrefix": {
+      "value": "${FARSIGHT_VNET_ADDRESS_PREFIX=10.10.0.0/16}"
+    },
+    "containerAppsInfrastructureSubnetPrefix": {
+      "value": "${FARSIGHT_CONTAINER_APPS_INFRASTRUCTURE_SUBNET_PREFIX=10.10.0.0/23}"
+    },
+    "privateEndpointSubnetPrefix": {
+      "value": "${FARSIGHT_PRIVATE_ENDPOINT_SUBNET_PREFIX=10.10.2.0/24}"
+    },
+    "apimSubnetPrefix": {
+      "value": "${FARSIGHT_APIM_SUBNET_PREFIX=10.10.3.0/24}"
+    },
+    "privateDnsZoneResourceIds": {
+      "value": {
+        "storageBlob": "${FARSIGHT_PRIVATE_DNS_ZONE_STORAGE_BLOB_RESOURCE_ID=}",
+        "keyVault": "${FARSIGHT_PRIVATE_DNS_ZONE_KEY_VAULT_RESOURCE_ID=}",
+        "containerRegistry": "${FARSIGHT_PRIVATE_DNS_ZONE_CONTAINER_REGISTRY_RESOURCE_ID=}",
+        "cosmosSql": "${FARSIGHT_PRIVATE_DNS_ZONE_COSMOS_SQL_RESOURCE_ID=}",
+        "serviceBus": "${FARSIGHT_PRIVATE_DNS_ZONE_SERVICE_BUS_RESOURCE_ID=}",
+        "appConfiguration": "${FARSIGHT_PRIVATE_DNS_ZONE_APP_CONFIGURATION_RESOURCE_ID=}",
+        "apiManagement": "${FARSIGHT_PRIVATE_DNS_ZONE_API_MANAGEMENT_RESOURCE_ID=}",
+        "azureMonitor": "${FARSIGHT_PRIVATE_DNS_ZONE_AZURE_MONITOR_RESOURCE_ID=}",
+        "logAnalyticsOms": "${FARSIGHT_PRIVATE_DNS_ZONE_LOG_ANALYTICS_OMS_RESOURCE_ID=}",
+        "logAnalyticsOds": "${FARSIGHT_PRIVATE_DNS_ZONE_LOG_ANALYTICS_ODS_RESOURCE_ID=}",
+        "azureMonitorAgentSvc": "${FARSIGHT_PRIVATE_DNS_ZONE_AZURE_MONITOR_AGENT_SVC_RESOURCE_ID=}",
+        "containerAppsEnvironment": "${FARSIGHT_PRIVATE_DNS_ZONE_CONTAINER_APPS_ENVIRONMENT_RESOURCE_ID=}"
+      }
+    },
+    "linkExistingPrivateDnsZones": {
+      "value": "${FARSIGHT_LINK_EXISTING_PRIVATE_DNS_ZONES=true}"
+    },
+    "agentGatewayVnetAddressPrefix": {
+      "value": "${FARSIGHT_AGENT_GATEWAY_VNET_ADDRESS_PREFIX=10.20.0.0/16}"
+    },
+    "agentGatewayContainerAppsInfrastructureSubnetPrefix": {
+      "value": "${FARSIGHT_AGENT_GATEWAY_CONTAINER_APPS_INFRASTRUCTURE_SUBNET_PREFIX=10.20.0.0/23}"
+    },
+    "agentGatewayPrivateEndpointSubnetPrefix": {
+      "value": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_ENDPOINT_SUBNET_PREFIX=10.20.2.0/24}"
+    },
+    "agentGatewayPrivateDnsZoneResourceIds": {
+      "value": {
+        "storageBlob": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_STORAGE_BLOB_RESOURCE_ID=}",
+        "keyVault": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_KEY_VAULT_RESOURCE_ID=}",
+        "containerRegistry": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_CONTAINER_REGISTRY_RESOURCE_ID=}",
+        "cosmosSql": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_COSMOS_SQL_RESOURCE_ID=}",
+        "serviceBus": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_SERVICE_BUS_RESOURCE_ID=}",
+        "appConfiguration": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_APP_CONFIGURATION_RESOURCE_ID=}",
+        "apiManagement": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_API_MANAGEMENT_RESOURCE_ID=}",
+        "azureMonitor": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_AZURE_MONITOR_RESOURCE_ID=}",
+        "logAnalyticsOms": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_LOG_ANALYTICS_OMS_RESOURCE_ID=}",
+        "logAnalyticsOds": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_LOG_ANALYTICS_ODS_RESOURCE_ID=}",
+        "azureMonitorAgentSvc": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_AZURE_MONITOR_AGENT_SVC_RESOURCE_ID=}",
+        "containerAppsEnvironment": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_CONTAINER_APPS_ENVIRONMENT_RESOURCE_ID=}"
+      }
+    },
+    "agentGatewayLinkExistingPrivateDnsZones": {
+      "value": "${FARSIGHT_AGENT_GATEWAY_LINK_EXISTING_PRIVATE_DNS_ZONES=true}"
+    },
     "enableApim": {
       "value": "${FARSIGHT_ENABLE_APIM=false}"
     },
