@@ -193,67 +193,26 @@ flowchart TB
 ## 5. Cosmos DB state model
 
 ```mermaid
-erDiagram
-    DEVICES ||--o{ JOBS : receives
-    DEVICES ||--o{ INVESTIGATIONS : participates
-    JOBS ||--o{ ARTIFACT_INDEX : produces
-    JOBS ||--o{ AUDIT_EVENTS : emits
-    APPROVALS ||--o{ JOBS : gates
-    POLICIES ||--o{ JOBS : evaluated_for
-    MANIFESTS ||--o{ JOBS : constrains
-    INVESTIGATIONS ||--o{ JOBS : groups
+flowchart LR
+    subgraph Cosmos["Cosmos DB for NoSQL - farsight database"]
+        Devices["devices<br/><b>PK:</b> /tenantDeviceId<br/>certificate thumbprint<br/>policy version<br/>last heartbeat"]
+        Jobs["jobs<br/><b>PK:</b> /deviceId<br/>job status<br/>task type<br/>lease and expiry<br/>correlation ID"]
+        Approvals["approvals<br/><b>PK:</b> /approvalId<br/>risk level<br/>requested by<br/>decision and expiry"]
+        Manifests["manifests<br/><b>PK:</b> /manifestId<br/>module versions<br/>hashes<br/>schemas"]
+        Policies["policies<br/><b>PK:</b> /policyId<br/>cloud policy<br/>endpoint policy<br/>version history"]
+        Investigations["investigations<br/><b>PK:</b> /incidentId<br/>device timeline<br/>summary<br/>prior history"]
+        ArtifactIndex["artifactIndex<br/><b>PK:</b> /jobId<br/>artifact metadata<br/>blob reference<br/>hash and size"]
+        AuditEvents["auditEvents<br/><b>PK:</b> /correlationId<br/>actor<br/>action<br/>event time"]
+    end
 
-    DEVICES {
-        string tenantDeviceId PK
-        string certificateThumbprint
-        string policyVersion
-        datetime lastHeartbeatUtc
-    }
-    JOBS {
-        string jobId PK
-        string deviceId PartitionKey
-        string status
-        string taskType
-        string correlationId
-        datetime expiresAtUtc
-        object lease
-    }
-    APPROVALS {
-        string approvalId PK
-        string riskLevel
-        string status
-        string requestedBy
-        datetime expiresAtUtc
-    }
-    MANIFESTS {
-        string manifestId PK
-        string version
-        object modules
-    }
-    POLICIES {
-        string policyId PK
-        string version
-        object rules
-    }
-    INVESTIGATIONS {
-        string incidentId PK
-        string deviceId
-        string summary
-    }
-    ARTIFACT_INDEX {
-        string artifactId PK
-        string jobId PartitionKey
-        string blobUri
-        string sha256
-        int sizeBytes
-    }
-    AUDIT_EVENTS {
-        string auditId PK
-        string correlationId PartitionKey
-        string actor
-        string action
-        datetime eventTimeUtc
-    }
+    Devices -->|receives| Jobs
+    Devices -->|participates in| Investigations
+    Investigations -->|groups| Jobs
+    Approvals -->|gates| Jobs
+    Manifests -->|constrains| Jobs
+    Policies -->|evaluated for| Jobs
+    Jobs -->|produces| ArtifactIndex
+    Jobs -->|emits| AuditEvents
 ```
 
 ## 6. Endpoint collector execution model
