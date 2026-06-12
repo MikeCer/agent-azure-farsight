@@ -437,6 +437,42 @@ Use optimistic concurrency with ETags for job lease transitions.
   - Cosmos RU throttling
   - Service Bus queue depth
 
+### 9.15 Documentation
+
+- Produce complete system documentation as Markdown under `docs/`.
+- Treat documentation as an implementation deliverable, not an afterthought; each component PR should update the related docs.
+- Required documentation set:
+  - `docs/README.md` - documentation index and learning path.
+  - `docs/architecture/` - architecture overview, regional topology, data flows, trust boundaries, decision records.
+  - `docs/api/` - REST API contracts, OpenAPI usage, auth model, idempotency, error model, versioning.
+  - `docs/collector/` - endpoint folder layout, scheduled task model, config, local state, logging, troubleshooting.
+  - `docs/modules/` - V1 module catalog, module contract, parameter schema rules, result envelope, redaction rules.
+  - `docs/agent-tools/` - Azure SRE Agent custom agent setup, tool contracts, AGT policy wrapping, approval behavior.
+  - `docs/intune/` - deployment scripts, assignment rings, Remediations, certificate deployment, pilot rollout.
+  - `docs/security/` - threat model, identity/RBAC, mTLS, approvals, artifact protection, audit trail, data retention.
+  - `docs/operations/` - dashboards, alerts, KQL queries, runbooks, backup/restore, incident response.
+  - `docs/development/` - local setup, coding standards, testing, CI/CD, release process.
+  - `docs/extension-guide/` - end-to-end guidance for extending the collector and Azure SRE Agent tools.
+- Store generated diagrams in Markdown-friendly Mermaid form and keep the PowerPoint deck as presentation material only.
+- Include documentation validation in CI where practical: link checks, Markdown linting if adopted, Mermaid render validation, and OpenAPI/schema consistency checks.
+
+### 9.16 Extension samples and developer experience
+
+- Provide working samples that show how to extend FarSight safely without weakening the no-shell model.
+- Required extension sample: add a new read-only diagnostic module and corresponding Azure SRE Agent tool.
+- The sample must include:
+  - PowerShell module folder under `samples/extensions/collector-module/`.
+  - Module manifest entry with version, risk tier, timeout, max artifact size, script hash placeholder, and schema reference.
+  - Input schema and sample valid/invalid payloads.
+  - Result envelope examples with findings, summary, and optional artifact metadata.
+  - Pester tests for validation, redaction, timeout, and failure handling.
+  - Tool gateway sample under `samples/extensions/agent-tool/` showing AGT policy evaluation, API call mapping, managed identity assumptions, and approval behavior.
+  - AGT policy example under `samples/extensions/policies/` for `allow`, `deny`, and `require_approval` outcomes.
+  - API registration/configuration example showing how the tool maps to `POST /api/v1/jobs` or follow-up job creation.
+  - Documentation walkthrough under `docs/extension-guide/adding-a-diagnostic-module.md`.
+- The sample module must be intentionally harmless and read-only, for example `Get-AppDiskEvidence` or `Get-AppCertificateEvidence`, and must demonstrate allowlisted paths/profiles rather than free-form input.
+- Include a checklist for adding future modules: schema, manifest, code, tests, redaction, policy, agent tool, docs, KQL, and rollout approval.
+
 ---
 
 ## 10. Contracts and Schemas
@@ -702,11 +738,46 @@ agent-azure-farsight/
     redaction/
     approvals/
   docs/
+    README.md
     architecture/
+      overview.md
+      data-flows.md
+      trust-boundaries.md
+      architecture-diagrams.md
+      decisions/
     runbooks/
     intune/
     api/
+      openapi.md
+      error-model.md
+    collector/
+      overview.md
+      configuration.md
+      troubleshooting.md
+    modules/
+      catalog.md
+      module-contract.md
+      redaction.md
+    agent-tools/
+      azure-sre-agent-setup.md
+      tool-contracts.md
+      governance.md
     security/
+      threat-model.md
+      identity-and-rbac.md
+      data-protection.md
+    operations/
+      dashboards.md
+      alerts.md
+      kql.md
+    development/
+      local-setup.md
+      testing.md
+      release-process.md
+    extension-guide/
+      overview.md
+      adding-a-diagnostic-module.md
+      adding-an-agent-tool.md
     presentations/
   tests/
     contract/
@@ -715,6 +786,22 @@ agent-azure-farsight/
     security/
     device-simulator/
   samples/
+    extensions/
+      collector-module/
+        Get-AppDiskEvidence/
+          Get-AppDiskEvidence.ps1
+          manifest.fragment.json
+          input.schema.json
+          valid-input.json
+          invalid-input.json
+          expected-result.json
+          tests/
+      agent-tool/
+        create_app_disk_evidence_job.py
+        tool-contract.json
+        README.md
+      policies/
+        agt-extension-policy.yaml
     intune/
     module-inputs/
     policies/
@@ -766,6 +853,8 @@ agent-azure-farsight/
 - First two modules: `Get-AppLogBundle`, `Get-AppEventSlice`.
 - Dev/pilot certificate enrollment flow.
 - Basic Log Analytics custom tables.
+- Initial `docs/` documentation index, architecture overview, API contracts, collector overview, and development setup.
+- First extension sample skeleton showing a read-only collector module plus matching AGT-governed agent tool.
 
 ### Pilot
 
@@ -775,6 +864,8 @@ agent-azure-farsight/
 - Add AGT tool gateway and Azure SRE Agent custom agent configuration.
 - Add secondary approval API and Teams notification hook.
 - Add Intune Remediations healthcheck/repair.
+- Complete extension guide with a tested sample module, sample agent tool, policy examples, and rollout checklist.
+- Expand Markdown documentation for security, operations, Intune deployment, and troubleshooting.
 - Pilot with defined app profiles and device rings.
 
 ### Hardening
@@ -785,12 +876,14 @@ agent-azure-farsight/
 - Load and soak testing for check-in/job/result flow.
 - Cosmos RU tuning, partition validation, and queue failure testing.
 - Security tests, policy tests, and audit validation.
+- Documentation quality gate for Mermaid rendering, OpenAPI/schema consistency, and extension sample correctness.
 
 ### Production readiness
 
 - Disaster recovery and backup/restore runbooks.
 - Operational dashboards and alert tuning.
 - Final Azure SRE Agent runbooks, knowledge files, and response plans.
+- Complete operator, admin, developer, and extension-author documentation in `docs/`.
 - Change management and support model.
 - Production deployment gates and rollout rings.
 
@@ -810,6 +903,7 @@ agent-azure-farsight/
 8. Admin/monitoring web app
 9. Security, identity, and approvals
 10. Intune packaging and pilot rollout
+11. Documentation and extension samples
 
 ### First implementation stories
 
@@ -824,6 +918,8 @@ agent-azure-farsight/
 | P1 | As an admin, I can configure retention and module policy through the web app. |
 | P1 | As the Azure SRE Agent, I can call AGT-governed FarSight tools using managed identity. |
 | P1 | As an approver, I can approve or deny higher-risk actions from a Teams-notified workflow. |
+| P1 | As a developer, I can follow Markdown documentation in `docs/` to understand, deploy, operate, and troubleshoot the system. |
+| P1 | As an extension author, I can follow a working sample to add a safe collector module and corresponding Azure SRE Agent tool. |
 
 ### Spikes
 
@@ -852,6 +948,8 @@ agent-azure-farsight/
 | Governance tests | AGT allow/deny/require_approval policy outcomes and audit records |
 | Bicep validation | `azd package`, `azd provision --preview`, `az deployment what-if`, Bicep lint |
 | Load tests | Medium-scale check-in cadence, queue depth, Cosmos RU, API latency |
+| Documentation tests | Markdown link checks, Mermaid render validation, generated OpenAPI/schema consistency |
+| Extension sample tests | Sample collector module tests, sample tool contract tests, AGT policy outcome tests |
 
 ---
 
@@ -877,6 +975,12 @@ agent-azure-farsight/
 | 9 | First artifact path | `Get-AppLogBundle` summary plus initial zip artifact prepare/commit |
 | 10 | End-to-end demo | Simulated device completes a bounded job; dashboard/API can show lifecycle summary |
 
+### Documentation and samples during first two weeks
+
+- Create `docs/README.md`, `docs/architecture/overview.md`, `docs/api/openapi.md`, `docs/collector/overview.md`, and `docs/development/local-setup.md` while creating the corresponding implementation skeletons.
+- Create `docs/extension-guide/overview.md` and a sample extension scaffold under `samples/extensions/` before the first module implementation is considered complete.
+- Keep docs and samples aligned with implementation changes in the same pull requests.
+
 ---
 
 ## 17. Execution Checklist
@@ -900,6 +1004,8 @@ agent-azure-farsight/
 - [ ] Generate Bicep modules under `infra/bicep`
 - [ ] Generate app, collector, tool gateway, and admin web skeletons
 - [ ] Generate Dockerfiles
+- [ ] Generate full Markdown documentation under `docs/`
+- [ ] Generate extension samples under `samples/extensions/`
 - [ ] Add GitHub Actions with OIDC
 - [ ] Update plan status to `Ready for Validation`
 
@@ -934,6 +1040,8 @@ agent-azure-farsight/
 | `.azure/plan.md` | This plan | Created |
 | `docs/architecture/architecture-diagrams.md` | Mermaid architecture diagrams | Created |
 | `docs/presentations/agent-azure-farsight-overview.pptx` | Presentation deck | Created |
+| `docs/**/*.md` | Full system documentation, operations guides, security guides, and extension guide | After plan approval |
+| `samples/extensions/**` | Sample collector module, matching Azure SRE Agent tool, AGT policy, schemas, and tests | After plan approval |
 | `azure.yaml` | AZD configuration | After plan approval |
 | `infra/bicep/main.bicep` | Infrastructure entry point | After plan approval |
 | `src/*/Dockerfile` | Container builds | After plan approval |
