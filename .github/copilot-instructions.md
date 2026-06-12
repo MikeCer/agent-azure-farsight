@@ -13,3 +13,11 @@ When changing code, infrastructure, configuration, policies, samples, deployment
 5. Do not leave behavior documented only in implementation code, comments, or planning files.
 
 This rule applies to all future agent and human changes in this repository.
+
+## Git commit approval rule
+
+Do not create Git commits unless the user explicitly approves the commit.
+
+Before committing, summarize the staged or intended changes and wait for approval. The user may choose to group multiple activity streams, tasks, or related edits into a single commit instead of committing each individual change separately.
+
+It is acceptable to edit files, run validation, and prepare changes without committing. Commit only after explicit user confirmation for that commit scope.
