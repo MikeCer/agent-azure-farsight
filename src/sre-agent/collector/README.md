@@ -27,7 +27,7 @@ To generate one Python entry script that embeds all local `intune_diagnostics` m
 python scripts/build_single_script.py
 ```
 
-The generated file is `dist/intune_diagnostics_tool.py` and is copied to `../sre_agent/tools/intune_diagnostics_tool.py`. Azure SRE Agent deploys it as a `PythonFunctionTool` and calls its typed `main(...)` function. For local CLI testing, use `python -m intune_diagnostics` from the source package instead.
+The generated file is `dist/intune_diagnostics_tool.py` and is copied to `../agent/tools/intune_diagnostics_tool.py`. Azure SRE Agent deploys it as a `PythonFunctionTool` and calls its typed `main(...)` function. For local CLI testing, use `python -m intune_diagnostics` from the source package instead.
 
 Important: this bundles only this project code. External packages are still required in the runtime environment:
 

@@ -10,7 +10,7 @@ COLLECTOR_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = COLLECTOR_ROOT.parent
 PACKAGE_ROOT = COLLECTOR_ROOT / "src" / "intune_diagnostics"
 OUTPUT = COLLECTOR_ROOT / "dist" / "intune_diagnostics_tool.py"
-SRE_AGENT_TOOL_OUTPUT = PROJECT_ROOT / "sre_agent" / "tools" / "intune_diagnostics_tool.py"
+SRE_AGENT_TOOL_OUTPUT = PROJECT_ROOT / "agent" / "tools" / "intune_diagnostics_tool.py"
 
 
 def main() -> int:

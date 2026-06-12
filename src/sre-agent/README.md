@@ -7,7 +7,7 @@ This project packages the Agent-Azure-FarSight SRE deployment template, a govern
 | Path | Purpose |
 | --- | --- |
 | `collector/` | Python Intune diagnostics collector source, tests, packaging metadata, generated `dist/`, and build script. |
-| `sre_agent/` | Azure SRE Agent azd template, agent YAML, Skill Builder packages, knowledge files, Python tool manifests, FarSight tools, and packaged collector tool. |
+| `agent/` | Azure SRE Agent azd template, agent YAML, Skill Builder packages, knowledge files, Python tool manifests, FarSight tools, and packaged collector tool. |
 | `local-scripts/` | Optional endpoint-side diagnostic scripts kept outside the v1 SRE Agent package. |
 
 ## Build the collector tool
@@ -22,42 +22,42 @@ python3 scripts/build_single_script.py
 That command updates both:
 
 - `collector/dist/intune_diagnostics_tool.py`
-- `sre_agent/tools/intune_diagnostics_tool.py`
+- `agent/tools/intune_diagnostics_tool.py`
 
-The SRE Agent package uses `sre_agent/tools/intune_diagnostics_tool.py`, so run the build command before deploying whenever collector source changes.
+The SRE Agent package uses `agent/tools/intune_diagnostics_tool.py`, so run the build command before deploying whenever collector source changes.
 
 ## Deploy the Azure SRE Agent
 
-The deployable Azure SRE Agent package is in `sre_agent/`. It contains:
+The deployable Azure SRE Agent package is in `agent/`. It contains:
 
 | Path | Purpose |
 | --- | --- |
-| `sre_agent/azure.yaml` | Azure Developer CLI template. |
-| `sre_agent/infra/` | Bicep for resource group, Log Analytics, Application Insights, Key Vault, Agent Space, managed identity, and `Microsoft.App/agents@2026-01-01`. |
-| `sre_agent/deploy.py` | Post-deploy script that uploads knowledge files, deploys Python tools, deploys skills, and deploys the custom agent. |
-| `sre_agent/agent-azure-farsight-sre.yaml` | Azure SRE Agent `AgentConfiguration`. |
-| `sre_agent/skills/intune-data-analysis/` | Skill Builder package for analyzing Intune collector JSON as one evidence source. |
-| `sre_agent/skills/farsight-diagnostics/` | Skill Builder package for governed FarSight diagnostic workflows and artifacts. |
-| `sre_agent/tools/intune_diagnostics_tool.py` | Packaged Azure SRE PythonFunctionTool source used by the SRE Agent. |
-| `sre_agent/tools/intune_diagnostics_tool.yaml` | Tool deployment manifest for `intune_diagnostics_tool`. |
-| `sre_agent/tools/create_diagnostic_job.*`, `get_job_status.*`, `get_job_result_summary.*`, `retrieve_artifact_metadata.*`, `query_device_investigation_history.*`, `request_follow_up_module_execution.*`, `request_approval_for_action.*` | FarSight tool surface for governed diagnostic jobs, results, history, artifacts, follow-up modules, and approvals. |
+| `agent/azure.yaml` | Azure Developer CLI template. |
+| `agent/infra/` | Bicep for resource group, Log Analytics, Application Insights, Key Vault, Agent Space, managed identity, and `Microsoft.App/agents@2026-01-01`. |
+| `agent/deploy.py` | Post-deploy script that uploads knowledge files, deploys Python tools, deploys skills, and deploys the custom agent. |
+| `agent/agent-azure-farsight-sre.yaml` | Azure SRE Agent `AgentConfiguration`. |
+| `agent/skills/intune-data-analysis/` | Skill Builder package for analyzing Intune collector JSON as one evidence source. |
+| `agent/skills/farsight-diagnostics/` | Skill Builder package for governed FarSight diagnostic workflows and artifacts. |
+| `agent/tools/intune_diagnostics_tool.py` | Packaged Azure SRE PythonFunctionTool source used by the SRE Agent. |
+| `agent/tools/intune_diagnostics_tool.yaml` | Tool deployment manifest for `intune_diagnostics_tool`. |
+| `agent/tools/create_diagnostic_job.*`, `get_job_status.*`, `get_job_result_summary.*`, `retrieve_artifact_metadata.*`, `query_device_investigation_history.*`, `request_follow_up_module_execution.*`, `request_approval_for_action.*` | FarSight tool surface for governed diagnostic jobs, results, history, artifacts, follow-up modules, and approvals. |
 
 ### Prerequisites
 
 - Azure CLI authenticated to the target tenant/subscription.
 - Azure Developer CLI (`azd`) for full infrastructure deployment.
-- Python 3 with `PyYAML` for `sre_agent/deploy.py`.
+- Python 3 with `PyYAML` for `agent/deploy.py`.
 - Permission to deploy the SRE Agent infrastructure and assign the SRE Agent Administrator role.
 - A Microsoft Graph application or managed identity with the Intune read permissions documented in `collector/docs/intune-data-catalog.md`.
 
 Install the deploy script dependency:
 
 ```bash
-cd sre_agent
+cd agent
 python3 -m pip install -r requirements.txt
 ```
 
-The `azd` postdeploy hook runs `sre_agent/deploy.py`, which uses the Azure CLI (`az`) directly. Make sure `az` is authenticated in the same shell/environment used by the hook:
+The `azd` postdeploy hook runs `agent/deploy.py`, which uses the Azure CLI (`az`) directly. Make sure `az` is authenticated in the same shell/environment used by the hook:
 
 ```bash
 az login --tenant <tenant-id>
@@ -65,14 +65,14 @@ az account set --subscription <subscription-id>
 az account show --query id -o tsv
 ```
 
-On Windows, the default `shell: sh` hook can execute through WSL or Git Bash, which may have a different Azure CLI login cache than Windows PowerShell. If the hook reports that a valid subscription is not found, authenticate `az` in that shell or change the hook in `sre_agent/azure.yaml` to use `pwsh`.
+On Windows, the default `shell: sh` hook can execute through WSL or Git Bash, which may have a different Azure CLI login cache than Windows PowerShell. If the hook reports that a valid subscription is not found, authenticate `az` in that shell or change the hook in `agent/azure.yaml` to use `pwsh`.
 
 ### azd configuration
 
 Set azd environment values before provisioning:
 
 ```bash
-cd sre_agent
+cd agent
 azd env set AZURE_ENV_NAME <environment-name>
 azd env set AZURE_LOCATION <azure-region>
 azd env set AZURE_PRINCIPAL_ID <your-entra-object-id>
@@ -92,7 +92,7 @@ azd env set AZURE_PRINCIPAL_ID <your-entra-object-id>
 
 ### Full deployment
 
-From `sre_agent`:
+From `agent`:
 
 ```bash
 azd up
@@ -122,7 +122,7 @@ It then deploys:
 Use this when the SRE Agent resource already exists:
 
 ```bash
-cd sre_agent
+cd agent
 python3 deploy.py --agent-name <sre-agent-resource-name> \
   --resource-group <sre-agent-resource-group> \
   --subscription <subscription-id>
@@ -143,7 +143,7 @@ Useful options:
 Dry-run example:
 
 ```bash
-cd sre_agent
+cd agent
 python3 deploy.py --agent-name dry-run --dry-run
 ```
 
@@ -216,16 +216,16 @@ Before deploying, run:
 ```bash
 cd collector
 python3 scripts/build_single_script.py
-cmp -s dist/intune_diagnostics_tool.py ../sre_agent/tools/intune_diagnostics_tool.py
+cmp -s dist/intune_diagnostics_tool.py ../agent/tools/intune_diagnostics_tool.py
 PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
 Then validate the SRE Agent package:
 
 ```bash
-cd ../sre_agent
+cd ../agent
 python3 deploy.py --agent-name dry-run --dry-run
-az bicep build --file infra/main.bicep --stdout > sre_agent_bicep.json
+az bicep build --file infra/main.bicep --stdout > agent_bicep.json
 ```
 
 ## First prompt after deployment
