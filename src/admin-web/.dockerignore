@@ -1,0 +1,14 @@
+.git
+.azure
+.env
+.env.*
+frontend/node_modules
+frontend/dist
+frontend/.vite
+frontend/tsconfig.tsbuildinfo
+frontend/*.tsbuildinfo
+bff/__pycache__
+**/__pycache__
+**/*.pyc
+*.log
+*.tmp

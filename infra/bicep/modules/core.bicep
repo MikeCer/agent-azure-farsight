@@ -31,6 +31,22 @@ param linkExistingPrivateDnsZones bool = true
 @description('Create a NAT Gateway for outbound internet from collector/control-plane service subnets.')
 param enableNatGateway bool = false
 
+@description('Enable Container Apps Easy Auth for the admin web application.')
+param enableAdminEasyAuth bool = false
+
+@description('Entra application/client ID for admin web Easy Auth.')
+param adminAuthClientId string = ''
+
+@secure()
+@description('Client secret for admin web Easy Auth app registration.')
+param adminAuthClientSecret string = ''
+
+@description('Issuer URL for admin web Easy Auth.')
+param adminAuthIssuer string = ''
+
+@description('Allowed token audiences for admin web Easy Auth.')
+param adminAuthAllowedAudiences array = []
+
 var normalizedPrefix = replace(toLower(namePrefix), '-', '')
 var shortNamePrefix = replace(namePrefix, 'farsight-', 'fs-')
 var regionCode = location == 'italynorth' ? 'itn' : (location == 'swedencentral' ? 'swc' : take(replace(toLower(location), '-', ''), 6))
@@ -156,6 +172,12 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: environment.id
     configuration: {
       activeRevisionsMode: 'Single'
+      secrets: enableAdminEasyAuth ? [
+        {
+          name: 'microsoft-provider-authentication-secret'
+          value: adminAuthClientSecret
+        }
+      ] : []
       ingress: {
         external: containerAppIngressExternal
         targetPort: 8000
@@ -249,6 +271,42 @@ resource adminApp 'Microsoft.App/containerApps@2024-03-01' = {
       scale: {
         minReplicas: 0
         maxReplicas: 3
+      }
+    }
+  }
+}
+
+resource adminAppAuthConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (enableAdminEasyAuth) {
+  #disable-next-line use-parent-property
+  name: '${adminApp.name}/current'
+  properties: {
+    platform: {
+      enabled: true
+    }
+    globalValidation: {
+      unauthenticatedClientAction: 'RedirectToLoginPage'
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        enabled: true
+        registration: {
+          clientId: adminAuthClientId
+          clientSecretSettingName: 'microsoft-provider-authentication-secret'
+          openIdIssuer: adminAuthIssuer
+        }
+        validation: {
+          allowedAudiences: empty(adminAuthAllowedAudiences) ? [
+            adminAuthClientId
+          ] : adminAuthAllowedAudiences
+        }
+      }
+    }
+    encryptionSettings: {
+      containerAppAuthEncryptionSecretName: 'microsoft-provider-authentication-secret'
+    }
+    login: {
+      tokenStore: {
+        enabled: true
       }
     }
   }
@@ -892,6 +950,7 @@ output serviceBusNamespaceName string = serviceBus.name
 output keyVaultName string = keyVault.name
 output appConfigurationName string = appConfig.name
 output acrName string = acr.name
+output acrLoginServer string = acr.properties.loginServer
 output vnetId string = enablePrivateEndpoints ? networking!.outputs.vnetId : ''
 output subnetIds object = enablePrivateEndpoints ? networking!.outputs.subnetIds : {}
 output privateDnsZoneIds object = enablePrivateEndpoints ? networking!.outputs.privateDnsZoneIds : {}

@@ -99,6 +99,23 @@
     },
     "adminGroupObjectIds": {
       "value": []
+    },
+    "enableAdminEasyAuth": {
+      "value": "${FARSIGHT_ENABLE_ADMIN_EASY_AUTH=false}"
+    },
+    "adminAuthClientId": {
+      "value": "${FARSIGHT_ADMIN_AUTH_CLIENT_ID=}"
+    },
+    "adminAuthClientSecret": {
+      "value": "${FARSIGHT_ADMIN_AUTH_CLIENT_SECRET=}"
+    },
+    "adminAuthIssuer": {
+      "value": "${FARSIGHT_ADMIN_AUTH_ISSUER=}"
+    },
+    "adminAuthAllowedAudiences": {
+      "value": [
+        "${FARSIGHT_ADMIN_AUTH_ALLOWED_AUDIENCE=}"
+      ]
     }
   }
 }

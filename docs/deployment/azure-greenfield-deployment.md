@@ -148,6 +148,12 @@ Expected Bicep parameter mapping:
 | `FARSIGHT_LINK_EXISTING_PRIVATE_DNS_ZONES` | `linkExistingPrivateDnsZones` | Links central zones instead of creating duplicate zones. |
 | `FARSIGHT_EXISTING_PRIVATE_DNS_ZONE_IDS` | `existingPrivateDnsZoneIds` | Resource IDs for central private DNS zones. |
 
+### Admin Easy Auth app registration
+
+The admin web app uses Container Apps Easy Auth when enabled. Create or update the Entra app registration with `scripts/provision-admin-app-registration.py` after you know the admin web callback URI or custom domain. Set the emitted `FARSIGHT_ADMIN_AUTH_*` values in the AZD environment, then enable Easy Auth with `FARSIGHT_ENABLE_ADMIN_EASY_AUTH=true`.
+
+For greenfield deployments without a pre-existing custom domain, use a two-step flow: provision with Easy Auth disabled, capture the admin app URL, run the app-registration script with the callback URI, then provision again with Easy Auth enabled.
+
 If the preview reports unused variables, keep them in the worksheet and finish the
 matching Bicep parameter work before production. Do not compensate by leaving
 public network access enabled in a private deployment.
@@ -174,6 +180,8 @@ Run the AZD provision preview and review the result before approving deployment.
 ### Deploy
 
 Deploy through the approved AZD/release process. If your release process separates infrastructure from images, provision infrastructure first, then deploy signed images through the approved pipeline.
+
+AZD builds and publishes the `api`, `admin-web`, and `agent-tools` container images during the deploy phase. The infrastructure outputs the provisioned container registry endpoint and tags each Container App with `azd-service-name` so AZD can push images and update the correct app. Service folders include `.dockerignore` files to keep remote build archives small.
 
 ## 6. Post-deployment private endpoint and DNS checks
 

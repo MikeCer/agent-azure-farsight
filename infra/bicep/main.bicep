@@ -98,6 +98,22 @@ param logAnalyticsRetentionDays int = 90
 @description('Admin group object IDs allowed to manage FarSight.')
 param adminGroupObjectIds array = []
 
+@description('Enable Container Apps Easy Auth for the admin web application.')
+param enableAdminEasyAuth bool = false
+
+@description('Entra application/client ID for admin web Easy Auth.')
+param adminAuthClientId string = ''
+
+@secure()
+@description('Client secret for admin web Easy Auth app registration.')
+param adminAuthClientSecret string = ''
+
+@description('Issuer URL for admin web Easy Auth, for example https://login.microsoftonline.com/<tenant-id>/v2.0.')
+param adminAuthIssuer string = ''
+
+@description('Allowed token audiences for admin web Easy Auth.')
+param adminAuthAllowedAudiences array = []
+
 var namePrefix = 'farsight-${environmentName}'
 var tags = {
   application: 'agent-azure-farsight'
@@ -140,6 +156,11 @@ module core 'modules/core.bicep' = {
     privateDnsZoneResourceIds: privateDnsZoneResourceIds
     linkExistingPrivateDnsZones: linkExistingPrivateDnsZones
     enableNatGateway: enableNatGateway
+    enableAdminEasyAuth: enableAdminEasyAuth
+    adminAuthClientId: adminAuthClientId
+    adminAuthClientSecret: adminAuthClientSecret
+    adminAuthIssuer: adminAuthIssuer
+    adminAuthAllowedAudiences: adminAuthAllowedAudiences
   }
 }
 
@@ -167,6 +188,7 @@ output agentToolGatewayName string = agentGateway.outputs.agentToolGatewayName
 output storageAccountName string = core.outputs.storageAccountName
 output cosmosAccountName string = core.outputs.cosmosAccountName
 output serviceBusNamespaceName string = core.outputs.serviceBusNamespaceName
+output AZURE_CONTAINER_REGISTRY_ENDPOINT string = core.outputs.acrLoginServer
 output collectorVnetId string = core.outputs.vnetId
 output collectorSubnetIds object = core.outputs.subnetIds
 output collectorPrivateDnsZoneIds object = core.outputs.privateDnsZoneIds

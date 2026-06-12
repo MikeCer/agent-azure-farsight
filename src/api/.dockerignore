@@ -1,0 +1,11 @@
+.git
+.azure
+.env
+.env.*
+__pycache__
+app/__pycache__
+**/__pycache__
+**/*.pyc
+.pytest_cache
+*.log
+*.tmp

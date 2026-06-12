@@ -1,6 +1,14 @@
 # FarSight Admin Web Skeleton
 
-React + TypeScript frontend assets live under `frontend/`. The lightweight FastAPI BFF in `bff/` serves the built SPA and exposes endpoints for Entra-authenticated user/config context and policy repository operations.
+React + TypeScript frontend assets live under `frontend/`. The lightweight FastAPI BFF in `bff/` serves the built SPA and exposes endpoints for Container Apps Easy Auth user context and policy repository operations.
+
+## Authentication
+
+Production uses Container Apps Easy Auth with Microsoft Entra ID. The app registration is created or updated with `scripts/provision-admin-app-registration.py`, then the resulting values are passed into Bicep through AZD environment variables.
+
+The BFF reads Easy Auth headers such as `x-ms-client-principal`, `x-ms-client-principal-id`, and `x-ms-client-principal-name`. Policy write calls forward the authenticated principal ID to the control API as `X-FarSight-Admin-Actor`.
+
+Set `FARSIGHT_ADMIN_GROUP_OBJECT_IDS` on the admin app to enforce group membership in the BFF. Local development can use `FARSIGHT_ADMIN_ALLOW_LOCAL_FALLBACK=true`; do not enable this in production.
 
 ## Policy repository editor
 
@@ -18,6 +26,4 @@ Policy write endpoints are fail-closed until `FARSIGHT_ENABLE_POLICY_ADMIN_WRITE
 
 Production gaps still to complete:
 
-- MSAL or Container Apps auth integration;
-- group/role authorization for FarSight Admin;
 - audit propagation for save/activate actions.

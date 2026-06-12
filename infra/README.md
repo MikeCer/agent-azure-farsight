@@ -60,6 +60,16 @@ AZD handles application container image build, push, and Container Apps updates 
 
 The Bicep templates keep safe placeholder images so first provisioning can succeed before any service images exist. The `worker` container is also a placeholder until a worker implementation is added to `azure.yaml`.
 
+The Bicep deployment outputs `AZURE_CONTAINER_REGISTRY_ENDPOINT` from the provisioned Azure Container Registry. AZD uses this output during publish/deploy to determine where service images must be pushed.
+
+Each service folder includes a `.dockerignore` file so remote builds do not upload local build artifacts such as `node_modules`, `dist`, Python caches, or local environment files.
+
+## Admin app registration and Easy Auth
+
+The admin web app can use Container Apps Easy Auth with Microsoft Entra ID. Create or update the Entra app registration with `scripts/provision-admin-app-registration.py`, then set the emitted `FARSIGHT_ADMIN_AUTH_*` values in the AZD environment before provisioning with `FARSIGHT_ENABLE_ADMIN_EASY_AUTH=true`.
+
+If the final Container App URL is not known yet, provision once with Easy Auth disabled, capture the admin URL or configure a custom domain, run the app-registration script with the Easy Auth callback URI, then provision again with Easy Auth enabled.
+
 ## Notes
 
 - Do not replace service images manually in Bicep for AZD-managed services. Keep the `azd-service-name` tags aligned with `azure.yaml`.

@@ -12,6 +12,7 @@ Primary risks are arbitrary code execution, data over-collection, privilege misu
 - Cloud services use managed identity.
 - Operators receive least-privilege RBAC.
 - Agent tools are scoped to approved modules and device targets.
+- Admin web authentication is enforced with Container Apps Easy Auth and Microsoft Entra ID. The BFF consumes Easy Auth principal headers and should require FarSight Admin group membership for write operations.
 
 ## mTLS
 
