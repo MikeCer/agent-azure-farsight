@@ -314,7 +314,7 @@ Remediation script responsibilities:
 
 Use Remediations for drift repair, not dynamic diagnostic command delivery.
 
-## 13. Validate the rollout
+## 13. Rollout checks
 
 For each ring, confirm:
 

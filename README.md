@@ -93,25 +93,6 @@ azd deploy
 
 After cloud deployment, package and assign the collector through Intune rings. The collector should receive its endpoint configuration, certificate material, module manifest, and scheduled task through governed Intune workflows.
 
-## Validation commands
-
-```bash
-bash scripts/validation/check-skeleton.sh
-bash scripts/validation/validate-python.sh
-bash scripts/validation/validate-markdown.sh
-bash scripts/validation/validate-mermaid.sh
-bash scripts/validation/validate-bicep.sh
-bash scripts/validation/validate-extension-samples.sh
-```
-
-Optional component checks:
-
-```bash
-cd src/admin-web/frontend && npm install && npm run build
-```
-
-These validation scripts are intentionally guarded for early implementation; some checks report planned coverage until the corresponding implementation stabilizes.
-
 ## Documentation
 
 - [Documentation index and learning path](docs/README.md)

@@ -150,11 +150,11 @@ If the preview reports unused variables, keep them in the worksheet and finish t
 matching Bicep parameter work before production. Do not compensate by leaving
 public network access enabled in a private deployment.
 
-## 5. Preview, validate, and deploy
+## 5. Preview and deploy
 
 ### Preview
 
-Run the AZD provision preview and review the result before approving deployment. Check for these items:
+Run the AZD provision preview and review the result before approving deployment. Review these items:
 
 - Resource groups and locations match Italy North and Sweden Central.
 - Container Apps environments use the planned subnets.
