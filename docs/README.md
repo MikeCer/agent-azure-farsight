@@ -8,7 +8,7 @@ This directory is the user-facing documentation set for FarSight. It explains th
 2. [Greenfield Azure deployment](azure-greenfield-deployment.md) - step-by-step private networking, DNS, AZD, SRE Agent, and Intune rollout guide.
 3. [Security](security/README.md) - threat model, identity, approvals, artifact protection, audit, and retention controls.
 4. [Collector](collector/README.md) - endpoint layout, scheduled task model, configuration, local state, and troubleshooting.
-5. [Intune](intune/README.md) - collector packaging, assignment rings, remediation checks, certificates, and pilot rollout.
+5. [Intune](intune/README.md) - collector packaging, [distribution](intune/collector-distribution.md), assignment rings, remediation checks, certificates, and pilot rollout.
 6. [API](api/README.md) - REST contracts, authentication, idempotency, errors, and versioning.
 7. [Agent tools](agent-tools/README.md) - Azure SRE Agent integration through governed AGT tools and approval behavior.
 8. [Modules](modules/README.md) - diagnostic module catalog, schema rules, result envelopes, and redaction expectations.

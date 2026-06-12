@@ -6,6 +6,8 @@ Intune is the deployment and compliance channel for the FarSight endpoint collec
 
 Use Intune to deploy the collector, configuration, certificate material, module manifest, and scheduled task. Scripts must be idempotent and avoid embedding secrets.
 
+Start with [Collector distribution](collector-distribution.md) for the packaging and rollout sequence.
+
 ## Assignment rings
 
 1. Lab devices.
