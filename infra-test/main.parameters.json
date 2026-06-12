@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "farsight-test"
+    },
+    "location": {
+      "value": "italynorth"
+    },
+    "vmCount": {
+      "value": 2
+    },
+    "vmSize": {
+      "value": "Standard_B2s"
+    },
+    "adminUsername": {
+      "value": "farsightadmin"
+    },
+    "adminPassword": {
+      "value": "REPLACE-WITH-SECURE-PASSWORD"
+    },
+    "vnetAddressPrefix": {
+      "value": "10.70.0.0/16"
+    },
+    "subnetAddressPrefix": {
+      "value": "10.70.1.0/24"
+    },
+    "enablePublicIp": {
+      "value": false
+    },
+    "allowedRdpSourceAddressPrefixes": {
+      "value": []
+    }
+  }
+}
