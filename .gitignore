@@ -33,3 +33,5 @@ out/
 Thumbs.db
 .vscode/
 .idea/
+# Bicep build artifacts
+infra/bicep/main.json
