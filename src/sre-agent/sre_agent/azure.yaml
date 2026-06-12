@@ -1,0 +1,43 @@
+# Azure Developer CLI template for Agent-Azure-FarSight SRE Agent
+#
+# Run: azd up
+#   Step 1 - Provisions infrastructure:
+#            resource group, Log Analytics, Application Insights,
+#            managed identity, and Azure SRE Agent resource.
+#   Step 2 - Post-deploy hook:
+#            deploy.py uploads knowledge files, deploys skills, and deploys the
+#            Agent-Azure-FarSight SRE custom agent.
+#
+# Required env vars (set via: azd env set <KEY> <VALUE>):
+#   AZURE_ENV_NAME      - environment name, drives RG + resource naming
+#   AZURE_LOCATION      - Azure region (default: westeurope)
+#   AZURE_PRINCIPAL_ID  - Entra object ID that receives SRE Agent Admin role
+#   SRE_AGENT_UPGRADE_CHANNEL         - Stable by default; use Preview only for early access
+#   SRE_AGENT_DEFAULT_MODEL_PROVIDER  - Anthropic by default
+#   SRE_AGENT_DEFAULT_MODEL_NAME      - Automatic by default
+#   SRE_AGENT_INITIAL_SPONSOR_GROUP_ID - Entra group object ID for 2026 agent identity initialization
+#   SRE_AGENT_ENABLE_AGENT_SPACE      - false by default; requires Agent Spaces enablement
+#   INTUNE_DIAGNOSTICS_AUTH_MODE      - key-vault by default; or managed-identity
+#
+# Runtime Intune credentials are not provisioned by this template. Configure
+# them in the target execution environment, Key Vault, or agent runtime secret
+# mechanism:
+#   AZURE_TENANT_ID
+#   AZURE_CLIENT_ID
+#   AZURE_CLIENT_SECRET
+
+name: agent-azure-farsight-sre-agent
+metadata:
+  template: agent-azure-farsight-sre-agent@0.1.0
+
+infra:
+  provider: bicep
+  path: infra
+
+hooks:
+  postdeploy:
+    shell: sh
+    run: python3 deploy.py
+    # For PowerShell on Windows, use:
+    # shell: pwsh
+    # run: python3 deploy.py

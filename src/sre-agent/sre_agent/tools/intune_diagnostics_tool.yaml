@@ -1,0 +1,86 @@
+name: intune_diagnostics_tool
+type: PythonFunctionTool
+description: >
+  Collect read-only Microsoft Graph and Intune diagnostics for one Windows
+  client device managed by Intune. Returns compact JSON evidence for SRE
+  analysis, including device health, Endpoint Analytics performance, app
+  reliability, policy/compliance, security, update, restart, and timeline
+  context.
+code_file: intune_diagnostics_tool.py
+parameters:
+  - name: device_name
+    type: string
+    required: true
+    description: Intune deviceName to diagnose.
+  - name: auth_mode
+    type: string
+    required: false
+    description: "Authentication mode for Microsoft Graph: auto, default, or client-secret."
+  - name: tenant_id
+    type: string
+    required: false
+    description: Optional tenant id metadata to include in the collector output.
+  - name: azure_tenant_id
+    type: string
+    required: false
+    description: Optional service-principal tenant id. Use with azure_client_id and azure_client_secret.
+  - name: azure_client_id
+    type: string
+    required: false
+    description: Optional service-principal client id. Use with azure_tenant_id and azure_client_secret.
+  - name: azure_client_secret
+    type: string
+    required: false
+    description: Optional service-principal client secret. Supply only through an approved secret mechanism.
+  - name: key_vault_url
+    type: string
+    required: false
+    description: Optional Key Vault URL containing service-principal credential secrets.
+  - name: tenant_id_secret_name
+    type: string
+    required: false
+    description: Optional Key Vault secret name containing the tenant id.
+  - name: client_id_secret_name
+    type: string
+    required: false
+    description: Optional Key Vault secret name containing the client id.
+  - name: client_secret_secret_name
+    type: string
+    required: false
+    description: Optional Key Vault secret name containing the client secret.
+  - name: managed_device_id
+    type: string
+    required: false
+    description: Optional Intune managed device id disambiguator when device names are duplicated.
+  - name: azure_ad_device_id
+    type: string
+    required: false
+    description: Optional Entra device id disambiguator when device names are duplicated.
+  - name: serial_number
+    type: string
+    required: false
+    description: Optional serial number disambiguator when device names are duplicated.
+  - name: include_pii
+    type: bool
+    required: false
+    description: Include user and device identifiers that may be PII. Use only with explicit approval.
+  - name: include_beta_endpoint_analytics
+    type: bool
+    required: false
+    description: Include beta Endpoint Analytics evidence. Defaults to true.
+  - name: max_resolution_pages
+    type: int
+    required: false
+    description: Maximum Graph pages to read while resolving the target device. Defaults to 20.
+  - name: max_optional_pages
+    type: int
+    required: false
+    description: Maximum Graph pages to read for optional evidence collections. Defaults to 5.
+dependencies: []
+auth_enabled: true
+auth_scopes:
+  - https://vault.azure.net/.default
+connector:
+attributes: []
+timeout_seconds: 120
+tool_mode: Auto

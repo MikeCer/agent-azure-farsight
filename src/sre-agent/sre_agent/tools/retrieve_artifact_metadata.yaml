@@ -1,0 +1,40 @@
+name: retrieve_artifact_metadata
+type: PythonFunctionTool
+description: Retrieve FarSight artifact metadata for a job without downloading artifact
+  contents.
+code_file: retrieve_artifact_metadata.py
+parameters:
+- name: job_id
+  type: string
+  required: true
+  description: FarSight job id.
+- name: artifact_id
+  type: string
+  required: false
+  description: Optional artifact id filter.
+- name: api_base_url
+  type: string
+  required: false
+  description: Optional FarSight API base URL. Defaults to FARSIGHT_API_BASE_URL.
+- name: auth_mode
+  type: string
+  required: false
+  description: 'Authentication mode for FarSight API: default, managed-identity, access-token,
+    or auto. Defaults to FARSIGHT_AUTH_MODE or default.'
+- name: api_scope
+  type: string
+  required: false
+  description: Optional token scope for FarSight API. Defaults to FARSIGHT_API_SCOPE
+    or <api_base_url>/.default.
+- name: timeout_seconds
+  type: int
+  required: false
+  description: HTTP timeout in seconds, capped at 120. Defaults to 30.
+dependencies:
+- azure-identity
+auth_enabled: true
+auth_scopes: []
+connector: null
+attributes: []
+timeout_seconds: 60
+tool_mode: Auto

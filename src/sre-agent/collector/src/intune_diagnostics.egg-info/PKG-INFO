@@ -1,0 +1,141 @@
+Metadata-Version: 2.4
+Name: intune-diagnostics
+Version: 0.1.0
+Summary: Read-only Intune diagnostics collector for Azure SRE Agent tools
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: azure-identity>=1.16.0
+Requires-Dist: requests>=2.31.0
+
+# Intune Diagnostics Collector
+
+This project provides the first toolable building block for an Azure SRE Agent that diagnoses one corporate Windows client managed by Intune. It collects read-only evidence from Microsoft Graph and Intune only; it does not access the endpoint directly and does not execute remediation actions.
+
+## Usage
+
+```bash
+intune-diagnostics --device-name WIN-CLIENT-001 --auth-mode auto
+python -m intune_diagnostics --device-name WIN-CLIENT-001 --output diagnostic.json
+```
+
+`--device-name` is required because the Azure SRE Agent will call the script as a tool with the Intune device name. If multiple Intune records share the same name, the script returns structured JSON with an `ambiguous` finding. Optional disambiguators are available:
+
+```bash
+intune-diagnostics --device-name WIN-CLIENT-001 --managed-device-id <intune-managed-device-id>
+intune-diagnostics --device-name WIN-CLIENT-001 --azure-ad-device-id <entra-device-id>
+intune-diagnostics --device-name WIN-CLIENT-001 --serial-number <serial>
+```
+
+The JSON output is intentionally optimized for the SRE agent context window. It contains one troubleshooting-focused schema with prioritized issues and only diagnostic evidence useful for client health, startup/performance, app reliability, policy/security, update, and management-channel analysis.
+
+## Build a Single Script
+
+To generate one Python entry script that embeds all local `intune_diagnostics` modules and exposes an Azure SRE Agent-compatible `main(...) -> dict` function:
+
+```bash
+python scripts/build_single_script.py
+```
+
+The generated file is `dist/intune_diagnostics_tool.py` and is copied to `../sre_agent/tools/intune_diagnostics_tool.py`. Azure SRE Agent deploys it as a `PythonFunctionTool` and calls its typed `main(...)` function. For local CLI testing, use `python -m intune_diagnostics` from the source package instead.
+
+Important: this bundles only this project code. External packages are still required in the runtime environment:
+
+```bash
+pip install azure-identity requests
+```
+
+## Authentication
+
+The collector uses Microsoft Graph with the `https://graph.microsoft.com/.default` scope.
+
+Supported modes:
+
+- `--auth-mode default`: `DefaultAzureCredential`, intended for managed identity in ADC and local developer credentials.
+- `--auth-mode client-secret`: service principal using `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET`.
+- `--auth-mode auto`: uses complete service-principal environment variables when present; otherwise falls back to `DefaultAzureCredential`. Partial service-principal configuration fails clearly.
+
+For service-principal authentication, set these environment variables before running the script:
+
+| Variable | Description |
+| --- | --- |
+| `AZURE_TENANT_ID` | Microsoft Entra tenant id that contains the Intune tenant |
+| `AZURE_CLIENT_ID` | App registration / service principal client id |
+| `AZURE_CLIENT_SECRET` | Client secret for the app registration |
+
+Example:
+
+```bash
+export AZURE_TENANT_ID="<tenant-id>"
+export AZURE_CLIENT_ID="<app-registration-client-id>"
+export AZURE_CLIENT_SECRET="<client-secret>"
+
+python dist/intune_diagnostics_tool.py \
+  --device-name WIN-CLIENT-001 \
+  --auth-mode client-secret
+```
+
+With `--auth-mode auto`, the same variables are used when all three are present. If only one or two are set, the script fails instead of silently falling back to another identity.
+
+Typical application permissions:
+
+- `DeviceManagementManagedDevices.Read.All`
+- `DeviceManagementConfiguration.Read.All`
+- `DeviceManagementApps.Read.All`
+- `DeviceManagementServiceConfig.Read.All`
+- `User.Read.All` or equivalent read permission when collecting user-scoped Intune troubleshooting events
+- `Directory.Read.All` or equivalent device directory read permission when collecting Entra device identity state
+
+Admin consent is required for unattended service-principal or managed-identity execution.
+
+## Data Sources
+
+The collector uses `v1.0` Intune endpoints for device inventory, compliance/configuration state, user-scoped troubleshooting events, app install status reports, Windows protection state, Windows update status, Entra device identity, and Autopilot identity where available. It also uses Microsoft Graph `beta` Endpoint Analytics endpoints that support per-device lookups for startup performance, resource performance, and app reliability.
+
+Beta-derived signals are marked in the collection report and documented in [`docs/intune-data-catalog.md`](docs/intune-data-catalog.md).
+
+## Output
+
+The script emits deterministic JSON with:
+
+- target device identity
+- `assessment`: generated time, highest severity, issue count, performance status, top concerns
+- `issues`: prioritized findings with compact evidence and remediation steps
+- `diagnostic_evidence`: only useful context for troubleshooting/performance analysis
+
+High-value SRE signals now include:
+
+- Endpoint Analytics startup score, boot/login timing, restarts, and blue screen counts
+- Endpoint Analytics resource score, CPU/RAM spike metrics, and hardware sizing
+- Endpoint Analytics app reliability score, crash/hang counts, and mean time to failure
+- enriched device health details from Intune beta, including encryption state, storage capacity/free space, memory, malware counts, and management certificate expiration
+- installed application inventory with app name, publisher, and version
+- crashing application list from Endpoint Analytics app health when crash/hang data is available
+- recent Intune-initiated restart/shutdown actions
+- device timeline events from Intune device actions, troubleshooting events, and matching audit events where available
+- setting-level compliance/configuration failures
+- app install, Windows update, security, management, identity, and troubleshooting issues only when problematic
+
+PII-like values such as UPN and serial number are redacted by default. Use `--include-pii` only when the execution context and data-handling policy allow it.
+
+## Limitations
+
+- No direct machine access, remote shell, WMI, WinRM, local event logs, or Defender live response.
+- Device-name resolution is not guaranteed unique in Intune.
+- Some Graph filters are tenant/API dependent; the resolver falls back to capped client-side matching.
+- Endpoint Analytics APIs are beta and may change shape.
+- Missing optional data is reported as warnings instead of being silently ignored.
+- Intune `detectedApp` inventory does not expose the per-device application installation date. The collector cannot include app install dates unless Microsoft Graph adds that field or another tenant-specific report exposes it.
+- Intune does not expose raw local Windows Event Log restart/shutdown events through Graph. `recent_restart_shutdown_events` only includes Intune device actions such as `rebootNow`/`shutDown`; true OS event IDs require local collection or a remediation/script that reports them back to Intune.
+
+## Local Windows diagnostics scripts
+
+For deeper root-cause analysis that Intune Graph cannot provide, use the read-only scripts in [`../local-scripts/`](../local-scripts/):
+
+- `Collect-WindowsClientLocalDiagnostics.ps1`: collects local restart/shutdown event IDs, boot performance events, startup commands, auto-start services, disk state, pending reboot flags, Defender state, Intune Management Extension status, and top process snapshots.
+- `Remediate-WindowsClientLocalDiagnostics.ps1`: no-op remediation companion for Intune remediation packages.
+
+The collector writes:
+
+```text
+C:\ProgramData\AzureSREAgent\local-diagnostics.json
+```

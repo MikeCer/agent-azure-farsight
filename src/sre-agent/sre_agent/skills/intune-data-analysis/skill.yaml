@@ -1,0 +1,32 @@
+name: intune-data-analysis
+description: >
+  Use when analyzing JSON output from the Windows Client Intune SRE diagnostics
+  collector packaged as the intune_diagnostics_tool Python tool. Covers client
+  performance, bottlenecks, health, security/compliance posture, app
+  reliability, restart events, timeline context, and prioritized remediation or
+  next diagnostic actions using Intune/Graph evidence only.
+files:
+  - SKILL.md
+parameters:
+  required: []
+  optional:
+    - collector_json
+    - user_symptom
+    - device_name
+    - azure_tenant_id
+    - azure_client_id
+    - azure_client_secret
+    - key_vault_url
+    - tenant_id_secret_name
+    - client_id_secret_name
+    - client_secret_secret_name
+    - managed_device_id
+    - azure_ad_device_id
+    - serial_number
+    - auth_mode
+    - time_window
+defaults:
+  auth_mode: auto
+  time_window: latest_available_collector_data
+tools:
+  - intune_diagnostics_tool

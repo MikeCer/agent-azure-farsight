@@ -1,0 +1,61 @@
+name: request_approval_for_action
+type: PythonFunctionTool
+description: Create a FarSight approval request for an allowlisted diagnostic action
+  through POST /api/v1/approvals.
+code_file: request_approval_for_action.py
+parameters:
+- name: correlation_id
+  type: string
+  required: true
+  description: Correlation id for incident, job, and audit tracing.
+- name: requested_action
+  type: string
+  required: true
+  description: Allowlisted action or diagnostic module requiring approval.
+- name: reason
+  type: string
+  required: true
+  description: Human-readable approval reason.
+- name: expires_at_utc
+  type: string
+  required: true
+  description: ISO 8601 UTC expiration timestamp for the approval request.
+- name: approval_id
+  type: string
+  required: false
+  description: Optional caller-provided approval id. Defaults to generated approval
+    id.
+- name: risk_level
+  type: string
+  required: false
+  description: read-only or sensitive-diagnostic. Defaults to sensitive-diagnostic.
+- name: requested_by
+  type: string
+  required: false
+  description: Requesting actor metadata. Defaults to azure-sre-agent.
+- name: api_base_url
+  type: string
+  required: false
+  description: Optional FarSight API base URL. Defaults to FARSIGHT_API_BASE_URL.
+- name: auth_mode
+  type: string
+  required: false
+  description: 'Authentication mode for FarSight API: default, managed-identity, access-token,
+    or auto. Defaults to FARSIGHT_AUTH_MODE or default.'
+- name: api_scope
+  type: string
+  required: false
+  description: Optional token scope for FarSight API. Defaults to FARSIGHT_API_SCOPE
+    or <api_base_url>/.default.
+- name: timeout_seconds
+  type: int
+  required: false
+  description: HTTP timeout in seconds, capped at 120. Defaults to 30.
+dependencies:
+- azure-identity
+auth_enabled: true
+auth_scopes: []
+connector: null
+attributes: []
+timeout_seconds: 60
+tool_mode: Auto

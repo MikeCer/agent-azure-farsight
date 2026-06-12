@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intune-diagnostics"
+version = "0.1.0"
+description = "Read-only Intune diagnostics collector for Azure SRE Agent tools"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "azure-identity>=1.16.0",
+  "requests>=2.31.0",
+]
+
+[project.scripts]
+intune-diagnostics = "intune_diagnostics.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

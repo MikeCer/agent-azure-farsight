@@ -1,0 +1,193 @@
+name: create_diagnostic_job
+type: PythonFunctionTool
+description: Create a typed, allowlisted FarSight diagnostic job through the control-plane
+  API. The wrapper validates approved module names and explicit module parameters
+  before calling POST /api/v1/jobs.
+code_file: create_diagnostic_job.py
+parameters:
+- name: device_id
+  type: string
+  required: true
+  description: Target device identifier scoped by FarSight policy.
+- name: task_type
+  type: string
+  required: true
+  description: 'Approved module/task type: Get-AppLogBundle, Get-AppEventSlice, Get-AppHealthSnapshot,
+    Test-AppConnectivity, Get-ConfigEvidence, or Get-AppDiskEvidence.'
+- name: correlation_id
+  type: string
+  required: true
+  description: Correlation id for incident, job, and audit tracing.
+- name: expires_at_utc
+  type: string
+  required: true
+  description: ISO 8601 UTC expiration timestamp for the job.
+- name: incident_id
+  type: string
+  required: false
+  description: Optional incident or ticket id.
+- name: risk_level
+  type: string
+  required: false
+  description: read-only or sensitive-diagnostic. Sensitive diagnostics require approval_id.
+- name: approval_id
+  type: string
+  required: false
+  description: Existing FarSight approval id required for sensitive diagnostics.
+- name: justification
+  type: string
+  required: false
+  description: Operator-visible justification for the diagnostic request. Required
+    when approval_id is absent.
+- name: requested_by_kind
+  type: string
+  required: false
+  description: RequestedBy kind metadata. Defaults to agent_tool.
+- name: requested_by_identity_object_id
+  type: string
+  required: false
+  description: Optional Entra object id of the requesting actor or managed identity.
+- name: requested_by_tool_name
+  type: string
+  required: false
+  description: Optional overriding tool name metadata.
+- name: app_id
+  type: string
+  required: false
+  description: App id for app-scoped modules.
+- name: path_profile
+  type: string
+  required: false
+  description: Approved path profile for Get-AppLogBundle.
+- name: start_time_utc
+  type: string
+  required: false
+  description: ISO 8601 UTC start time for time-bounded modules.
+- name: end_time_utc
+  type: string
+  required: false
+  description: ISO 8601 UTC end time for time-bounded modules.
+- name: tail_lines
+  type: int
+  required: false
+  description: Maximum tail lines for Get-AppLogBundle. Range 1-10000.
+- name: max_bytes
+  type: int
+  required: false
+  description: Maximum bytes for Get-AppLogBundle. Range 1024-52428800.
+- name: include_patterns_csv
+  type: string
+  required: false
+  description: Comma-separated approved include patterns for Get-AppLogBundle.
+- name: exclude_patterns_csv
+  type: string
+  required: false
+  description: Comma-separated approved exclude patterns for Get-AppLogBundle.
+- name: log_name
+  type: string
+  required: false
+  description: Windows event log name for Get-AppEventSlice.
+- name: provider_names_csv
+  type: string
+  required: false
+  description: Comma-separated provider names for Get-AppEventSlice.
+- name: event_ids_csv
+  type: string
+  required: false
+  description: Comma-separated integer event ids for Get-AppEventSlice.
+- name: levels_csv
+  type: string
+  required: false
+  description: Comma-separated event levels for Get-AppEventSlice.
+- name: max_events
+  type: int
+  required: false
+  description: Maximum events for Get-AppEventSlice. Range 1-5000.
+- name: service_names_csv
+  type: string
+  required: false
+  description: Comma-separated service names for Get-AppHealthSnapshot.
+- name: process_names_csv
+  type: string
+  required: false
+  description: Comma-separated process names for Get-AppHealthSnapshot.
+- name: config_profiles_csv
+  type: string
+  required: false
+  description: Comma-separated config profiles for Get-AppHealthSnapshot.
+- name: targets_csv
+  type: string
+  required: false
+  description: Comma-separated approved network targets for Test-AppConnectivity.
+- name: ports_csv
+  type: string
+  required: false
+  description: Comma-separated TCP ports for Test-AppConnectivity.
+- name: urls_csv
+  type: string
+  required: false
+  description: Comma-separated approved HTTP(S) URLs for Test-AppConnectivity.
+- name: dns_names_csv
+  type: string
+  required: false
+  description: Comma-separated DNS names for Test-AppConnectivity.
+- name: expected_tls_thumbprints_csv
+  type: string
+  required: false
+  description: Comma-separated expected TLS certificate thumbprints for Test-AppConnectivity.
+- name: registry_profiles_csv
+  type: string
+  required: false
+  description: Comma-separated registry profiles for Get-ConfigEvidence.
+- name: file_profiles_csv
+  type: string
+  required: false
+  description: Comma-separated file profiles for Get-ConfigEvidence.
+- name: redaction_profile
+  type: string
+  required: false
+  description: Approved redaction profile for Get-ConfigEvidence. Defaults to default.
+- name: disk_profile
+  type: string
+  required: false
+  description: Approved disk evidence profile for Get-AppDiskEvidence; contoso-app
+    or winget-cache.
+- name: include_file_samples
+  type: bool
+  required: false
+  description: Include bounded file samples for Get-AppDiskEvidence.
+- name: max_file_samples
+  type: int
+  required: false
+  description: Maximum file samples for Get-AppDiskEvidence. Range 0-20.
+- name: idempotency_key
+  type: string
+  required: false
+  description: Optional caller-supplied idempotency key. Defaults to deterministic
+    job request key.
+- name: api_base_url
+  type: string
+  required: false
+  description: Optional FarSight API base URL. Defaults to FARSIGHT_API_BASE_URL.
+- name: auth_mode
+  type: string
+  required: false
+  description: 'Authentication mode for FarSight API: default, managed-identity, access-token,
+    or auto. Defaults to FARSIGHT_AUTH_MODE or default.'
+- name: api_scope
+  type: string
+  required: false
+  description: Optional token scope for FarSight API. Defaults to FARSIGHT_API_SCOPE
+    or <api_base_url>/.default.
+- name: timeout_seconds
+  type: int
+  required: false
+  description: HTTP timeout in seconds, capped at 120. Defaults to 30.
+dependencies:
+- azure-identity
+auth_enabled: true
+auth_scopes: []
+connector: null
+attributes: []
+timeout_seconds: 60
+tool_mode: Auto
