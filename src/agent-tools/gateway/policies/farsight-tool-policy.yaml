@@ -1,0 +1,39 @@
+apiVersion: governance.toolkit/v1
+name: farsight-tool-policy
+version: "2026-06-12.1"
+default_action: deny
+rules:
+  - name: deny-arbitrary-execution-input
+    condition: "contains_dangerous_input == true"
+    action: deny
+    description: "FarSight tools must never accept arbitrary PowerShell, shell commands, script text, encoded commands, or free-form paths."
+
+  - name: deny-unsupported-diagnostic-module
+    condition: "tool_name in ['create_diagnostic_job', 'request_follow_up_module_execution'] and task_type not in ['Get-AppLogBundle', 'Get-AppEventSlice', 'Get-AppHealthSnapshot', 'Test-AppConnectivity', 'Get-ConfigEvidence', 'Get-AppDiskEvidence']"
+    action: deny
+    description: "Diagnostic job creation is limited to approved named FarSight modules."
+
+  - name: allow-read-only-lookups
+    condition: "tool_name in ['get_job_status', 'get_job_result_summary', 'retrieve_artifact_metadata', 'query_device_investigation_history']"
+    action: allow
+    description: "Read-only FarSight lookup tools are allowed."
+
+  - name: allow-approval-request
+    condition: "tool_name == 'request_approval_for_action' and requested_action != ''"
+    action: allow
+    description: "Approval request creation is allowed for well-formed requests."
+
+  - name: require-approval-for-sensitive-diagnostics
+    condition: "risk_level == 'sensitive-diagnostic'"
+    action: require_approval
+    description: "Sensitive diagnostics require approval before a FarSight job is released."
+
+  - name: allow-read-only-diagnostic-job
+    condition: "tool_name == 'create_diagnostic_job' and risk_level == 'read-only'"
+    action: allow
+    description: "Read-only diagnostic jobs with approved modules are allowed."
+
+  - name: allow-read-only-follow-up
+    condition: "tool_name == 'request_follow_up_module_execution' and risk_level == 'read-only'"
+    action: allow
+    description: "Read-only follow-up diagnostics with approved modules are allowed."

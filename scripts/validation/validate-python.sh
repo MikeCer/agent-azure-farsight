@@ -19,3 +19,13 @@ if command -v pytest >/dev/null 2>&1; then
 else
   echo "pytest is unavailable; compile check completed and unit tests are deferred until dependencies are defined."
 fi
+
+if python3 - <<'PY' >/dev/null 2>&1
+import pydantic
+import yaml
+PY
+then
+  PYTHONPATH=src/agent-tools/gateway python3 -m unittest discover -s src/agent-tools/gateway/tests -v
+else
+  echo "pydantic/PyYAML are unavailable; skipping gateway policy unittest suite."
+fi

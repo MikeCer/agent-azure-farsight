@@ -24,6 +24,10 @@ class PolicyDecision(CamelModel):
     outcome: PolicyOutcome
     reason: str
     policy_version: str = Field(alias="policyVersion")
+    policy_name: str | None = Field(default=None, alias="policyName")
+    rule_name: str | None = Field(default=None, alias="ruleName")
+    audit_id: str | None = Field(default=None, alias="auditId")
+    evidence: dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolResponse(CamelModel):

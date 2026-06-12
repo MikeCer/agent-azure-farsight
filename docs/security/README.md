@@ -21,6 +21,8 @@ Collector certificates bind device identity to check-in and result submission. E
 
 Policy can require approval based on module risk, scope, artifact size, target sensitivity, and execution window.
 
+The FarSight tool gateway uses Microsoft Agent Governance Toolkit to evaluate tool-call policy before a FarSight API request is made. This complements Azure RBAC: RBAC limits what the gateway identity can reach, while AGT decides whether a specific tool action is allowed, denied, or approval-gated.
+
 ## Artifact protection
 
 Artifacts must be size-limited, redacted, encrypted at rest, access-controlled, and retained only as long as policy allows.
