@@ -48,9 +48,23 @@ azd provision --preview
 azd up
 ```
 
+## Container image handoff
+
+AZD handles application container image build, push, and Container Apps updates for the declared services:
+
+- `api`
+- `admin-web`
+- `agent-tools`
+
+`azure.yaml` marks these services as `host: containerapp` and enables remote Docker builds. During `azd deploy`, AZD builds each image, pushes it to the provisioned Azure Container Registry, and updates the Container App that carries the matching `azd-service-name` tag.
+
+The Bicep templates keep safe placeholder images so first provisioning can succeed before any service images exist. The `worker` container is also a placeholder until a worker implementation is added to `azure.yaml`.
+
 ## Notes
 
-- Container image references currently use safe placeholder images. Replace them with built application images when the service deployment pipeline is finalized.
+- Do not replace service images manually in Bicep for AZD-managed services. Keep the `azd-service-name` tags aligned with `azure.yaml`.
 - Private endpoint and APIM support are parameterized but intentionally skeletal for early implementation.
-- NAT Gateway is optional and disabled by default to avoid extra cost. Enable it when private Container Apps subnets need controlled outbound internet egress.
+- NAT Gateway is optional and disabled by default to avoid extra cost. The shared networking module does not associate NAT Gateway to Container Apps infrastructure subnets; use it only for supported non-Container-Apps subnets such as optional APIM. Use `infra-test/` NAT Gateway for Windows client lab outbound internet.
+- When both regional modules deploy in the same resource group, the agent gateway reuses the core module's private DNS zones by default to avoid duplicate private DNS zone resources.
+- Container App resource names use compact environment and region tokens to stay within the Azure Container Apps 32-character name limit.
 - Azure SRE Agent service deployment is documented as an integration step until the service-specific Bicep/ARM contract is confirmed.

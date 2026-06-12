@@ -93,6 +93,8 @@ azd deploy
 
 After cloud deployment, package and assign the collector through Intune rings. The collector should receive its endpoint configuration, certificate material, module manifest, and scheduled task through governed Intune workflows.
 
+`azd deploy` builds and pushes container images for the `api`, `admin-web`, and `agent-tools` services, then updates the Container Apps tagged with the matching `azd-service-name`. Bicep uses placeholder images only for initial provisioning.
+
 ## Documentation
 
 - [Documentation index and learning path](docs/README.md)

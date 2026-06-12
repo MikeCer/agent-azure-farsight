@@ -31,7 +31,7 @@ param apiManagementSubnetName string = 'snet-apim'
 @description('Address prefix for the optional API Management subnet.')
 param apiManagementSubnetAddressPrefix string = '10.40.3.0/24'
 
-@description('Create a NAT Gateway and associate it to outbound-capable service subnets.')
+@description('Create a NAT Gateway for outbound-capable non-Container-Apps subnets. Container Apps infrastructure subnets do not receive NAT Gateway association.')
 param enableNatGateway bool = false
 
 @description('Map of target private DNS zone keys to existing full resource IDs. Empty or omitted values create zones in this resource group.')
@@ -176,7 +176,9 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
   }
 }
 
-resource natPublicIp 'Microsoft.Network/publicIPAddresses@2024-07-01' = if (enableNatGateway) {
+var effectiveNatGatewayEnabled = enableNatGateway && enableApiManagementSubnet
+
+resource natPublicIp 'Microsoft.Network/publicIPAddresses@2024-07-01' = if (effectiveNatGatewayEnabled) {
   name: 'pip-nat-${effectiveVirtualNetworkName}'
   location: location
   tags: tags
@@ -188,7 +190,7 @@ resource natPublicIp 'Microsoft.Network/publicIPAddresses@2024-07-01' = if (enab
   }
 }
 
-resource natGateway 'Microsoft.Network/natGateways@2024-07-01' = if (enableNatGateway) {
+resource natGateway 'Microsoft.Network/natGateways@2024-07-01' = if (effectiveNatGatewayEnabled) {
   name: 'nat-${effectiveVirtualNetworkName}'
   location: location
   tags: tags
@@ -208,7 +210,7 @@ resource natGateway 'Microsoft.Network/natGateways@2024-07-01' = if (enableNatGa
 resource containerAppsInfrastructureSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-07-01' = {
   parent: vnet
   name: containerAppsInfrastructureSubnetName
-  properties: union({
+  properties: {
     addressPrefix: containerAppsInfrastructureSubnetAddressPrefix
     delegations: [
       {
@@ -218,11 +220,7 @@ resource containerAppsInfrastructureSubnet 'Microsoft.Network/virtualNetworks/su
         }
       }
     ]
-  }, enableNatGateway ? {
-    natGateway: {
-      id: natGateway.id
-    }
-  } : {})
+  }
 }
 
 resource privateEndpointsSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-07-01' = {
@@ -239,7 +237,7 @@ resource apiManagementSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-07-
   name: apiManagementSubnetName
   properties: union({
     addressPrefix: apiManagementSubnetAddressPrefix
-  }, enableNatGateway ? {
+  }, effectiveNatGatewayEnabled ? {
     natGateway: {
       id: natGateway.id
     }
@@ -283,7 +281,7 @@ output subnetIds object = {
 output containerAppsInfrastructureSubnetId string = containerAppsInfrastructureSubnet.id
 output privateEndpointsSubnetId string = privateEndpointsSubnet.id
 output apiManagementSubnetId string = enableApiManagementSubnet ? resourceId('Microsoft.Network/virtualNetworks/subnets', effectiveVirtualNetworkName, apiManagementSubnetName) : ''
-output natGatewayId string = enableNatGateway ? natGateway.id : ''
+output natGatewayId string = effectiveNatGatewayEnabled ? natGateway.id : ''
 output privateDnsZoneIds object = {
   storageBlob: !empty(storageBlobPrivateDnsZoneId) ? storageBlobPrivateDnsZoneId : resourceId('Microsoft.Network/privateDnsZones', storageBlobPrivateDnsZoneName)
   keyVault: !empty(keyVaultPrivateDnsZoneId) ? keyVaultPrivateDnsZoneId : resourceId('Microsoft.Network/privateDnsZones', keyVaultPrivateDnsZoneName)

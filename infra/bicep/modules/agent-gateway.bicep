@@ -24,11 +24,13 @@ param linkExistingPrivateDnsZones bool = true
 param enableNatGateway bool = false
 
 var normalizedPrefix = replace(toLower(namePrefix), '-', '')
+var shortNamePrefix = replace(namePrefix, 'farsight-', 'fs-')
+var regionCode = location == 'italynorth' ? 'itn' : (location == 'swedencentral' ? 'swc' : take(replace(toLower(location), '-', ''), 6))
 var unique = take(uniqueString(resourceGroup().id, namePrefix, location, 'agent-gateway'), 8)
 var workspaceName = 'law-${namePrefix}-agent-${location}'
 var appInsightsName = 'appi-${namePrefix}-agent-${location}'
 var environmentName = 'cae-${namePrefix}-agent-${location}'
-var toolGatewayName = 'ca-${namePrefix}-tools-${location}'
+var toolGatewayName = 'ca-${shortNamePrefix}-tools-${regionCode}'
 var identityName = 'id-${namePrefix}-tools-${location}'
 var privateEndpointNamePrefix = 'pe-${take(normalizedPrefix, 24)}-${take(unique, 6)}-agent'
 var monitorPrivateLinkScopeName = 'ampls-${namePrefix}-agent-${take(unique, 4)}'
@@ -107,7 +109,9 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
 resource toolGateway 'Microsoft.App/containerApps@2024-03-01' = {
   name: toolGatewayName
   location: location
-  tags: tags
+  tags: union(tags, {
+    'azd-service-name': 'agent-tools'
+  })
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {

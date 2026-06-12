@@ -104,6 +104,20 @@ var tags = {
   environment: environmentName
   managedBy: 'azd-bicep'
 }
+var effectiveAgentGatewayPrivateDnsZoneResourceIds = enablePrivateEndpoints ? {
+  storageBlob: !empty(agentGatewayPrivateDnsZoneResourceIds.storageBlob) ? agentGatewayPrivateDnsZoneResourceIds.storageBlob : core.outputs.privateDnsZoneIds.storageBlob
+  keyVault: !empty(agentGatewayPrivateDnsZoneResourceIds.keyVault) ? agentGatewayPrivateDnsZoneResourceIds.keyVault : core.outputs.privateDnsZoneIds.keyVault
+  containerRegistry: !empty(agentGatewayPrivateDnsZoneResourceIds.containerRegistry) ? agentGatewayPrivateDnsZoneResourceIds.containerRegistry : core.outputs.privateDnsZoneIds.containerRegistry
+  cosmosSql: !empty(agentGatewayPrivateDnsZoneResourceIds.cosmosSql) ? agentGatewayPrivateDnsZoneResourceIds.cosmosSql : core.outputs.privateDnsZoneIds.cosmosSql
+  serviceBus: !empty(agentGatewayPrivateDnsZoneResourceIds.serviceBus) ? agentGatewayPrivateDnsZoneResourceIds.serviceBus : core.outputs.privateDnsZoneIds.serviceBus
+  appConfiguration: !empty(agentGatewayPrivateDnsZoneResourceIds.appConfiguration) ? agentGatewayPrivateDnsZoneResourceIds.appConfiguration : core.outputs.privateDnsZoneIds.appConfiguration
+  apiManagement: !empty(agentGatewayPrivateDnsZoneResourceIds.apiManagement) ? agentGatewayPrivateDnsZoneResourceIds.apiManagement : core.outputs.privateDnsZoneIds.apiManagement
+  azureMonitor: !empty(agentGatewayPrivateDnsZoneResourceIds.azureMonitor) ? agentGatewayPrivateDnsZoneResourceIds.azureMonitor : core.outputs.privateDnsZoneIds.azureMonitor
+  logAnalyticsOms: !empty(agentGatewayPrivateDnsZoneResourceIds.logAnalyticsOms) ? agentGatewayPrivateDnsZoneResourceIds.logAnalyticsOms : core.outputs.privateDnsZoneIds.logAnalyticsOms
+  logAnalyticsOds: !empty(agentGatewayPrivateDnsZoneResourceIds.logAnalyticsOds) ? agentGatewayPrivateDnsZoneResourceIds.logAnalyticsOds : core.outputs.privateDnsZoneIds.logAnalyticsOds
+  azureMonitorAgentSvc: !empty(agentGatewayPrivateDnsZoneResourceIds.azureMonitorAgentSvc) ? agentGatewayPrivateDnsZoneResourceIds.azureMonitorAgentSvc : core.outputs.privateDnsZoneIds.azureMonitorAgentSvc
+  containerAppsEnvironment: !empty(agentGatewayPrivateDnsZoneResourceIds.containerAppsEnvironment) ? agentGatewayPrivateDnsZoneResourceIds.containerAppsEnvironment : core.outputs.privateDnsZoneIds.containerAppsEnvironment
+} : agentGatewayPrivateDnsZoneResourceIds
 
 module core 'modules/core.bicep' = {
   name: 'core-${environmentName}'
@@ -141,7 +155,7 @@ module agentGateway 'modules/agent-gateway.bicep' = {
     vnetAddressPrefix: agentGatewayVnetAddressPrefix
     containerAppsInfrastructureSubnetPrefix: agentGatewayContainerAppsInfrastructureSubnetPrefix
     privateEndpointSubnetPrefix: agentGatewayPrivateEndpointSubnetPrefix
-    privateDnsZoneResourceIds: agentGatewayPrivateDnsZoneResourceIds
+    privateDnsZoneResourceIds: effectiveAgentGatewayPrivateDnsZoneResourceIds
     linkExistingPrivateDnsZones: agentGatewayLinkExistingPrivateDnsZones
     enableNatGateway: agentGatewayEnableNatGateway
   }

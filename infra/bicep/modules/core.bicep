@@ -32,6 +32,8 @@ param linkExistingPrivateDnsZones bool = true
 param enableNatGateway bool = false
 
 var normalizedPrefix = replace(toLower(namePrefix), '-', '')
+var shortNamePrefix = replace(namePrefix, 'farsight-', 'fs-')
+var regionCode = location == 'italynorth' ? 'itn' : (location == 'swedencentral' ? 'swc' : take(replace(toLower(location), '-', ''), 6))
 var unique = take(uniqueString(resourceGroup().id, namePrefix), 8)
 var storageAccountName = 'st${take(normalizedPrefix, 10)}${unique}'
 var acrName = 'acr${take(normalizedPrefix, 16)}${unique}'
@@ -40,9 +42,9 @@ var appConfigName = 'appcs-${namePrefix}-${take(unique, 4)}'
 var workspaceName = 'law-${namePrefix}-${location}'
 var appInsightsName = 'appi-${namePrefix}-${location}'
 var containerAppsEnvironmentName = 'cae-${namePrefix}-${location}'
-var apiAppName = 'ca-${namePrefix}-api-${location}'
-var adminAppName = 'ca-${namePrefix}-admin-${location}'
-var workerAppName = 'ca-${namePrefix}-worker-${location}'
+var apiAppName = 'ca-${shortNamePrefix}-api-${regionCode}'
+var adminAppName = 'ca-${shortNamePrefix}-admin-${regionCode}'
+var workerAppName = 'ca-${shortNamePrefix}-worker-${regionCode}'
 var serviceBusNamespaceName = 'sb-${namePrefix}-${take(unique, 4)}'
 var cosmosAccountName = 'cosmos-${namePrefix}-${take(unique, 4)}'
 var managedIdentityName = 'id-${namePrefix}-apps-${location}'
@@ -141,7 +143,9 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
 resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: apiAppName
   location: location
-  tags: tags
+  tags: union(tags, {
+    'azd-service-name': 'api'
+  })
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
@@ -211,7 +215,9 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
 resource adminApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: adminAppName
   location: location
-  tags: tags
+  tags: union(tags, {
+    'azd-service-name': 'admin-web'
+  })
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {

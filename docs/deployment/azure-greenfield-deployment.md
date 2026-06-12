@@ -90,6 +90,7 @@ Design notes:
 
 - Keep Container Apps subnets separate from private endpoint subnets.
 - Do not deploy private endpoints into delegated Container Apps subnets.
+- Do not associate NAT Gateway directly to Container Apps infrastructure subnets. Use supported Container Apps egress controls or network routing patterns for production egress design, and use `infra-test/` NAT Gateway for Windows client lab outbound internet.
 - Link private DNS zones to every VNet that must resolve FarSight resources,
   including hub resolver VNets and the SRE Agent VNet.
 - If endpoint collectors must call an internal API, ensure Windows clients have a

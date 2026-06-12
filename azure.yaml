@@ -11,15 +11,18 @@ services:
     language: python
     docker:
       path: Dockerfile
+      remoteBuild: true
   admin-web:
     project: ./src/admin-web
     host: containerapp
     language: js
     docker:
       path: Dockerfile
+      remoteBuild: true
   agent-tools:
     project: ./src/agent-tools/gateway
     host: containerapp
     language: python
     docker:
       path: Dockerfile
+      remoteBuild: true
