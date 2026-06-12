@@ -345,11 +345,11 @@ Expected result: the queried public name follows a CNAME chain into the
 ## 7. Deploy the SRE Agent package
 
 Deploy the SRE Agent after the FarSight control plane, private DNS, and routing
-are validated. The package is under `src/sre-agent/sre_agent` and has its own
+are validated. The package is under `src/sre-agent/agent` and has its own
 AZD template and post-deploy content upload.
 
 ```bash
-cd src/sre-agent/sre_agent
+cd src/sre-agent/agent
 azd env new <sre-env-name>
 azd env set AZURE_ENV_NAME <sre-env-name>
 azd env set AZURE_LOCATION swedencentral
