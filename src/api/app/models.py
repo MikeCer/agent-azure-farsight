@@ -31,6 +31,12 @@ class ApprovalStatus(str, Enum):
     denied = "denied"
 
 
+class PolicyStatus(str, Enum):
+    draft = "draft"
+    active = "active"
+    archived = "archived"
+
+
 class DeviceOs(CamelModel):
     name: str
     version: str
@@ -183,3 +189,48 @@ class ApprovalDecision(CamelModel):
     decided_by: str = Field(alias="decidedBy")
     decided_at_utc: datetime = Field(alias="decidedAtUtc")
     comment: str | None = None
+
+
+class PolicyValidation(CamelModel):
+    status: str
+    messages: list[str] = Field(default_factory=list)
+
+
+class PolicyDocument(CamelModel):
+    id: str
+    policy_id: str = Field(alias="policyId")
+    version: str
+    status: PolicyStatus
+    format: str = "agt-yaml"
+    content: str
+    content_hash: str = Field(alias="contentHash")
+    created_at_utc: datetime = Field(alias="createdAtUtc")
+    created_by: str = Field(alias="createdBy")
+    updated_at_utc: datetime = Field(alias="updatedAtUtc")
+    updated_by: str = Field(alias="updatedBy")
+    activated_at_utc: datetime | None = Field(default=None, alias="activatedAtUtc")
+    activated_by: str | None = Field(default=None, alias="activatedBy")
+    notes: str | None = None
+    validation: PolicyValidation
+
+
+class PolicySummary(CamelModel):
+    policy_id: str = Field(alias="policyId")
+    active_version: str | None = Field(default=None, alias="activeVersion")
+    versions: list[PolicyDocument] = Field(default_factory=list)
+
+
+class PolicyUpsertRequest(CamelModel):
+    content: str
+    status: PolicyStatus = PolicyStatus.draft
+    updated_by: str = Field(default="admin-ui", alias="updatedBy")
+    notes: str | None = None
+
+
+class PolicyValidateRequest(CamelModel):
+    content: str
+
+
+class PolicyActivateRequest(CamelModel):
+    activated_by: str = Field(default="admin-ui", alias="activatedBy")
+    notes: str | None = None

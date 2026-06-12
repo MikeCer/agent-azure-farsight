@@ -41,3 +41,6 @@ infra/bicep/main.json
 
 # Nested Bicep build artifacts
 **/infra/main.json
+
+# TypeScript incremental build info
+*.tsbuildinfo

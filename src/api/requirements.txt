@@ -3,3 +3,5 @@ uvicorn[standard]==0.34.0
 pydantic==2.10.5
 azure-identity==1.19.0
 azure-core==1.32.0
+azure-cosmos==4.9.0
+PyYAML==6.0.2

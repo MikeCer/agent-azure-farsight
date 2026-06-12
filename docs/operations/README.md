@@ -38,6 +38,19 @@ FarSightPolicy
 
 Back up configuration, policy, schemas, and required operational metadata. Do not keep raw evidence longer than retention policy.
 
+## Policy operations
+
+Use the admin web policy repository page to edit AGT policies. Recommended workflow:
+
+1. Open the active `farsight-tool-policy` version.
+2. Edit YAML in the Monaco editor.
+3. Validate before saving.
+4. Save as a draft/version with notes.
+5. Activate only after validation and peer review.
+6. Monitor policy deny/approval counts after activation.
+
+If a policy blocks expected diagnostics, reactivate the previous known-good version and investigate the changed rule.
+
 ## Incident response
 
 Disable affected module IDs, revoke credentials, preserve audit logs, notify owners, and document customer impact.

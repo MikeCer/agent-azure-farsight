@@ -8,6 +8,11 @@ The FarSight control API is an early FastAPI implementation. Contracts below des
 - `GET /api/v1/jobs/{jobId}` returns job status.
 - `POST /api/v1/devices/checkin` lets collectors request pending work.
 - `POST /api/v1/jobs/{jobId}/results` submits redacted result envelopes.
+- `GET /api/v1/policies` lists AGT policy documents and versions.
+- `GET /api/v1/policies/{policyId}` returns the active AGT policy.
+- `POST /api/v1/policies/{policyId}/validate` validates AGT YAML before save or activation.
+- `PUT /api/v1/policies/{policyId}/versions/{version}` saves a draft or version.
+- `POST /api/v1/policies/{policyId}/versions/{version}/activate` activates a validated version.
 
 ## Authentication and authorization
 
@@ -31,6 +36,11 @@ Use stable machine-readable codes such as `invalid_schema`, `policy_denied`, `ap
 - Request and result envelopes include `schemaVersion`.
 - Breaking schema changes require a new version and migration note.
 
+## Policy repository persistence
+
+Policy repository operations use Cosmos DB when `FARSIGHT_COSMOS_ENDPOINT` is configured. The API uses managed identity through `DefaultAzureCredential` and the `policies` container in the `farsight` database by default. The infrastructure assigns the API managed identity the Cosmos DB built-in data contributor role scoped to the FarSight database. Local development without `FARSIGHT_COSMOS_ENDPOINT` uses a seeded in-memory repository for safe iteration.
+
 ## Known gaps
 
+- Replace the temporary `FARSIGHT_ENABLE_POLICY_ADMIN_WRITES` gate with Entra-authenticated FarSight Admin role checks and audit events.
 - Publish generated OpenAPI, request/response examples, and finalized error schema once the API stabilizes.

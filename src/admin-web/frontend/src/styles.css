@@ -8,10 +8,19 @@ body {
   margin: 0;
 }
 
+button,
+input {
+  font: inherit;
+}
+
 .shell {
   margin: 0 auto;
-  max-width: 1120px;
-  padding: 48px 24px;
+  max-width: 1440px;
+  padding: 40px 24px;
+}
+
+.hero {
+  margin-bottom: 28px;
 }
 
 .eyebrow {
@@ -22,21 +31,108 @@ body {
 }
 
 h1 {
-  font-size: clamp(2rem, 4vw, 4rem);
+  font-size: clamp(2rem, 4vw, 3.6rem);
   margin: 0 0 16px;
 }
 
-.cards {
+.policy-layout {
   display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  margin-top: 32px;
+  gap: 20px;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
 }
 
-article {
+.panel,
+.editor-panel,
+.status-grid article {
   background: white;
   border: 1px solid #dbe3ef;
   border-radius: 18px;
   box-shadow: 0 10px 30px rgb(15 23 42 / 8%);
   padding: 20px;
+}
+
+.policy-list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+}
+
+.policy-list button {
+  background: #f8fafc;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.policy-list button.selected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 14%);
+}
+
+.policy-list span,
+.note {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.toolbar {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.toolbar div {
+  display: grid;
+  gap: 6px;
+}
+
+.toolbar input {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.toolbar button {
+  background: #e2e8f0;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 11px 14px;
+}
+
+.toolbar button.primary {
+  background: #2563eb;
+  color: white;
+}
+
+.status-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  margin-top: 18px;
+}
+
+.valid {
+  color: #047857;
+  font-weight: 800;
+}
+
+.invalid,
+.error {
+  color: #b91c1c;
+  font-weight: 800;
+}
+
+.message {
+  color: #1d4ed8;
+  font-weight: 700;
 }

@@ -23,6 +23,8 @@ Policy can require approval based on module risk, scope, artifact size, target s
 
 The FarSight tool gateway uses Microsoft Agent Governance Toolkit to evaluate tool-call policy before a FarSight API request is made. This complements Azure RBAC: RBAC limits what the gateway identity can reach, while AGT decides whether a specific tool action is allowed, denied, or approval-gated.
 
+Policies are versioned documents in the Cosmos DB-backed policy repository. Admins edit AGT YAML through the admin web editor, validate it, save a draft, and activate a validated version. Gateway instances load the active version from the API and fail closed if policy retrieval or AGT evaluation fails.
+
 ## Artifact protection
 
 Artifacts must be size-limited, redacted, encrypted at rest, access-controlled, and retained only as long as policy allows.

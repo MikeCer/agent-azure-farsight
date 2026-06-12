@@ -2,15 +2,21 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
+from azure.identity import DefaultAzureCredential
 import yaml
 
 from .models import PolicyDecision, PolicyOutcome, ToolRisk
 
 POLICY_VERSION = "2026-06-12.1"
 DEFAULT_POLICY_PATH = Path(__file__).resolve().parents[1] / "policies" / "farsight-tool-policy.yaml"
+DEFAULT_POLICY_ID = "farsight-tool-policy"
 SAFE_DIAGNOSTIC_MODULES = {
     "Get-AppLogBundle",
     "Get-AppEventSlice",
@@ -42,6 +48,9 @@ class GovernanceDenied(RuntimeError):
     """Fallback denial type used when AGT is unavailable in local mode."""
 
 
+_POLICY_CACHE: dict[str, Any] = {"expires_at": 0.0, "path": None, "version": None, "hash": None}
+
+
 def _load_agt_govern() -> Any:
     try:
         from agentmesh.governance import govern  # type: ignore
@@ -56,6 +65,10 @@ def _load_agt_govern() -> Any:
 
 def _policy_path() -> Path:
     return Path(os.getenv("FARSIGHT_AGT_POLICY_PATH", str(DEFAULT_POLICY_PATH))).resolve()
+
+
+def _policy_source() -> str:
+    return os.getenv("FARSIGHT_POLICY_SOURCE", "file").strip().lower()
 
 
 def _allow_fallback() -> bool:
@@ -186,9 +199,62 @@ def _agt_probe_tool(**kwargs: Any) -> dict[str, Any]:
     return {"policyContext": kwargs}
 
 
+def _api_bearer_token() -> str:
+    scope = os.getenv("FARSIGHT_API_SCOPE", "api://farsight/.default")
+    return DefaultAzureCredential().get_token(scope).token
+
+
+def _fetch_policy_from_api() -> tuple[Path, str | None, str | None]:
+    ttl = int(os.getenv("FARSIGHT_POLICY_CACHE_TTL_SECONDS", "60"))
+    now = time.time()
+    cached_path = _POLICY_CACHE.get("path")
+    if cached_path and now < float(_POLICY_CACHE.get("expires_at", 0.0)):
+        return Path(cached_path), _POLICY_CACHE.get("version"), _POLICY_CACHE.get("hash")
+
+    base_url = os.getenv("FARSIGHT_API_BASE_URL", "").rstrip("/")
+    if not base_url:
+        raise PolicyConfigurationError("FARSIGHT_API_BASE_URL is required when FARSIGHT_POLICY_SOURCE=api.")
+
+    policy_id = os.getenv("FARSIGHT_POLICY_ID", DEFAULT_POLICY_ID)
+    request = urllib.request.Request(
+        f"{base_url}/api/v1/policies/{policy_id}",
+        headers={"Authorization": f"Bearer {_api_bearer_token()}"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            import json
+
+            body = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+        raise PolicyConfigurationError(f"Failed to retrieve active policy '{policy_id}' from FarSight API.") from exc
+
+    content = body.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise PolicyConfigurationError(f"FarSight API returned an empty policy for '{policy_id}'.")
+
+    temp = tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".yaml", prefix="farsight-agt-policy-", delete=False)
+    with temp:
+        temp.write(content)
+
+    _POLICY_CACHE.update({
+        "expires_at": now + ttl,
+        "path": temp.name,
+        "version": body.get("version"),
+        "hash": body.get("contentHash"),
+    })
+    return Path(temp.name), body.get("version"), body.get("contentHash")
+
+
+def _resolve_policy_material() -> tuple[Path, str | None, str | None]:
+    if _policy_source() == "api":
+        return _fetch_policy_from_api()
+    return _policy_path(), None, None
+
+
 def _evaluate_with_agt(context: dict[str, Any]) -> PolicyDecision:
     govern = _load_agt_govern()
-    policy_path = _policy_path()
+    policy_path, policy_version, policy_hash = _resolve_policy_material()
     if not policy_path.exists():
         raise PolicyConfigurationError(f"AGT policy file not found: {policy_path}")
 
@@ -202,25 +268,25 @@ def _evaluate_with_agt(context: dict[str, Any]) -> PolicyDecision:
             return PolicyDecision(
                 outcome=PolicyOutcome.require_approval,
                 reason=message or "AGT policy requires approval.",
-                policyVersion=POLICY_VERSION,
+                policyVersion=str(policy_version or POLICY_VERSION),
                 policyName=policy_path.stem,
-                evidence={"tool_name": context["tool_name"]},
+                evidence={"tool_name": context["tool_name"], "content_hash": policy_hash},
             )
         return PolicyDecision(
             outcome=PolicyOutcome.deny,
             reason=message or "AGT policy denied the action.",
-            policyVersion=POLICY_VERSION,
+            policyVersion=str(policy_version or POLICY_VERSION),
             policyName=policy_path.stem,
-            evidence={"tool_name": context["tool_name"]},
+            evidence={"tool_name": context["tool_name"], "content_hash": policy_hash},
         )
 
     policy_doc = yaml.safe_load(policy_path.read_text(encoding="utf-8")) or {}
     return PolicyDecision(
         outcome=PolicyOutcome.allow,
         reason="Allowed by Microsoft Agent Governance Toolkit policy.",
-        policyVersion=str(policy_doc.get("version") or POLICY_VERSION),
+        policyVersion=str(policy_version or policy_doc.get("version") or POLICY_VERSION),
         policyName=str(policy_doc.get("name") or policy_path.stem),
-        evidence={"tool_name": context["tool_name"]},
+        evidence={"tool_name": context["tool_name"], "content_hash": policy_hash},
     )
 
 

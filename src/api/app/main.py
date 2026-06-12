@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -16,8 +17,16 @@ from .models import (
     JobDocument,
     JobStatus,
     LeaseOffer,
+    PolicyActivateRequest,
+    PolicyDocument,
+    PolicySummary,
+    PolicyStatus,
+    PolicyUpsertRequest,
+    PolicyValidateRequest,
+    PolicyValidation,
     ResultEnvelope,
 )
+from .policy_repository import PolicyRepository, get_policy_repository, validate_policy_content
 
 app = FastAPI(title="Agent-Azure-FarSight Control API", version="0.1.0")
 
@@ -27,6 +36,22 @@ jobs: dict[str, JobDocument] = {}
 results: dict[str, ResultEnvelope] = {}
 approvals: dict[str, ApprovalRequest] = {}
 artifact_index: dict[str, list[dict[str, object]]] = {}
+
+
+def require_policy_admin(x_farsight_admin_actor: str | None = Header(default=None, alias="X-FarSight-Admin-Actor")) -> str:
+    """Temporary fail-closed admin-write gate until Entra role auth is wired.
+
+    Production deployments must replace this with Entra-authenticated FarSight
+    Admin role checks. The explicit env var prevents policy mutation endpoints
+    from being accidentally exposed while the API skeleton is still maturing.
+    """
+
+    enabled = os.getenv("FARSIGHT_ENABLE_POLICY_ADMIN_WRITES", "").strip().lower() in {"1", "true", "yes"}
+    if not enabled:
+        raise HTTPException(status_code=403, detail="Policy write endpoints are disabled until FarSight Admin authorization is configured.")
+    if not x_farsight_admin_actor:
+        raise HTTPException(status_code=403, detail="X-FarSight-Admin-Actor is required for policy write operations.")
+    return x_farsight_admin_actor
 
 
 @app.get("/api/v1/health")
@@ -188,9 +213,65 @@ def decide_approval(approvalId: str, decision: ApprovalDecision, _: AzureClients
 
 
 @app.get("/api/v1/policy")
-def get_policy() -> dict[str, object]:
-    # TODO: Retrieve cloud policy from Cosmos/App Configuration.
-    return {"policyVersion": POLICY_VERSION, "toolPolicy": "placeholder"}
+def get_policy(repository: PolicyRepository = Depends(get_policy_repository)) -> PolicyDocument:
+    # Backwards-compatible active policy endpoint for gateway consumers.
+    return repository.get("farsight-tool-policy")
+
+
+@app.get("/api/v1/policies", response_model=list[PolicySummary])
+def list_policies(repository: PolicyRepository = Depends(get_policy_repository)) -> list[PolicySummary]:
+    return repository.list()
+
+
+@app.get("/api/v1/policies/{policyId}", response_model=PolicyDocument)
+def get_active_policy(policyId: str, repository: PolicyRepository = Depends(get_policy_repository)) -> PolicyDocument:
+    try:
+        return repository.get(policyId)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Policy not found") from exc
+
+
+@app.get("/api/v1/policies/{policyId}/versions/{version}", response_model=PolicyDocument)
+def get_policy_version(policyId: str, version: str, repository: PolicyRepository = Depends(get_policy_repository)) -> PolicyDocument:
+    try:
+        return repository.get(policyId, version)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Policy version not found") from exc
+
+
+@app.post("/api/v1/policies/{policyId}/validate", response_model=PolicyValidation)
+def validate_policy(policyId: str, request: PolicyValidateRequest) -> PolicyValidation:
+    return validate_policy_content(request.content)
+
+
+@app.put("/api/v1/policies/{policyId}/versions/{version}", response_model=PolicyDocument)
+def upsert_policy(
+    policyId: str,
+    version: str,
+    request: PolicyUpsertRequest,
+    repository: PolicyRepository = Depends(get_policy_repository),
+    actor: str = Depends(require_policy_admin),
+) -> PolicyDocument:
+    if request.status != PolicyStatus.draft:
+        raise HTTPException(status_code=400, detail="Policy save only supports draft status. Use the activate endpoint to change the active version.")
+    return repository.upsert(policyId, version, request.content, PolicyStatus.draft, actor, request.notes)
+
+
+@app.post("/api/v1/policies/{policyId}/versions/{version}/activate", response_model=PolicyDocument)
+def activate_policy(
+    policyId: str,
+    version: str,
+    request: PolicyActivateRequest,
+    repository: PolicyRepository = Depends(get_policy_repository),
+    actor: str = Depends(require_policy_admin),
+) -> PolicyDocument:
+    # TODO: Add immutable audit event and Entra group/role evidence once auth is wired.
+    try:
+        return repository.activate(policyId, version, actor, request.notes)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Policy version not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/v1/admin/config")

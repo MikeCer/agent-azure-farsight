@@ -48,6 +48,7 @@ var privateEndpointNamePrefix = 'pe-${take(normalizedPrefix, 24)}-${take(unique,
 var monitorPrivateLinkScopeName = 'ampls-${namePrefix}-${take(unique, 4)}'
 var publicNetworkAccess = enablePrivateEndpoints ? 'Disabled' : 'Enabled'
 var containerAppIngressExternal = enablePrivateEndpoints ? false : enablePublicIngress
+var cosmosBuiltInDataContributorRoleDefinitionId = resourceId('Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions', cosmosAccountName, '00000000-0000-0000-0000-000000000002')
 
 module networking 'networking.bicep' = if (enablePrivateEndpoints) {
   name: 'networking-${namePrefix}-${location}'
@@ -171,6 +172,18 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'FARSIGHT_ADMIN_GROUP_OBJECT_IDS'
               value: join(adminGroupObjectIds, ',')
+            }
+            {
+              name: 'FARSIGHT_COSMOS_ENDPOINT'
+              value: cosmos.properties.documentEndpoint
+            }
+            {
+              name: 'FARSIGHT_COSMOS_DATABASE'
+              value: database.name
+            }
+            {
+              name: 'FARSIGHT_COSMOS_POLICIES_CONTAINER'
+              value: 'policies'
             }
             {
               name: 'APPINSIGHTS_CONNECTION_STRING'
@@ -300,6 +313,7 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
   identity: {
     type: 'SystemAssigned'
   }
+
   properties: {
     databaseAccountOfferType: 'Standard'
     locations: [
@@ -315,6 +329,16 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
     consistencyPolicy: {
       defaultConsistencyLevel: 'Session'
     }
+  }
+}
+
+resource appIdentityCosmosDataContributor 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-11-15' = {
+  #disable-next-line use-parent-property
+  name: '${cosmos.name}/${guid(cosmos.id, appIdentity.id, 'policies-container-data-contributor')}'
+  properties: {
+    roleDefinitionId: cosmosBuiltInDataContributorRoleDefinitionId
+    principalId: appIdentity.properties.principalId
+    scope: '${cosmos.id}/dbs/farsight'
   }
 }
 

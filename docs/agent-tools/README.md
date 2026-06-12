@@ -20,7 +20,9 @@ Evaluate AGT policy before every FarSight API call:
 - `require_approval` - block immediate execution and route through the approval workflow.
 - `deny` - do not call the API.
 
-The default policy bundle lives at `src/agent-tools/gateway/policies/farsight-tool-policy.yaml`. The gateway fails closed if AGT is unavailable; local development can opt into a deterministic fallback evaluator with `FARSIGHT_ALLOW_POLICY_FALLBACK=true`.
+The bootstrap policy bundle lives at `src/agent-tools/gateway/policies/farsight-tool-policy.yaml`. Production gateway instances should use `FARSIGHT_POLICY_SOURCE=api` so the active AGT policy is retrieved from the FarSight API and Cosmos DB `policies` container. The gateway fails closed if AGT or the active policy cannot be loaded; local development can opt into a deterministic fallback evaluator with `FARSIGHT_ALLOW_POLICY_FALLBACK=true`.
+
+Policy authors manage versions through the admin web policy repository page. The lifecycle is draft, active, archived. Only validated policies should be activated.
 
 ## Approval behavior
 
