@@ -24,52 +24,15 @@ or deployment runner:
 - PowerShell 7 for collector and Intune packaging validation.
 - Python 3.12+ and Node.js 20+ if you will also build service images locally.
 
-```bash
-az version
-azd version
-az bicep version
-az extension add --name containerapp --upgrade
-```
+Confirm the tools are installed and current before deployment. Keep exact command examples in operational runbooks or CI scripts rather than duplicating them here.
 
 ### Azure login and subscription context
 
-```bash
-az login --tenant <tenant-id>
-az account set --subscription <subscription-id>
-az account show --query "{subscription:id, tenant:tenantId, user:user.name}" -o table
-azd auth login --tenant-id <tenant-id>
-azd env new <env-name>
-```
-
-Use separate environment names for shared production, test, and SRE Agent
-packages. Keep the same subscription context in `az` and `azd`.
+Authenticate Azure CLI and Azure Developer CLI to the same tenant/subscription and create the target AZD environment. Use separate environment names for shared production, test, and SRE Agent packages.
 
 ### Resource providers
 
-Register providers before the preview. Registration can take several minutes.
-
-```bash
-for ns in \
-  Microsoft.App \
-  Microsoft.ApiManagement \
-  Microsoft.AppConfiguration \
-  Microsoft.Authorization \
-  Microsoft.ContainerRegistry \
-  Microsoft.DocumentDB \
-  Microsoft.Insights \
-  Microsoft.KeyVault \
-  Microsoft.ManagedIdentity \
-  Microsoft.Network \
-  Microsoft.OperationalInsights \
-  Microsoft.ServiceBus \
-  Microsoft.Storage; do
-  az provider register --namespace "$ns"
-done
-
-az provider list \
-  --query "[?contains(['Microsoft.App','Microsoft.Network','Microsoft.DocumentDB','Microsoft.ServiceBus','Microsoft.Storage','Microsoft.KeyVault','Microsoft.ContainerRegistry','Microsoft.OperationalInsights','Microsoft.Insights','Microsoft.AppConfiguration','Microsoft.ApiManagement'], namespace)].{namespace:namespace,state:registrationState}" \
-  -o table
-```
+Register required Azure resource providers before previewing the deployment. Provider registration can take several minutes; confirm each provider reaches the registered state before continuing.
 
 ### Permissions
 
@@ -90,27 +53,7 @@ The deploying identity needs, at minimum:
 
 ### Region and quota checks
 
-Use Italy North (`italynorth`) for collector-facing resources and Sweden Central
-(`swedencentral`) for the SRE Agent/tool gateway. Confirm availability and quota
-before reserving address space.
-
-```bash
-az account list-locations \
-  --query "[?name=='italynorth' || name=='swedencentral'].{name:name,display:displayName}" \
-  -o table
-
-az extension add --name quota --upgrade
-SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-az quota usage list \
-  --scope "/subscriptions/$SUBSCRIPTION_ID/providers/Microsoft.App/locations/italynorth" \
-  -o table
-az quota usage list \
-  --scope "/subscriptions/$SUBSCRIPTION_ID/providers/Microsoft.App/locations/swedencentral" \
-  -o table
-az quota usage list \
-  --scope "/subscriptions/$SUBSCRIPTION_ID/providers/Microsoft.Network/locations/italynorth" \
-  -o table
-```
+Use Italy North (`italynorth`) for collector-facing resources and Sweden Central (`swedencentral`) for the SRE Agent/tool gateway. Confirm regional availability and quotas before reserving address space.
 
 Also check subscription quotas and policy for:
 
@@ -186,42 +129,7 @@ traffic both use private link.
 
 ## 4. Configure AZD private-mode variables
 
-Set these values before the preview. Variable names marked as current are already
-consumed by `infra/bicep/main.parameters.json`; planned variables document the
-private networking contract the Bicep template must consume before production.
-
-```bash
-azd env set AZURE_LOCATION italynorth
-azd env set AZURE_COLLECTOR_LOCATION italynorth
-azd env set AZURE_AGENT_LOCATION swedencentral
-
-# Current private-mode toggles.
-azd env set FARSIGHT_ENABLE_PRIVATE_ENDPOINTS true
-azd env set FARSIGHT_ENABLE_PUBLIC_INGRESS false
-azd env set FARSIGHT_ENABLE_APIM true
-
-# Planned VNet and subnet inputs for private mode.
-azd env set FARSIGHT_COLLECTOR_VNET_ADDRESS_PREFIXES '["10.42.0.0/16"]'
-azd env set FARSIGHT_COLLECTOR_CONTAINER_APPS_SUBNET_PREFIX '10.42.1.0/23'
-azd env set FARSIGHT_COLLECTOR_PRIVATE_ENDPOINT_SUBNET_PREFIX '10.42.4.0/24'
-azd env set FARSIGHT_SRE_AGENT_VNET_ADDRESS_PREFIXES '["10.52.0.0/16"]'
-azd env set FARSIGHT_SRE_AGENT_CONTAINER_APPS_SUBNET_PREFIX '10.52.1.0/23'
-azd env set FARSIGHT_SRE_AGENT_PRIVATE_ENDPOINT_SUBNET_PREFIX '10.52.4.0/24'
-
-# Planned DNS ownership inputs.
-azd env set FARSIGHT_LINK_EXISTING_PRIVATE_DNS_ZONES true
-PRIVATE_DNS_ZONE_IDS='[
-  "<blob-zone-resource-id>",
-  "<key-vault-zone-resource-id>",
-  "<acr-zone-resource-id>",
-  "<cosmos-zone-resource-id>",
-  "<servicebus-zone-resource-id>",
-  "<appconfig-zone-resource-id>",
-  "<monitor-zone-resource-id>",
-  "<containerapps-zone-resource-id>"
-]'
-azd env set FARSIGHT_EXISTING_PRIVATE_DNS_ZONE_IDS "$PRIVATE_DNS_ZONE_IDS"
-```
+Set AZD environment values before previewing. Keep the exact values in the deployment environment record or release checklist rather than in this guide.
 
 Expected Bicep parameter mapping:
 
@@ -246,11 +154,7 @@ public network access enabled in a private deployment.
 
 ### Preview
 
-```bash
-azd provision --preview
-```
-
-Review the preview for these items before approving:
+Run the AZD provision preview and review the result before approving deployment. Check for these items:
 
 - Resource groups and locations match Italy North and Sweden Central.
 - Container Apps environments use the planned subnets.
@@ -265,66 +169,21 @@ Review the preview for these items before approving:
 - Managed identities and RBAC assignments are scoped to the least privilege
   needed by the API, worker, admin web, and tool gateway.
 
-### Template validation
-
-Run the repository validation scripts that apply to deployment assets and docs.
-
-```bash
-bash scripts/validation/validate-bicep.sh
-bash scripts/validation/validate-markdown.sh
-```
-
 ### Deploy
 
-```bash
-azd up
-```
-
-`azd up` provisions infrastructure and deploys configured services. If your
-release process separates infrastructure from images, use `azd provision` first,
-then deploy signed images through the approved pipeline.
+Deploy through the approved AZD/release process. If your release process separates infrastructure from images, provision infrastructure first, then deploy signed images through the approved pipeline.
 
 ## 6. Post-deployment private endpoint and DNS checks
 
-Run these checks from a VM, jumpbox, GitHub Actions runner, or Azure Container
-App job with line-of-sight to the private VNets.
+Run these checks from a VM, jumpbox, GitHub Actions runner, or Azure Container App job with line-of-sight to the private VNets.
 
 ### Private endpoint state
 
-```bash
-az network private-endpoint list -g <resource-group> \
-  --query "[].{name:name, subnet:subnet.id, state:provisioningState}" -o table
-
-az network private-endpoint-connection list --id <target-service-resource-id> \
-  --query "[].{name:name,state:properties.privateLinkServiceConnectionState.status,description:properties.privateLinkServiceConnectionState.description}" \
-  -o table
-```
-
-Use the target PaaS resource ID, not the private endpoint resource ID. Approve
-pending connections only after confirming the requester, resource ID, and subnet
-are expected.
+Review private endpoint resources and connection states. Use the target PaaS resource ID, not the private endpoint resource ID. Approve pending connections only after confirming the requester, resource ID, and subnet are expected.
 
 ### DNS records
 
-```bash
-az network private-dns record-set a list \
-  -g <dns-resource-group> \
-  -z privatelink.blob.core.windows.net \
-  --query "[].{name:name,records:aRecords[].ipv4Address}" -o table
-```
-
-Repeat for each required zone. From a private-network host, confirm public FQDNs
-resolve to private IPs:
-
-```bash
-nslookup <storage-account>.blob.core.windows.net
-nslookup <key-vault-name>.vault.azure.net
-nslookup <registry-name>.azurecr.io
-nslookup <cosmos-account>.documents.azure.com
-nslookup <servicebus-namespace>.servicebus.windows.net
-nslookup <appconfig-name>.azconfig.io
-nslookup <container-app-fqdn>
-```
+Review A records in each required private DNS zone. From a private-network host, confirm the public service FQDNs resolve to private IPs.
 
 Expected result: the queried public name follows a CNAME chain into the
 `privatelink` zone and returns a private RFC1918 address.
@@ -348,15 +207,7 @@ Deploy the SRE Agent after the FarSight control plane, private DNS, and routing
 are validated. The package is under `src/sre-agent/agent` and has its own
 AZD template and post-deploy content upload.
 
-```bash
-cd src/sre-agent/agent
-azd env new <sre-env-name>
-azd env set AZURE_ENV_NAME <sre-env-name>
-azd env set AZURE_LOCATION swedencentral
-azd env set AZURE_PRINCIPAL_ID <entra-object-id-for-sre-admin>
-azd env set INTUNE_DIAGNOSTICS_AUTH_MODE managed-identity
-azd up
-```
+Use the dedicated AZD template under `src/sre-agent/agent` for the SRE Agent package. Configure its environment for Sweden Central and the selected Intune diagnostics authentication mode before deployment.
 
 Deployment notes:
 

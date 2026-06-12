@@ -4,20 +4,7 @@ FarSight development is currently skeleton-first: validation scripts are guarded
 
 ## Local setup
 
-Use repository-provided build, test, and lint commands. Do not introduce new tooling unless the project adopts it.
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r src/api/requirements.txt
-uvicorn app.main:app --app-dir src/api --reload --port 8000
-```
-
-```bash
-cd src/admin-web/frontend
-npm install
-npm run dev
-```
+Use repository-provided build, test, and lint entry points. Do not introduce new tooling unless the project adopts it. Keep local setup instructions in component READMEs instead of duplicating command blocks across docs.
 
 ## Coding standards
 
@@ -38,17 +25,6 @@ CI should validate Markdown links, schema consistency, OpenAPI compatibility, po
 
 Document module manifest changes, schema changes, rollout ring, approval requirements, rollback steps, and operational queries.
 
-## Validation commands
-
-```bash
-bash scripts/validation/check-skeleton.sh
-bash scripts/validation/validate-python.sh
-bash scripts/validation/validate-markdown.sh
-bash scripts/validation/validate-mermaid.sh
-bash scripts/validation/validate-bicep.sh
-bash scripts/validation/validate-extension-samples.sh
-```
-
 ## Known gaps
 
-- Add finalized service-specific lint/test commands once project scripts and dependency installation flows are stable.
+- Add finalized service-specific lint/test guidance once project scripts and dependency installation flows are stable.
