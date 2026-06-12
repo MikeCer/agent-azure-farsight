@@ -293,8 +293,9 @@ resource serviceBus 'Microsoft.ServiceBus/namespaces@2024-01-01' = {
   location: location
   tags: tags
   sku: {
-    name: 'Standard'
-    tier: 'Standard'
+    name: enablePrivateEndpoints ? 'Premium' : 'Standard'
+    tier: enablePrivateEndpoints ? 'Premium' : 'Standard'
+    capacity: enablePrivateEndpoints ? 1 : null
   }
   properties: {
     minimumTlsVersion: '1.2'
@@ -518,24 +519,6 @@ resource appConfig 'Microsoft.AppConfiguration/configurationStores@2024-06-01' =
   properties: {
     disableLocalAuth: true
     publicNetworkAccess: publicNetworkAccess
-  }
-}
-
-resource devEnrollmentSetting 'Microsoft.AppConfiguration/configurationStores/keyValues@2024-06-01' = {
-  name: 'FarSight:Enrollment:EnableDevApi'
-  parent: appConfig
-  properties: {
-    value: string(enableDevEnrollmentApi)
-    contentType: 'text/plain'
-  }
-}
-
-resource adminGroupsSetting 'Microsoft.AppConfiguration/configurationStores/keyValues@2024-06-01' = {
-  name: 'FarSight:Admin:GroupObjectIds'
-  parent: appConfig
-  properties: {
-    value: join(adminGroupObjectIds, ',')
-    contentType: 'text/plain'
   }
 }
 

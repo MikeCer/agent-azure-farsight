@@ -64,6 +64,8 @@ The Bicep templates keep safe placeholder images so first provisioning can succe
 
 - Do not replace service images manually in Bicep for AZD-managed services. Keep the `azd-service-name` tags aligned with `azure.yaml`.
 - Private endpoint and APIM support are parameterized but intentionally skeletal for early implementation.
+- Service Bus uses Premium SKU when private endpoints are enabled because private endpoint connections are not supported on Standard namespaces.
+- App Configuration local authentication is disabled. Do not seed key-values through ARM/Bicep local-auth mode; write settings through application code or pass-through identity-aware tooling after deployment.
 - NAT Gateway is optional and disabled by default to avoid extra cost. The shared networking module does not associate NAT Gateway to Container Apps infrastructure subnets; use it only for supported non-Container-Apps subnets such as optional APIM. Use `infra-test/` NAT Gateway for Windows client lab outbound internet.
 - When both regional modules deploy in the same resource group, the agent gateway reuses the core module's private DNS zones by default to avoid duplicate private DNS zone resources.
 - Container App resource names use compact environment and region tokens to stay within the Azure Container Apps 32-character name limit.

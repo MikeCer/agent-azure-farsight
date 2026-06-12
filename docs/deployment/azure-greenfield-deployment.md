@@ -60,6 +60,7 @@ Also check subscription quotas and policy for:
 - Private endpoints and NICs per VNet/subscription.
 - Container Apps managed environments and cores.
 - Premium ACR if private endpoints are enabled for registry access.
+- Premium Service Bus when private endpoints are enabled.
 - Cosmos DB throughput/account limits.
 - Service Bus namespaces and queue limits.
 - Log Analytics ingestion, retention, and daily caps.
