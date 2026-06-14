@@ -6,6 +6,8 @@ param artifactRetentionDays int
 param logAnalyticsRetentionDays int
 param enablePublicIngress bool
 param enablePrivateEndpoints bool
+param enableAcrTaskNetworkBypass bool = true
+param acrFirewallAllowedIpRanges array = []
 param enableApim bool
 param enableDevEnrollmentApi bool
 param adminGroupObjectIds array
@@ -41,11 +43,18 @@ param adminAuthClientId string = ''
 @description('Client secret for admin web Easy Auth app registration.')
 param adminAuthClientSecret string = ''
 
+@secure()
+@description('Base64-encoded 32-byte encryption secret for Container Apps Easy Auth.')
+param adminAuthEncryptionSecret string = ''
+
 @description('Issuer URL for admin web Easy Auth.')
 param adminAuthIssuer string = ''
 
 @description('Allowed token audiences for admin web Easy Auth.')
 param adminAuthAllowedAudiences array = []
+
+@description('Optional Container Apps auth token store SAS URL setting name. Empty disables token store.')
+param adminAuthTokenStoreSasUrlSettingName string = ''
 
 var normalizedPrefix = replace(toLower(namePrefix), '-', '')
 var shortNamePrefix = replace(namePrefix, 'farsight-', 'fs-')
@@ -57,10 +66,13 @@ var keyVaultName = 'kv-${take(normalizedPrefix, 8)}-${unique}'
 var appConfigName = 'appcs-${namePrefix}-${take(unique, 4)}'
 var workspaceName = 'law-${namePrefix}-${location}'
 var appInsightsName = 'appi-${namePrefix}-${location}'
-var containerAppsEnvironmentName = 'cae-${namePrefix}-${location}'
-var apiAppName = 'ca-${shortNamePrefix}-api-${regionCode}'
-var adminAppName = 'ca-${shortNamePrefix}-admin-${regionCode}'
-var workerAppName = 'ca-${shortNamePrefix}-worker-${regionCode}'
+var ingressModeCode = enablePublicIngress ? 'pub' : 'int'
+var containerAppsInfrastructureSubnetName = 'snet-containerapps-infra'
+var containerAppsEnvironmentName = 'cae-${namePrefix}-${ingressModeCode}-${location}'
+var apiAppName = 'ca-${shortNamePrefix}-api-${ingressModeCode}-${regionCode}'
+var adminAppName = 'ca-${shortNamePrefix}-admin-${ingressModeCode}-${regionCode}'
+var toolGatewayAppName = 'ca-${shortNamePrefix}-tools-${ingressModeCode}-${regionCode}'
+var workerAppName = 'ca-${shortNamePrefix}-worker-${ingressModeCode}-${regionCode}'
 var serviceBusNamespaceName = 'sb-${namePrefix}-${take(unique, 4)}'
 var cosmosAccountName = 'cosmos-${namePrefix}-${take(unique, 4)}'
 var managedIdentityName = 'id-${namePrefix}-apps-${location}'
@@ -68,8 +80,17 @@ var artifactsContainerName = 'artifacts'
 var privateEndpointNamePrefix = 'pe-${take(normalizedPrefix, 24)}-${take(unique, 6)}'
 var monitorPrivateLinkScopeName = 'ampls-${namePrefix}-${take(unique, 4)}'
 var publicNetworkAccess = enablePrivateEndpoints ? 'Disabled' : 'Enabled'
-var containerAppIngressExternal = enablePrivateEndpoints ? false : enablePublicIngress
+var acrPublicNetworkAccess = enablePrivateEndpoints && enableAcrTaskNetworkBypass ? 'Enabled' : publicNetworkAccess
+var effectiveAcrFirewallAllowedIpRanges = enablePrivateEndpoints && enableAcrTaskNetworkBypass ? acrFirewallAllowedIpRanges : []
+var acrFirewallIpRules = [for cidr in effectiveAcrFirewallAllowedIpRanges: {
+  action: 'Allow'
+  value: cidr
+}]
+var containerAppsEnvironmentInternal = enablePrivateEndpoints && !enablePublicIngress
+var containerAppIngressExternal = enablePublicIngress
 var cosmosBuiltInDataContributorRoleDefinitionId = resourceId('Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions', cosmosAccountName, '00000000-0000-0000-0000-000000000002')
+var acrPullRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+var adminEasyAuthConfigured = enableAdminEasyAuth && !empty(adminAuthClientId) && !empty(adminAuthClientSecret) && !empty(adminAuthEncryptionSecret) && !empty(adminAuthIssuer)
 
 module networking 'networking.bicep' = if (enablePrivateEndpoints) {
   name: 'networking-${namePrefix}-${location}'
@@ -78,6 +99,7 @@ module networking 'networking.bicep' = if (enablePrivateEndpoints) {
     location: location
     tags: tags
     virtualNetworkAddressPrefix: vnetAddressPrefix
+    containerAppsInfrastructureSubnetName: containerAppsInfrastructureSubnetName
     containerAppsInfrastructureSubnetAddressPrefix: containerAppsInfrastructureSubnetPrefix
     privateEndpointsSubnetAddressPrefix: privateEndpointSubnetPrefix
     enableApiManagementSubnet: enableApim
@@ -121,7 +143,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
-resource acr 'Microsoft.ContainerRegistry/registries@2025-04-01' = {
+resource acr 'Microsoft.ContainerRegistry/registries@2025-11-01' = {
   name: acrName
   location: location
   tags: tags
@@ -131,7 +153,26 @@ resource acr 'Microsoft.ContainerRegistry/registries@2025-04-01' = {
   properties: {
     adminUserEnabled: false
     anonymousPullEnabled: false
-    publicNetworkAccess: publicNetworkAccess
+    publicNetworkAccess: acrPublicNetworkAccess
+    networkRuleBypassOptions: enableAcrTaskNetworkBypass ? 'AzureServices' : 'None'
+    networkRuleBypassAllowedForTasks: enableAcrTaskNetworkBypass
+    networkRuleSet: enablePrivateEndpoints ? {
+      defaultAction: 'Deny'
+      ipRules: acrFirewallIpRules
+    } : {
+      defaultAction: 'Allow'
+      ipRules: []
+    }
+  }
+}
+
+resource appIdentityAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, appIdentity.id, 'acr-pull')
+  scope: acr
+  properties: {
+    roleDefinitionId: acrPullRoleDefinitionId
+    principalId: appIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 
@@ -151,7 +192,7 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }, enablePrivateEndpoints ? {
     vnetConfiguration: {
       infrastructureSubnetId: networking!.outputs.containerAppsInfrastructureSubnetId
-      internal: true
+      internal: containerAppsEnvironmentInternal
     }
   } : {})
 }
@@ -162,6 +203,9 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
   tags: union(tags, {
     'azd-service-name': 'api'
   })
+  dependsOn: [
+    appIdentityAcrPull
+  ]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
@@ -172,12 +216,12 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: environment.id
     configuration: {
       activeRevisionsMode: 'Single'
-      secrets: enableAdminEasyAuth ? [
+      registries: [
         {
-          name: 'microsoft-provider-authentication-secret'
-          value: adminAuthClientSecret
+          server: acr.properties.loginServer
+          identity: appIdentity.id
         }
-      ] : []
+      ]
       ingress: {
         external: containerAppIngressExternal
         targetPort: 8000
@@ -191,6 +235,10 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'api'
           image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
           env: [
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: appIdentity.properties.clientId
+            }
             {
               name: 'FARSIGHT_ENVIRONMENT'
               value: namePrefix
@@ -240,6 +288,9 @@ resource adminApp 'Microsoft.App/containerApps@2024-03-01' = {
   tags: union(tags, {
     'azd-service-name': 'admin-web'
   })
+  dependsOn: [
+    appIdentityAcrPull
+  ]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
@@ -250,9 +301,25 @@ resource adminApp 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: environment.id
     configuration: {
       activeRevisionsMode: 'Single'
+      registries: [
+        {
+          server: acr.properties.loginServer
+          identity: appIdentity.id
+        }
+      ]
+      secrets: adminEasyAuthConfigured ? [
+        {
+          name: 'microsoft-provider-authentication-secret'
+          value: adminAuthClientSecret
+        }
+        {
+          name: 'farsight-admin-auth-encryption-secret'
+          value: adminAuthEncryptionSecret
+        }
+      ] : []
       ingress: {
         external: containerAppIngressExternal
-        targetPort: 8080
+        targetPort: 8000
         transport: 'http'
         allowInsecure: false
       }
@@ -262,6 +329,16 @@ resource adminApp 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'admin-web'
           image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+          env: [
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: appIdentity.properties.clientId
+            }
+            {
+              name: 'FARSIGHT_CONTROL_API_BASE_URL'
+              value: 'https://${apiApp.properties.configuration.ingress.fqdn}'
+            }
+          ]
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
@@ -276,7 +353,7 @@ resource adminApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-resource adminAppAuthConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (enableAdminEasyAuth) {
+resource adminAppAuthConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (adminEasyAuthConfigured) {
   #disable-next-line use-parent-property
   name: '${adminApp.name}/current'
   properties: {
@@ -302,20 +379,32 @@ resource adminAppAuthConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01'
       }
     }
     encryptionSettings: {
-      containerAppAuthEncryptionSecretName: 'microsoft-provider-authentication-secret'
+      containerAppAuthEncryptionSecretName: 'farsight-admin-auth-encryption-secret'
     }
-    login: {
+    login: empty(adminAuthTokenStoreSasUrlSettingName) ? {
+      tokenStore: {
+        enabled: false
+      }
+    } : {
       tokenStore: {
         enabled: true
+        azureBlobStorage: {
+          sasUrlSettingName: adminAuthTokenStoreSasUrlSettingName
+        }
       }
     }
   }
 }
 
-resource workerApp 'Microsoft.App/containerApps@2024-03-01' = {
-  name: workerAppName
+resource toolGatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
+  name: toolGatewayAppName
   location: location
-  tags: tags
+  tags: union(tags, {
+    'azd-service-name': 'agent-tools'
+  })
+  dependsOn: [
+    appIdentityAcrPull
+  ]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
@@ -326,6 +415,71 @@ resource workerApp 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: environment.id
     configuration: {
       activeRevisionsMode: 'Single'
+      registries: [
+        {
+          server: acr.properties.loginServer
+          identity: appIdentity.id
+        }
+      ]
+      ingress: {
+        external: containerAppIngressExternal
+        targetPort: 8000
+        transport: 'http'
+        allowInsecure: false
+      }
+    }
+    template: {
+      containers: [
+        {
+          name: 'agent-tools'
+          image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+          env: [
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: appIdentity.properties.clientId
+            }
+            {
+              name: 'APPINSIGHTS_CONNECTION_STRING'
+              value: appInsights.properties.ConnectionString
+            }
+          ]
+          resources: {
+            cpu: json('0.5')
+            memory: '1Gi'
+          }
+        }
+      ]
+      scale: {
+        minReplicas: 0
+        maxReplicas: 3
+      }
+    }
+  }
+}
+
+resource workerApp 'Microsoft.App/containerApps@2024-03-01' = {
+  name: workerAppName
+  location: location
+  tags: tags
+  dependsOn: [
+    appIdentityAcrPull
+  ]
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${appIdentity.id}': {}
+    }
+  }
+  properties: {
+    managedEnvironmentId: environment.id
+    configuration: {
+      activeRevisionsMode: 'Single'
+      registries: [
+        {
+          server: acr.properties.loginServer
+          identity: appIdentity.id
+        }
+      ]
     }
     template: {
       containers: [
@@ -943,6 +1097,7 @@ resource monitorPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateD
 
 output apiContainerAppName string = apiApp.name
 output adminContainerAppName string = adminApp.name
+output agentToolGatewayName string = toolGatewayApp.name
 output workerContainerAppName string = workerApp.name
 output storageAccountName string = storage.name
 output cosmosAccountName string = cosmos.name

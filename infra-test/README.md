@@ -39,7 +39,8 @@ Before deploying, prepare:
 | `vmCount` | `2` | Increase only for lab scale testing. |
 | `vmSize` | `Standard_B2s` | Low-cost default; use `Standard_B2ms` if Windows feels too constrained. |
 | `adminUsername` | `farsightadmin` | Local admin username. |
-| `adminPassword` | placeholder | Replace at deployment time; do not commit real passwords. |
+| `adminPassword` | none | Required at deployment time; pass inline or through your approved secret process. Do not commit real passwords. |
+| `imageSku` | `win11-24h2-pro` | Default verified in Italy North. Override if unavailable in the selected region/subscription. |
 | `vnetAddressPrefix` | `10.70.0.0/16` | Must not overlap connected networks. |
 | `subnetAddressPrefix` | `10.70.1.0/24` | Windows test VM subnet. |
 | `enablePublicIp` | `false` | Keep disabled unless a short-lived break-glass exception is approved. |
@@ -64,8 +65,8 @@ Do not commit a real password to `main.parameters.json`.
 
 Use one of these approaches:
 
-- copy `main.parameters.json` to a local ignored file and replace the placeholder there;
-- pass `adminPassword` securely at deployment time;
+- pass `adminPassword` inline at deployment time;
+- copy `main.parameters.json` to a local ignored file and add `adminPassword` there;
 - use your organization's approved secret injection process.
 
 Also decide whether the lab VMs need outbound internet:
@@ -86,9 +87,47 @@ Preview the Bicep deployment before creating resources. Review the planned resou
 
 Do not continue if the preview shows public IPs or RDP rules you did not intend.
 
+Example what-if command with the admin password passed inline:
+
+```bash
+az deployment group what-if \
+  --resource-group rg-farsight-lab-dev \
+  --template-file infra-test/main.bicep \
+  --parameters @infra-test/main.parameters.json \
+  --parameters adminPassword='<SecurePasswordHere>'
+```
+
 ### 4. Deploy the lab
 
 Deploy `main.bicep` to the dedicated lab resource group with the reviewed parameters.
+
+Example deployment command with the admin password passed inline:
+
+```bash
+az deployment group create \
+  --resource-group rg-farsight-lab-dev \
+  --template-file infra-test/main.bicep \
+  --parameters @infra-test/main.parameters.json \
+  --parameters adminPassword='<SecurePasswordHere>'
+```
+
+If the selected Windows image is unavailable in your region, list available Windows 11 SKUs and override `imageSku` inline:
+
+```bash
+az vm image list \
+  --location italynorth \
+  --publisher MicrosoftWindowsDesktop \
+  --offer windows-11 \
+  --all \
+  --query "[].{sku:sku, version:version}" \
+  -o table
+
+az deployment group create \
+  --resource-group rg-farsight-lab-dev \
+  --template-file infra-test/main.bicep \
+  --parameters @infra-test/main.parameters.json \
+  --parameters adminPassword='<SecurePasswordHere>' imageSku='win11-24h2-pro'
+```
 
 After deployment, record:
 

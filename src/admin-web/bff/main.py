@@ -114,11 +114,16 @@ async def activate_policy(policy_id: str, version: str, body: dict[str, Any], cu
     return await _control_api("POST", f"/api/v1/policies/{policy_id}/versions/{version}/activate", actor=str(current_admin["id"]), json=body)
 
 
+@app.get("/api/bff/telemetry/tool-calls/summary")
+async def tool_call_summary(current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    return await _control_api("GET", "/api/v1/telemetry/tool-calls/summary", actor=str(current_admin["id"]))
+
+
 if static_root.exists():
     app.mount("/assets", StaticFiles(directory=static_root / "assets"), name="assets")
 
 
-@app.get("/{path:path}")
+@app.get("/{path:path}", response_model=None)
 def spa_fallback(path: str) -> FileResponse | dict[str, str]:
     index = static_root / "index.html"
     if index.exists():

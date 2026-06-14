@@ -43,7 +43,7 @@ param imagePublisher string = 'MicrosoftWindowsDesktop'
 param imageOffer string = 'windows-11'
 
 @description('Windows 11 image SKU. Override if unavailable in the selected subscription/region.')
-param imageSku string = 'win11-23h2-pro'
+param imageSku string = 'win11-24h2-pro'
 
 @description('Windows 11 image version.')
 param imageVersion string = 'latest'

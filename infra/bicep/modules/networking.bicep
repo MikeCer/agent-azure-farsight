@@ -226,6 +226,9 @@ resource containerAppsInfrastructureSubnet 'Microsoft.Network/virtualNetworks/su
 resource privateEndpointsSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-07-01' = {
   parent: vnet
   name: privateEndpointsSubnetName
+  dependsOn: [
+    containerAppsInfrastructureSubnet
+  ]
   properties: {
     addressPrefix: privateEndpointsSubnetAddressPrefix
     privateEndpointNetworkPolicies: 'Disabled'
@@ -235,6 +238,9 @@ resource privateEndpointsSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-
 resource apiManagementSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-07-01' = if (enableApiManagementSubnet) {
   parent: vnet
   name: apiManagementSubnetName
+  dependsOn: [
+    privateEndpointsSubnet
+  ]
   properties: union({
     addressPrefix: apiManagementSubnetAddressPrefix
   }, effectiveNatGatewayEnabled ? {
@@ -250,10 +256,14 @@ resource createdPrivateDnsZones 'Microsoft.Network/privateDnsZones@2020-06-01' =
   tags: tags
 }]
 
+@batchSize(1)
 resource createdPrivateDnsZoneLinks 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = [for (zone, zoneIndex) in privateDnsZones: if (empty(zone.existingId) && !empty(zone.name)) {
   parent: createdPrivateDnsZones[zoneIndex]
   name: 'vnet-link-${zone.key}-${take(uniqueString(vnet.id, zone.name), 8)}'
   location: 'global'
+  dependsOn: [
+    privateEndpointsSubnet
+  ]
   properties: {
     registrationEnabled: false
     virtualNetwork: {
@@ -262,9 +272,13 @@ resource createdPrivateDnsZoneLinks 'Microsoft.Network/privateDnsZones/virtualNe
   }
 }]
 
+@batchSize(1)
 module existingPrivateDnsZoneLinks 'private-dns-zone-link.bicep' = [for zone in privateDnsZones: if (!empty(zone.existingId) && linkExistingPrivateDnsZones) {
   name: 'dns-link-${zone.key}-${take(uniqueString(vnet.id, zone.existingId), 8)}'
   scope: resourceGroup(zone.subscriptionId, zone.resourceGroupName)
+  dependsOn: [
+    privateEndpointsSubnet
+  ]
   params: {
     privateDnsZoneName: zone.name
     virtualNetworkId: vnet.id

@@ -86,7 +86,6 @@ FarSight infrastructure is deployed through AZD/Bicep. Use this flow once the ta
 azd auth login
 azd env new dev
 azd env set AZURE_COLLECTOR_LOCATION italynorth
-azd env set AZURE_AGENT_LOCATION swedencentral
 azd provision
 azd deploy
 ```

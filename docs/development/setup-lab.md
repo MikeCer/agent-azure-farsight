@@ -63,8 +63,8 @@ Before deployment, review:
 
 - VM count and size;
 - VNet and subnet address prefixes;
-- Windows 11 image parameters;
-- admin username/password handling;
+- Windows 11 image parameters, including the default `win11-24h2-pro` SKU verified for Italy North;
+- admin username and inline `adminPassword` handling;
 - whether public IPs are disabled.
 - whether NAT Gateway is needed for outbound internet without public IPs.
 

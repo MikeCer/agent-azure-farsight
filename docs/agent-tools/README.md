@@ -20,9 +20,15 @@ Evaluate AGT policy before every FarSight API call:
 - `require_approval` - block immediate execution and route through the approval workflow.
 - `deny` - do not call the API.
 
-The bootstrap policy bundle lives at `src/agent-tools/gateway/policies/farsight-tool-policy.yaml`. Production gateway instances should use `FARSIGHT_POLICY_SOURCE=api` so the active AGT policy is retrieved from the FarSight API and Cosmos DB `policies` container. The gateway fails closed if AGT or the active policy cannot be loaded; local development can opt into a deterministic fallback evaluator with `FARSIGHT_ALLOW_POLICY_FALLBACK=true`.
+The bootstrap policy bundle lives at `src/agent-tools/gateway/policies/farsight-tool-policy.yaml`. The API image carries the same seed policy under `src/api/app/policies/` so a new Cosmos DB policy repository can initialize with the canonical gateway policy. Production gateway instances should use `FARSIGHT_POLICY_SOURCE=api` so the active AGT policy is retrieved from the FarSight API and Cosmos DB `policies` container. The gateway fails closed if AGT or the active policy cannot be loaded; local development can opt into a deterministic fallback evaluator with `FARSIGHT_ALLOW_POLICY_FALLBACK=true`.
 
 Policy authors manage versions through the admin web policy repository page. The lifecycle is draft, active, archived. Only validated policies should be activated.
+
+The gateway currently evaluates one configured policy ID, `farsight-tool-policy` by default. The repository can store multiple policy documents so future deployments can separate tool policies by environment, gateway instance, tenant segment, or specialized diagnostic scope. A new policy is not used by the gateway until the gateway is configured to load that policy ID, for example with `FARSIGHT_POLICY_ID`.
+
+## Tool-call monitoring
+
+The admin console includes a Tool-call monitoring page backed by `GET /api/v1/telemetry/tool-calls/summary`. The initial implementation returns an empty summary. Future gateway work should emit AGT decision events with tool name, actor, policy ID/version, decision, correlation ID, job ID, and timestamp so the API can aggregate calls by tool and decision.
 
 ## Approval behavior
 

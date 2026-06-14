@@ -4,6 +4,10 @@ metadata:
 infra:
   provider: bicep
   path: infra/bicep
+hooks:
+  preprovision:
+    shell: sh
+    run: ./scripts/register-resource-providers.sh
 services:
   api:
     project: ./src/api

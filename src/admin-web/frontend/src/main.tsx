@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import Editor from "@monaco-editor/react";
 import "./styles.css";
+
+type FeatureId = "overview" | "policies" | "tool-calls" | "jobs" | "devices" | "approvals" | "configuration" | "audit";
 
 type ValidationResult = {
   status: "valid" | "invalid" | string;
@@ -26,7 +28,80 @@ type PolicySummary = {
   versions: PolicyDocument[];
 };
 
+type ToolCallByTool = {
+  toolName: string;
+  totalCalls: number;
+  allowedCalls: number;
+  deniedCalls: number;
+  approvalRequiredCalls: number;
+  failedCalls: number;
+  lastSeenUtc?: string | null;
+};
+
+type RecentToolCall = {
+  timestampUtc: string;
+  toolName: string;
+  decision: string;
+  actor?: string | null;
+  policyId?: string | null;
+  policyVersion?: string | null;
+  jobId?: string | null;
+  correlationId?: string | null;
+};
+
+type ToolCallTelemetrySummary = {
+  window: string;
+  totalCalls: number;
+  allowedCalls: number;
+  deniedCalls: number;
+  approvalRequiredCalls: number;
+  failedCalls: number;
+  byTool: ToolCallByTool[];
+  recent: RecentToolCall[];
+};
+
 const defaultPolicyId = "farsight-tool-policy";
+const defaultPolicyVersion = "2026-06-12.1";
+
+const features: Array<{ id: FeatureId; label: string; description: string }> = [
+  { id: "overview", label: "Overview", description: "Operational landing page and deployment health." },
+  { id: "policies", label: "Policy repository", description: "Version and activate AGT governance policies." },
+  { id: "tool-calls", label: "Tool-call monitoring", description: "Monitor SRE Agent and gateway tool activity." },
+  { id: "jobs", label: "Diagnostic jobs", description: "Track diagnostic job lifecycle and outcomes." },
+  { id: "devices", label: "Devices", description: "Inspect collector check-ins and endpoint state." },
+  { id: "approvals", label: "Approvals", description: "Review approval-gated diagnostic actions." },
+  { id: "configuration", label: "Configuration", description: "Manage runtime and retention settings." },
+  { id: "audit", label: "Audit", description: "Review security-relevant administrative events." },
+];
+
+function newPolicyTemplate(policyId: string, policyVersion: string) {
+  return `apiVersion: governance.toolkit/v1
+name: ${policyId}
+version: "${policyVersion}"
+default_action: deny
+rules:
+  - name: deny-dangerous-input
+    condition: "contains_dangerous_input == true"
+    action: deny
+    description: "Deny arbitrary script, shell, encoded command, or free-form path input."
+
+  - name: require-approval-for-sensitive-diagnostics
+    condition: "risk_level == 'sensitive-diagnostic'"
+    action: require_approval
+    description: "Sensitive diagnostics require explicit approval."
+`;
+}
+
+function formatTimestamp(value?: string | null) {
+  if (!value) {
+    return "not available";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
+}
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -41,34 +116,59 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 function App() {
+  const [activeFeature, setActiveFeature] = useState<FeatureId>("overview");
   const [policies, setPolicies] = useState<PolicySummary[]>([]);
   const [selectedPolicyId, setSelectedPolicyId] = useState(defaultPolicyId);
-  const [version, setVersion] = useState("2026-06-12.1");
+  const [version, setVersion] = useState(defaultPolicyVersion);
   const [content, setContent] = useState("");
   const [metadata, setMetadata] = useState<PolicyDocument | null>(null);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [toolCallSummary, setToolCallSummary] = useState<ToolCallTelemetrySummary | null>(null);
+  const [toolCallLoading, setToolCallLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const activeSummary = useMemo(
-    () => policies.find((policy) => policy.policyId === selectedPolicyId),
-    [policies, selectedPolicyId],
-  );
+  function loadPolicyDocument(policy: PolicySummary) {
+    const active = policy.versions.find((item) => item.version === policy.activeVersion) ?? policy.versions[0];
+    setSelectedPolicyId(policy.policyId);
+    setVersion(active?.version ?? defaultPolicyVersion);
+    setContent(active?.content ?? "");
+    setMetadata(active ?? null);
+    setValidation(active?.validation ?? null);
+    setMessage("");
+    setError("");
+  }
+
+  function startNewPolicy() {
+    const policyId = `custom-policy-${new Date().toISOString().slice(0, 10)}`;
+    const policyVersion = new Date().toISOString().slice(0, 10);
+    setActiveFeature("policies");
+    setSelectedPolicyId(policyId);
+    setVersion(policyVersion);
+    setContent(newPolicyTemplate(policyId, policyVersion));
+    setMetadata(null);
+    setValidation(null);
+    setMessage("New draft policy initialized. Save it to add it to the repository.");
+    setError("");
+  }
 
   async function loadPolicies() {
     setError("");
     const data = await api<PolicySummary[]>("/api/bff/policies");
     setPolicies(data);
     const first = data[0];
-    if (first) {
-      setSelectedPolicyId(first.policyId);
-      const active = first.versions.find((item) => item.version === first.activeVersion) ?? first.versions[0];
-      if (active) {
-        setVersion(active.version);
-        setContent(active.content);
-        setMetadata(active);
-        setValidation(active.validation);
-      }
+    if (first && !content) {
+      loadPolicyDocument(first);
+    }
+  }
+
+  async function loadToolCallSummary() {
+    setToolCallLoading(true);
+    setError("");
+    try {
+      setToolCallSummary(await api<ToolCallTelemetrySummary>("/api/bff/telemetry/tool-calls/summary"));
+    } finally {
+      setToolCallLoading(false);
     }
   }
 
@@ -113,20 +213,44 @@ function App() {
     loadPolicies().catch((err) => setError(err.message));
   }, []);
 
-  return (
-    <main className="shell">
-      <section className="hero">
-        <p className="eyebrow">Agent-Azure-FarSight</p>
-        <h1>Admin and monitoring console</h1>
-        <p>
-          Manage governed diagnostics, approvals, module policy, and operational configuration. Policy changes are stored
-          as versioned FarSight documents and evaluated by the AGT-backed gateway before tool execution.
-        </p>
-      </section>
+  useEffect(() => {
+    if (activeFeature === "tool-calls" && toolCallSummary === null && !toolCallLoading) {
+      loadToolCallSummary().catch((err) => setError(err.message));
+    }
+  }, [activeFeature]);
 
+  function renderOverview() {
+    return (
+      <section className="feature-panel">
+        <div className="feature-heading">
+          <p className="eyebrow">Overview</p>
+          <h2>FarSight operations at a glance</h2>
+          <p>Use the menu to manage governance policy, monitor tool calls, and reach operational areas as they are implemented.</p>
+        </div>
+        <div className="feature-grid">
+          {features.filter((feature) => feature.id !== "overview").map((feature) => (
+            <button className="feature-card" key={feature.id} onClick={() => setActiveFeature(feature.id)}>
+              <strong>{feature.label}</strong>
+              <span>{feature.description}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  function renderPolicyRepository() {
+    return (
       <section className="policy-layout">
         <aside className="panel">
-          <h2>Policy repository</h2>
+          <div className="panel-header">
+            <h2>Policy repository</h2>
+            <button onClick={startNewPolicy}>New policy</button>
+          </div>
+          <p className="helper">
+            The repository can hold multiple policy documents and versions. The AGT gateway uses the active version of the
+            configured policy ID.
+          </p>
           {policies.length === 0 ? (
             <p>No policies loaded yet.</p>
           ) : (
@@ -135,14 +259,7 @@ function App() {
                 <li key={policy.policyId}>
                   <button
                     className={policy.policyId === selectedPolicyId ? "selected" : ""}
-                    onClick={() => {
-                      const active = policy.versions.find((item) => item.version === policy.activeVersion) ?? policy.versions[0];
-                      setSelectedPolicyId(policy.policyId);
-                      setVersion(active?.version ?? "");
-                      setContent(active?.content ?? "");
-                      setMetadata(active ?? null);
-                      setValidation(active?.validation ?? null);
-                    }}
+                    onClick={() => loadPolicyDocument(policy)}
                   >
                     <strong>{policy.policyId}</strong>
                     <span>Active: {policy.activeVersion ?? "none"}</span>
@@ -155,6 +272,10 @@ function App() {
 
         <section className="editor-panel">
           <div className="toolbar">
+            <div className="policy-id-field">
+              <label htmlFor="policyId">Policy ID</label>
+              <input id="policyId" value={selectedPolicyId} onChange={(event) => setSelectedPolicyId(event.target.value)} />
+            </div>
             <div>
               <label htmlFor="version">Version</label>
               <input id="version" value={version} onChange={(event) => setVersion(event.target.value)} />
@@ -183,20 +304,173 @@ function App() {
             </article>
             <article>
               <h3>Metadata</h3>
-              <p>Status: {metadata?.status ?? "unknown"}</p>
-              <p>Hash: {metadata?.contentHash ?? "not saved"}</p>
-              <p>Updated: {metadata?.updatedAtUtc ?? "not saved"}</p>
+              <p>Status: <span className="metadata-value">{metadata?.status ?? "unknown"}</span></p>
+              <p>Hash: <span className="metadata-value">{metadata?.contentHash ?? "not saved"}</span></p>
+              <p>Updated: <span className="metadata-value">{formatTimestamp(metadata?.updatedAtUtc)}</span></p>
+              <p>Updated by: <span className="metadata-value">{metadata?.updatedBy ?? "not saved"}</span></p>
             </article>
           </div>
 
           {message && <p className="message">{message}</p>}
           {error && <p className="error">{error}</p>}
-          <p className="note">
-            Production authorization is still enforced server-side. This UI is the editing surface; activation must remain
-            auditable and role-gated by the FarSight API/BFF.
-          </p>
         </section>
       </section>
+    );
+  }
+
+  function renderToolCallMonitoring() {
+    const summary = toolCallSummary;
+    return (
+      <section className="feature-panel">
+        <div className="feature-heading">
+          <p className="eyebrow">Tool-call monitoring</p>
+          <h2>AGT gateway activity</h2>
+          <p>Read-only view for tool execution volume, policy decisions, and recent SRE Agent gateway activity.</p>
+        </div>
+
+        <div className="metric-grid">
+          <article><span>Total calls</span><strong>{summary?.totalCalls ?? 0}</strong></article>
+          <article><span>Allowed</span><strong>{summary?.allowedCalls ?? 0}</strong></article>
+          <article><span>Denied</span><strong>{summary?.deniedCalls ?? 0}</strong></article>
+          <article><span>Approval required</span><strong>{summary?.approvalRequiredCalls ?? 0}</strong></article>
+          <article><span>Failed</span><strong>{summary?.failedCalls ?? 0}</strong></article>
+        </div>
+
+        <div className="table-panel">
+          <div className="panel-header">
+            <h3>Calls by tool</h3>
+            <button onClick={() => loadToolCallSummary().catch((err) => setError(err.message))}>
+              {toolCallLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+          {!summary || summary.byTool.length === 0 ? (
+            <p className="empty-state">No tool-call telemetry is available yet. Future versions will populate this from AGT/tool gateway audit events.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Tool</th>
+                  <th>Total</th>
+                  <th>Allowed</th>
+                  <th>Denied</th>
+                  <th>Approval</th>
+                  <th>Failed</th>
+                  <th>Last seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.byTool.map((tool) => (
+                  <tr key={tool.toolName}>
+                    <td>{tool.toolName}</td>
+                    <td>{tool.totalCalls}</td>
+                    <td>{tool.allowedCalls}</td>
+                    <td>{tool.deniedCalls}</td>
+                    <td>{tool.approvalRequiredCalls}</td>
+                    <td>{tool.failedCalls}</td>
+                    <td>{formatTimestamp(tool.lastSeenUtc)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="table-panel">
+          <h3>Recent calls</h3>
+          {!summary || summary.recent.length === 0 ? (
+            <p className="empty-state">No recent tool calls found for the current window ({summary?.window ?? "24h"}).</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Tool</th>
+                  <th>Decision</th>
+                  <th>Actor</th>
+                  <th>Policy</th>
+                  <th>Correlation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.recent.map((call) => (
+                  <tr key={`${call.timestampUtc}-${call.toolName}-${call.correlationId ?? ""}`}>
+                    <td>{formatTimestamp(call.timestampUtc)}</td>
+                    <td>{call.toolName}</td>
+                    <td>{call.decision}</td>
+                    <td>{call.actor ?? "unknown"}</td>
+                    <td>{call.policyId ? `${call.policyId}@${call.policyVersion ?? "unknown"}` : "unknown"}</td>
+                    <td>{call.correlationId ?? call.jobId ?? "none"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  function renderPlaceholder(feature: { label: string; description: string }) {
+    return (
+      <section className="feature-panel">
+        <div className="feature-heading">
+          <p className="eyebrow">{feature.label}</p>
+          <h2>{feature.label}</h2>
+          <p>{feature.description}</p>
+        </div>
+        <p className="empty-state">This feature area is reserved in the admin console shell and will be implemented in a later milestone.</p>
+      </section>
+    );
+  }
+
+  function renderActiveFeature() {
+    if (activeFeature === "overview") {
+      return renderOverview();
+    }
+    if (activeFeature === "policies") {
+      return renderPolicyRepository();
+    }
+    if (activeFeature === "tool-calls") {
+      return renderToolCallMonitoring();
+    }
+    return renderPlaceholder(features.find((feature) => feature.id === activeFeature)!);
+  }
+
+  return (
+    <main className="shell">
+      <section className="hero">
+        <p className="eyebrow">Agent-Azure-FarSight</p>
+        <h1>Admin and monitoring console</h1>
+        <p>
+          Manage governed diagnostics, approvals, module policy, and operational configuration. Policy changes are stored
+          as versioned FarSight documents and evaluated by the AGT-backed gateway before tool execution.
+        </p>
+      </section>
+
+      <div className="console-layout">
+        <nav className="feature-nav" aria-label="Admin console features">
+          {features.map((feature) => (
+            <button
+              key={feature.id}
+              className={activeFeature === feature.id ? "selected" : ""}
+              onClick={() => setActiveFeature(feature.id)}
+            >
+              <strong>{feature.label}</strong>
+              <span>{feature.description}</span>
+            </button>
+          ))}
+        </nav>
+
+        <section className="console-content">
+          {renderActiveFeature()}
+          {message && activeFeature !== "policies" && <p className="message">{message}</p>}
+          {error && <p className="error">{error}</p>}
+          <p className="note">
+            Production authorization is still enforced server-side. This UI is the editing surface; activation and future
+            monitoring views must remain auditable and role-gated by the FarSight API/BFF.
+          </p>
+        </section>
+      </div>
     </main>
   );
 }

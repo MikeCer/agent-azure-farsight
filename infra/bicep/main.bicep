@@ -6,14 +6,20 @@ param environmentName string
 @description('Primary collector/control-plane location.')
 param collectorLocation string = 'italynorth'
 
-@description('Azure SRE Agent/tool gateway location.')
-param agentLocation string = 'swedencentral'
-
 @description('Allow public ingress for development and test environments.')
 param enablePublicIngress bool = true
 
 @description('Enable private endpoint-capable topology. Detailed private endpoint modules are added during hardening.')
 param enablePrivateEndpoints bool = false
+
+@description('Allow ACR Tasks and trusted Azure services to bypass ACR network rules. Required for AZD remote Docker builds when ACR is private/default-deny.')
+param enableAcrTaskNetworkBypass bool = true
+
+@description('IPv4 CIDR ranges allowed through the ACR firewall when private endpoints and remote builds are enabled. Defaults cover observed AzureContainerRegistry build ranges for Italy North and Sweden Central.')
+param acrFirewallAllowedIpRanges array = [
+  '4.232.51.192/26'
+  '172.160.222.128/26'
+]
 
 @description('Collector/control-plane virtual network address prefix.')
 param vnetAddressPrefix string = '10.10.0.0/16'
@@ -49,37 +55,6 @@ param linkExistingPrivateDnsZones bool = true
 @description('Create a NAT Gateway for collector/control-plane outbound internet from delegated service subnets.')
 param enableNatGateway bool = false
 
-@description('Agent gateway virtual network address prefix.')
-param agentGatewayVnetAddressPrefix string = '10.20.0.0/16'
-
-@description('Agent gateway Container Apps infrastructure subnet prefix.')
-param agentGatewayContainerAppsInfrastructureSubnetPrefix string = '10.20.0.0/23'
-
-@description('Agent gateway private endpoint subnet prefix.')
-param agentGatewayPrivateEndpointSubnetPrefix string = '10.20.2.0/24'
-
-@description('Existing private DNS zone resource IDs keyed by service name for agent gateway private endpoint links.')
-param agentGatewayPrivateDnsZoneResourceIds object = {
-  storageBlob: ''
-  keyVault: ''
-  containerRegistry: ''
-  cosmosSql: ''
-  serviceBus: ''
-  appConfiguration: ''
-  apiManagement: ''
-  azureMonitor: ''
-  logAnalyticsOms: ''
-  logAnalyticsOds: ''
-  azureMonitorAgentSvc: ''
-  containerAppsEnvironment: ''
-}
-
-@description('Link agent gateway private endpoints to the provided existing private DNS zones.')
-param agentGatewayLinkExistingPrivateDnsZones bool = true
-
-@description('Create a NAT Gateway for agent gateway outbound internet from delegated service subnets.')
-param agentGatewayEnableNatGateway bool = false
-
 @description('Enable optional API Management front door.')
 param enableApim bool = false
 
@@ -108,11 +83,18 @@ param adminAuthClientId string = ''
 @description('Client secret for admin web Easy Auth app registration.')
 param adminAuthClientSecret string = ''
 
+@secure()
+@description('Base64-encoded 32-byte encryption secret for Container Apps Easy Auth.')
+param adminAuthEncryptionSecret string = ''
+
 @description('Issuer URL for admin web Easy Auth, for example https://login.microsoftonline.com/<tenant-id>/v2.0.')
 param adminAuthIssuer string = ''
 
 @description('Allowed token audiences for admin web Easy Auth.')
 param adminAuthAllowedAudiences array = []
+
+@description('Optional Container Apps auth token store SAS URL setting name. Leave empty to disable token store.')
+param adminAuthTokenStoreSasUrlSettingName string = ''
 
 var namePrefix = 'farsight-${environmentName}'
 var tags = {
@@ -120,21 +102,6 @@ var tags = {
   environment: environmentName
   managedBy: 'azd-bicep'
 }
-var effectiveAgentGatewayPrivateDnsZoneResourceIds = enablePrivateEndpoints ? {
-  storageBlob: !empty(agentGatewayPrivateDnsZoneResourceIds.storageBlob) ? agentGatewayPrivateDnsZoneResourceIds.storageBlob : core.outputs.privateDnsZoneIds.storageBlob
-  keyVault: !empty(agentGatewayPrivateDnsZoneResourceIds.keyVault) ? agentGatewayPrivateDnsZoneResourceIds.keyVault : core.outputs.privateDnsZoneIds.keyVault
-  containerRegistry: !empty(agentGatewayPrivateDnsZoneResourceIds.containerRegistry) ? agentGatewayPrivateDnsZoneResourceIds.containerRegistry : core.outputs.privateDnsZoneIds.containerRegistry
-  cosmosSql: !empty(agentGatewayPrivateDnsZoneResourceIds.cosmosSql) ? agentGatewayPrivateDnsZoneResourceIds.cosmosSql : core.outputs.privateDnsZoneIds.cosmosSql
-  serviceBus: !empty(agentGatewayPrivateDnsZoneResourceIds.serviceBus) ? agentGatewayPrivateDnsZoneResourceIds.serviceBus : core.outputs.privateDnsZoneIds.serviceBus
-  appConfiguration: !empty(agentGatewayPrivateDnsZoneResourceIds.appConfiguration) ? agentGatewayPrivateDnsZoneResourceIds.appConfiguration : core.outputs.privateDnsZoneIds.appConfiguration
-  apiManagement: !empty(agentGatewayPrivateDnsZoneResourceIds.apiManagement) ? agentGatewayPrivateDnsZoneResourceIds.apiManagement : core.outputs.privateDnsZoneIds.apiManagement
-  azureMonitor: !empty(agentGatewayPrivateDnsZoneResourceIds.azureMonitor) ? agentGatewayPrivateDnsZoneResourceIds.azureMonitor : core.outputs.privateDnsZoneIds.azureMonitor
-  logAnalyticsOms: !empty(agentGatewayPrivateDnsZoneResourceIds.logAnalyticsOms) ? agentGatewayPrivateDnsZoneResourceIds.logAnalyticsOms : core.outputs.privateDnsZoneIds.logAnalyticsOms
-  logAnalyticsOds: !empty(agentGatewayPrivateDnsZoneResourceIds.logAnalyticsOds) ? agentGatewayPrivateDnsZoneResourceIds.logAnalyticsOds : core.outputs.privateDnsZoneIds.logAnalyticsOds
-  azureMonitorAgentSvc: !empty(agentGatewayPrivateDnsZoneResourceIds.azureMonitorAgentSvc) ? agentGatewayPrivateDnsZoneResourceIds.azureMonitorAgentSvc : core.outputs.privateDnsZoneIds.azureMonitorAgentSvc
-  containerAppsEnvironment: !empty(agentGatewayPrivateDnsZoneResourceIds.containerAppsEnvironment) ? agentGatewayPrivateDnsZoneResourceIds.containerAppsEnvironment : core.outputs.privateDnsZoneIds.containerAppsEnvironment
-} : agentGatewayPrivateDnsZoneResourceIds
-
 module core 'modules/core.bicep' = {
   name: 'core-${environmentName}'
   params: {
@@ -146,6 +113,8 @@ module core 'modules/core.bicep' = {
     logAnalyticsRetentionDays: logAnalyticsRetentionDays
     enablePublicIngress: enablePublicIngress
     enablePrivateEndpoints: enablePrivateEndpoints
+    enableAcrTaskNetworkBypass: enableAcrTaskNetworkBypass
+    acrFirewallAllowedIpRanges: acrFirewallAllowedIpRanges
     enableApim: enableApim
     enableDevEnrollmentApi: enableDevEnrollmentApi
     adminGroupObjectIds: adminGroupObjectIds
@@ -159,32 +128,16 @@ module core 'modules/core.bicep' = {
     enableAdminEasyAuth: enableAdminEasyAuth
     adminAuthClientId: adminAuthClientId
     adminAuthClientSecret: adminAuthClientSecret
+    adminAuthEncryptionSecret: adminAuthEncryptionSecret
     adminAuthIssuer: adminAuthIssuer
     adminAuthAllowedAudiences: adminAuthAllowedAudiences
-  }
-}
-
-module agentGateway 'modules/agent-gateway.bicep' = {
-  name: 'agent-gateway-${environmentName}'
-  params: {
-    namePrefix: namePrefix
-    location: agentLocation
-    tags: tags
-    logAnalyticsRetentionDays: logAnalyticsRetentionDays
-    enablePublicIngress: enablePublicIngress
-    enablePrivateEndpoints: enablePrivateEndpoints
-    vnetAddressPrefix: agentGatewayVnetAddressPrefix
-    containerAppsInfrastructureSubnetPrefix: agentGatewayContainerAppsInfrastructureSubnetPrefix
-    privateEndpointSubnetPrefix: agentGatewayPrivateEndpointSubnetPrefix
-    privateDnsZoneResourceIds: effectiveAgentGatewayPrivateDnsZoneResourceIds
-    linkExistingPrivateDnsZones: agentGatewayLinkExistingPrivateDnsZones
-    enableNatGateway: agentGatewayEnableNatGateway
+    adminAuthTokenStoreSasUrlSettingName: adminAuthTokenStoreSasUrlSettingName
   }
 }
 
 output apiContainerAppName string = core.outputs.apiContainerAppName
 output adminContainerAppName string = core.outputs.adminContainerAppName
-output agentToolGatewayName string = agentGateway.outputs.agentToolGatewayName
+output agentToolGatewayName string = core.outputs.agentToolGatewayName
 output storageAccountName string = core.outputs.storageAccountName
 output cosmosAccountName string = core.outputs.cosmosAccountName
 output serviceBusNamespaceName string = core.outputs.serviceBusNamespaceName
@@ -193,7 +146,3 @@ output collectorVnetId string = core.outputs.vnetId
 output collectorSubnetIds object = core.outputs.subnetIds
 output collectorPrivateDnsZoneIds object = core.outputs.privateDnsZoneIds
 output collectorNatGatewayId string = core.outputs.natGatewayId
-output agentGatewayVnetId string = agentGateway.outputs.vnetId
-output agentGatewaySubnetIds object = agentGateway.outputs.subnetIds
-output agentGatewayPrivateDnsZoneIds object = agentGateway.outputs.privateDnsZoneIds
-output agentGatewayNatGatewayId string = agentGateway.outputs.natGatewayId

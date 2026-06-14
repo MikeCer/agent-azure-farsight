@@ -71,7 +71,7 @@ Generated: 2026-06-12T12:01:48+02:00
 2. Intune can distribute scripts, configuration files, module manifests, and certificates or enrollment bootstrap material.
 3. The first production deployment is single-tenant and single primary collector region.
 4. Italy North is the system-of-record region for device data, job state, approvals, artifacts, and normalized telemetry.
-5. Sweden Central hosts the Azure SRE Agent service and the AGT-protected FarSight tool gateway because Azure SRE Agent is not available in Italy North.
+5. Sweden Central hosts the Azure SRE Agent service when required by service availability; the AGT-protected FarSight tool gateway is part of the Italy North FarSight control plane.
 6. The Azure SRE Agent uses its system-assigned managed identity for least-privilege access to FarSight dependencies and tool endpoints.
 7. The FarSight control API remains the stable contract for devices, admin UI, SRE agent tools, and future integrations.
 8. Service Bus is not directly exposed to endpoints or the Azure SRE Agent.
@@ -125,8 +125,8 @@ No implementation code, infrastructure, tests, or deployment configuration curre
 
 | Region | Responsibility |
 |---|---|
-| Italy North | Device-facing control API, admin/monitoring web app, worker/reconciler, Service Bus, Cosmos DB, Blob artifacts, Log Analytics, App Insights, Key Vault, App Configuration, optional APIM/private endpoints |
-| Sweden Central | Azure SRE Agent service, AGT-protected FarSight tool gateway, SRE Agent service-managed resources, optional local observability for the gateway |
+| Italy North | Device-facing control API, admin/monitoring web app, worker/reconciler, AGT-protected FarSight tool gateway, Service Bus, Cosmos DB, Blob artifacts, Log Analytics, App Insights, Key Vault, App Configuration, optional APIM/private endpoints |
+| Sweden Central | Azure SRE Agent service and service-managed resources deployed through the separate SRE Agent package when required by service availability |
 
 ### Service mapping
 
@@ -135,7 +135,7 @@ No implementation code, infrastructure, tests, or deployment configuration curre
 | Control API | Azure Container Apps | Consumption profile for dev/test; workload profile for prod if load requires |
 | Admin web/BFF | Azure Container Apps | Consumption profile |
 | Worker/reconciler | Azure Container Apps | Internal container app or job-style worker |
-| AGT tool gateway | Azure Container Apps in Sweden Central | Consumption profile |
+| AGT tool gateway | Azure Container Apps in the FarSight control-plane region | Consumption profile |
 | Container images | Azure Container Registry | Standard for dev/test; Premium optional for Private Link/geo-replication |
 | Async broker | Azure Service Bus | Standard for V1; Premium optional if throughput/isolation requires |
 | Durable state | Azure Cosmos DB for NoSQL | Autoscale provisioned throughput; serverless only for dev |
@@ -152,7 +152,7 @@ No implementation code, infrastructure, tests, or deployment configuration curre
 ### End-to-end flow
 
 1. SRE operator or Azure SRE Agent identifies a diagnostic hypothesis.
-2. Azure SRE Agent invokes the FarSight custom agent/tool gateway in Sweden Central.
+2. Azure SRE Agent invokes the FarSight custom agent/tool gateway endpoint in the FarSight control-plane region.
 3. AGT evaluates tool policy and either allows, denies, or requires approval.
 4. If secondary approval is required, the tool gateway creates an approval request through the FarSight API and notifies Teams.
 5. Once approved, the control API creates a bounded diagnostic job in Cosmos DB and enqueues metadata to the Service Bus session-enabled jobs queue.
@@ -168,8 +168,8 @@ No implementation code, infrastructure, tests, or deployment configuration curre
 
 | Resource group | Region | Purpose |
 |---|---|---|
-| `rg-farsight-{env}-itn` | Italy North | Collector/control-plane system of record |
-| `rg-farsight-agent-{env}-swc` | Sweden Central | Azure SRE Agent integration and AGT tool gateway |
+| `rg-farsight-{env}-itn` | Italy North | Collector/control-plane system of record, including the AGT tool gateway |
+| `rg-farsight-agent-{env}-swc` | Sweden Central | Separate Azure SRE Agent package resources, if deployed |
 
 ### Bicep module boundaries
 
@@ -185,7 +185,7 @@ No implementation code, infrastructure, tests, or deployment configuration curre
 | `infra/bicep/modules/security.bicep` | Key Vault, App Configuration, managed identities, RBAC |
 | `infra/bicep/modules/networking.bicep` | Optional VNet, private endpoints, private DNS zones |
 | `infra/bicep/modules/apim.bicep` | Optional API Management, APIs, policies, products |
-| `infra/bicep/modules/agent-gateway.bicep` | Sweden Central AGT tool gateway app and identity wiring |
+| `infra/bicep/modules/core.bicep` | FarSight core resources, including API, admin web, worker, AGT tool gateway, state, messaging, storage, monitoring, and security resources |
 
 ### Naming approach
 
@@ -198,7 +198,7 @@ rg-farsight-agent-{env}-swc
 ca-farsight-api-{env}-itn
 ca-farsight-admin-{env}-itn
 ca-farsight-worker-{env}-itn
-ca-farsight-tools-{env}-swc
+ca-farsight-tools-{env}-itn
 sb-farsight-{env}-itn
 cosmos-farsight-{env}-itn
 stfarsight{env}{unique}
@@ -212,7 +212,6 @@ appcs-farsight-{env}-itn
 |---|---|---|
 | `environmentName` | `dev`, `test`, `prod` | `dev` |
 | `collectorLocation` | Control-plane location | `italynorth` |
-| `agentLocation` | Azure SRE Agent/tool gateway location | `swedencentral` |
 | `enablePublicIngress` | Public HTTPS for dev/test | `true` in dev, `false` in prod private profile |
 | `enablePrivateEndpoints` | Private endpoint topology | `false` in dev, `true` in prod |
 | `enableApim` | Optional APIM front door | `false` by default |
@@ -247,11 +246,11 @@ The planned default deployment uses public HTTPS dev/test ingress and does not d
 | Microsoft.ApiManagement/service | Italy North | 0 default / 1 optional | 0 | 0 default / 1 optional | Tier-specific API operation limits | Optional; disabled for dev |
 | Microsoft.Network/virtualNetworks | Italy North | 0 default / 1 optional | 5 | 5 default / 6 optional | ARM per-type/resource-group limit 800 | Optional private topology |
 | Microsoft.Network/privateEndpoints | Italy North | 0 default / 6 optional | 5 | 5 default / 11 optional | Service-specific private endpoint limits apply | Optional Storage, Cosmos, Key Vault, App Config, ACR Premium, APIM |
-| Microsoft.App/managedEnvironments | Sweden Central | 1 | 0 | 1 | QMS-managed regional quota | Tool gateway environment |
-| Microsoft.App/containerApps | Sweden Central | 1 | 0 | 1 | ARM per-type/resource-group limit 800 plus Container Apps env quotas | AGT-protected FarSight tool gateway |
-| Microsoft.OperationalInsights/workspaces | Sweden Central | 1 | 2 | 3 | ARM per-type/resource-group limit 800; ingestion limits apply | Tool gateway observability; Azure SRE Agent may create its own workspace |
-| Microsoft.Insights/components | Sweden Central | 1 | 2 | 3 | ARM per-type/resource-group limit 800 | Tool gateway App Insights; Azure SRE Agent may create its own instance |
-| Microsoft.KeyVault/vaults | Sweden Central | 1 | 1 | 2 | No object count limit; transaction limits apply | Gateway policy secrets/config refs if needed |
+| Microsoft.App/managedEnvironments | Sweden Central | 0 | 0 | 0 | QMS-managed regional quota | Main FarSight template no longer deploys a Sweden Central Container Apps environment |
+| Microsoft.App/containerApps | Sweden Central | 0 | 0 | 0 | ARM per-type/resource-group limit 800 plus Container Apps env quotas | Main FarSight template no longer deploys a Sweden Central tool gateway |
+| Microsoft.OperationalInsights/workspaces | Sweden Central | 0 | 2 | 2 | ARM per-type/resource-group limit 800; ingestion limits apply | Azure SRE Agent package may create or use its own workspace |
+| Microsoft.Insights/components | Sweden Central | 0 | 2 | 2 | ARM per-type/resource-group limit 800 | Azure SRE Agent package may create or use its own Application Insights instance |
+| Microsoft.KeyVault/vaults | Sweden Central | 0 | 1 | 1 | No object count limit; transaction limits apply | Azure SRE Agent package may create or use its own vault for service-specific secrets |
 | Azure SRE Agent service | Sweden Central | 1 | Service-specific | Service-specific | Region and tenant availability varies | Azure SRE Agent docs state service creates Application Insights, Log Analytics workspace, and managed identity |
 
 ### Phase 2: Quota validation status
@@ -845,7 +844,7 @@ agent-azure-farsight/
 ### MVP
 
 - Repo structure and CI skeleton.
-- AZD/Bicep baseline for Italy North control plane and Sweden Central tool gateway.
+- AZD/Bicep baseline for Italy North control plane, including the AGT tool gateway.
 - Control API with check-in, job create/fetch, result ingestion, and simple summaries.
 - Cosmos DB state containers.
 - Service Bus session-enabled jobs queue.
@@ -1029,7 +1028,41 @@ agent-azure-farsight/
 
 | Check | Command Run | Result | Timestamp |
 |---|---|---|---|
-| Not run yet | Validation is blocked until user approves plan and implementation artifacts are generated | Pending | 2026-06-12T12:01:48+02:00 |
+| Initial scaffold validation placeholder | Validation was blocked until user approved plan and implementation artifacts were generated | Superseded by later targeted validation entries | 2026-06-12T12:01:48+02:00 |
+| ACR remote-build bypass Bicep build | `az bicep build --file infra/bicep/main.bicep` | Passed; updated registry API version supports `networkRuleBypassAllowedForTasks` without warnings | 2026-06-13T00:22:55+02:00 |
+| ACR remote-build bypass AZD preview | `azd provision --preview --no-prompt` | Passed; preview shows `acrfarsightdev227jikzy` changing `properties.networkRuleBypassAllowedForTasks` from `false` to `true` | 2026-06-13T00:22:55+02:00 |
+| ACR selected-networks remote-build Bicep build | `az bicep build --file infra/bicep/main.bicep` | Passed after changing private ACR remote-build mode to public endpoint enabled with firewall default `Deny` and bypass enabled | 2026-06-13T00:33:16+02:00 |
+| ACR selected-networks remote-build AZD preview | `azd provision --preview --no-prompt` | Passed; preview shows `acrfarsightdev227jikzy` changing `properties.publicNetworkAccess` from `Disabled` to `Enabled` and `properties.networkRuleSet.defaultAction` from `Allow` to `Deny` | 2026-06-13T00:33:16+02:00 |
+| ACR regional build IP allowlist Bicep build | `az bicep build --file infra/bicep/main.bicep` | Passed after adding parameterized ACR firewall IP rules for the AzureContainerRegistry.ItalyNorth build range | 2026-06-13T00:42:36+02:00 |
+| ACR regional build IP allowlist AZD preview | `azd provision --preview --no-prompt` | Passed; preview shows `acrfarsightdev227jikzy` adding `properties.networkRuleSet.ipRules: [{\"action\":\"Allow\",\"value\":\"4.232.51.192/26\"}]` | 2026-06-13T00:42:36+02:00 |
+| ACR Sweden Central remote-build IP allowlist | `az network list-service-tags --location italynorth` | Identified denied remote build IP `172.160.222.159` in `AzureContainerRegistry.SwedenCentral` range `172.160.222.128/26`; added it to the default ACR firewall allowlist | 2026-06-14T18:16:25+02:00 |
+| ACR dual-region remote-build allowlist Bicep build | `az bicep build --file infra/bicep/main.bicep` | Passed after adding both observed ACR build CIDRs: Italy North `4.232.51.192/26` and Sweden Central `172.160.222.128/26` | 2026-06-14T18:16:25+02:00 |
+| ACR dual-region remote-build allowlist AZD preview | `azd provision --preview --no-prompt` | Passed; preview shows live ACR `acrfarsightdevm3vrv527` will modify `properties.networkRuleSet.ipRules` | 2026-06-14T18:16:25+02:00 |
+| Container Apps ACR pull-auth Bicep build | `az bicep build --file infra/bicep/main.bicep` | Passed after adding Container App registry identity configuration and `AcrPull` role assignments for app/tool identities | 2026-06-13T00:58:17+02:00 |
+| Container Apps ACR pull-auth AZD preview | `azd provision --preview --no-prompt` | Passed; preview shows `properties.configuration.registries` added to API, admin web, worker, and agent-tools apps | 2026-06-13T00:58:17+02:00 |
+| Live ACR pull role check | `az role assignment list --scope <acr-id> --query \"[?roleDefinitionName=='AcrPull']\"` | Confirmed live ACR has no `AcrPull` assignments yet; reprovision is required before retrying image deployment | 2026-06-13T00:58:17+02:00 |
+| Serialized private DNS VNet links Bicep build | `az bicep build --file infra/bicep/main.bicep` | Passed after adding `@batchSize(1)` to private DNS virtual network link loops | 2026-06-13T05:42:15+02:00 |
+| Serialized private DNS VNet links AZD preview | `azd provision --preview --no-prompt` | Passed; validates the networking module after serializing VNet-link updates to avoid Microsoft.Network `AnotherOperationInProgress` conflicts | 2026-06-13T05:42:15+02:00 |
+| Ordered VNet child operations Bicep build | `az bicep build --file infra/bicep/main.bicep` | Passed after ordering subnet creation before private DNS VNet links in the networking module | 2026-06-13T06:34:52+02:00 |
+| Ordered VNet child operations AZD preview | `azd provision --preview --no-prompt` | Passed; validates the dependency graph that prevents subnet updates and DNS VNet links from targeting the same VNet concurrently | 2026-06-13T06:34:52+02:00 |
+| Single-region FarSight control-plane Bicep build | `az bicep build --file infra/bicep/main.bicep` | Passed after moving `agent-tools` into the core Italy North Container Apps environment and removing the Sweden Central agent-gateway module from the main template | 2026-06-13T07:06:55+02:00 |
+| Single-region FarSight control-plane AZD preview | `azd provision --preview --no-prompt` | Blocked because Azure reports resource group `rg-azure-farsight` is in `Deleting` state; retry after deletion completes or select a new resource group | 2026-06-13T07:06:55+02:00 |
+| Admin Easy Auth secret placement Bicep build | `az bicep build --file infra/bicep/main.bicep` | Passed after moving `microsoft-provider-authentication-secret` from API app config to admin web app config | 2026-06-14T18:52:28+02:00 |
+| Admin Easy Auth secret placement AZD preview | `azd provision --preview --no-prompt` | Passed; preview shows `properties.configuration.secrets` added to `ca-fs-dev-admin-swc` and removed from `ca-fs-dev-api-swc` | 2026-06-14T18:52:28+02:00 |
+| Public solution ingress with private dependencies build | `sh -n scripts/register-resource-providers.sh && az bicep build --file infra/bicep/main.bicep` | Passed after decoupling Container Apps public ingress from private endpoint dependency isolation and adding provider registration hook script | 2026-06-14T19:03:10+02:00 |
+| Public solution ingress with private dependencies AZD preview | `azd provision --preview --no-prompt` | Passed; preview shows API, admin web, and agent-tools ingress changing `external: false => true` while private endpoint resources remain in the plan | 2026-06-14T19:03:10+02:00 |
+| Admin Easy Auth encryption secret build | `python3 -m py_compile scripts/provision-admin-app-registration.py && az bicep build --file infra/bicep/main.bicep` | Passed after adding separate `FARSIGHT_ADMIN_AUTH_ENCRYPTION_SECRET` and using it for Container Apps auth encryption | 2026-06-14T19:19:04+02:00 |
+| Admin Easy Auth encryption secret AZD preview | `azd provision --preview --no-prompt` | Passed; preview shows admin app secrets changing from only `microsoft-provider-authentication-secret` to both provider and `farsight-admin-auth-encryption-secret` | 2026-06-14T19:19:04+02:00 |
+| Admin Container App target port build | `az bicep build --file infra/bicep/main.bicep` | Passed after aligning admin web ingress `targetPort` with the Dockerfile/Uvicorn port `8000` | 2026-06-14T19:42:48+02:00 |
+| Admin Container App target port AZD preview | `azd provision --preview --no-prompt` | Passed; preview shows `ca-fs-dev-admin-swc` ingress `targetPort` changing from `8080` to `8000` | 2026-06-14T19:42:48+02:00 |
+| Admin BFF FastAPI import check | `cd src/admin-web && /tmp/farsight-admin-bff-venv/bin/python - <<'PY' ... importlib.import_module('bff.main') ... PY` | Passed after disabling FastAPI response-model generation on the SPA fallback route that can return `FileResponse` or a JSON placeholder | 2026-06-14T19:50:58+02:00 |
+| Public ACA environment naming build | `az bicep build --file infra/bicep/main.bicep` | Passed after adding `pub`/`int` ingress-mode tokens to Container Apps environment and app names | 2026-06-14T19:58:53+02:00 |
+| Public ACA environment naming AZD preview | `azd provision --preview --no-prompt` | Passed; preview creates `cae-farsight-dev-pub-swedencentral` and `ca-fs-dev-*-pub-swc` apps while leaving prior internal-mode resources skipped | 2026-06-14T19:58:53+02:00 |
+| Single ACA subnet model build | `az bicep build --file infra/bicep/main.bicep` | Passed after reverting the temporary public ACA subnet workaround; final topology uses one delegated Container Apps subnet and requires old environment deletion before switching internal/public modes | 2026-06-14T20:48:36+02:00 |
+| Policy preload identity/env build | `python3 -m py_compile src/api/app/policy_repository.py src/admin-web/bff/main.py && az bicep build --file infra/bicep/main.bicep` | Passed after setting `AZURE_CLIENT_ID`, wiring `FARSIGHT_CONTROL_API_BASE_URL`, and seeding the default policy in Cosmos on first use | 2026-06-14T21:53:51+02:00 |
+| Policy preload identity/env AZD preview | `azd provision --preview --no-prompt` | Passed; preview updates API/admin/tool container environment configuration for managed identity and BFF-to-API proxy routing | 2026-06-14T21:53:51+02:00 |
+| Canonical policy seed and admin UI build | `cmp -s src/agent-tools/gateway/policies/farsight-tool-policy.yaml src/api/app/policies/farsight-tool-policy.yaml && python3 -m py_compile src/api/app/policy_repository.py src/admin-web/bff/main.py && cd src/admin-web/frontend && npm install --no-audit --no-fund && npm run build -- --mode production` | Passed after bundling the canonical gateway policy into the API image, repairing seed-created fallback policies, adding New policy UI flow, and fixing metadata wrapping/date formatting | 2026-06-14T21:53:51+02:00 |
+| Admin console shell and tool-call monitoring build | `python3 -m py_compile src/api/app/models.py src/api/app/main.py src/admin-web/bff/main.py src/api/app/policy_repository.py && cd src/admin-web/frontend && npm run build -- --mode production` | Passed after adding the admin feature navigation shell, read-only tool-call monitoring UI, and stable API/BFF telemetry summary endpoints | 2026-06-14T22:34:51+02:00 |
 
 ---
 

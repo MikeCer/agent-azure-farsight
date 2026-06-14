@@ -6,19 +6,19 @@
       "value": "farsight-test"
     },
     "location": {
-      "value": "italynorth"
+      "value": "swedencentral"
     },
     "vmCount": {
-      "value": 2
+      "value": 1
     },
     "vmSize": {
-      "value": "Standard_B2s"
+      "value": "Standard_B2s_v2"
     },
     "adminUsername": {
       "value": "farsightadmin"
     },
-    "adminPassword": {
-      "value": "REPLACE-WITH-SECURE-PASSWORD"
+    "imageSku": {
+      "value": "win11-24h2-pro"
     },
     "vnetAddressPrefix": {
       "value": "10.70.0.0/16"
@@ -33,7 +33,7 @@
       "value": []
     },
     "enableNatGateway": {
-      "value": false
+      "value": true
     }
   }
 }

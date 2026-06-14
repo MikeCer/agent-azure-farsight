@@ -13,6 +13,7 @@ The FarSight control API is an early FastAPI implementation. Contracts below des
 - `POST /api/v1/policies/{policyId}/validate` validates AGT YAML before save or activation.
 - `PUT /api/v1/policies/{policyId}/versions/{version}` saves a draft or version.
 - `POST /api/v1/policies/{policyId}/versions/{version}/activate` activates a validated version.
+- `GET /api/v1/telemetry/tool-calls/summary` returns the tool-call telemetry summary used by the admin console.
 
 ## Authentication and authorization
 
@@ -40,7 +41,19 @@ Use stable machine-readable codes such as `invalid_schema`, `policy_denied`, `ap
 
 Policy repository operations use Cosmos DB when `FARSIGHT_COSMOS_ENDPOINT` is configured. The API uses managed identity through `DefaultAzureCredential` and the `policies` container in the `farsight` database by default. The infrastructure assigns the API managed identity the Cosmos DB built-in data contributor role scoped to the FarSight database. Local development without `FARSIGHT_COSMOS_ENDPOINT` uses a seeded in-memory repository for safe iteration.
 
+## Tool-call telemetry
+
+The initial telemetry endpoint returns an empty, stable shape:
+
+- `window`
+- aggregate counts for total, allowed, denied, approval-required, and failed calls;
+- `byTool` rows;
+- `recent` tool-call rows.
+
+Future implementations should populate this from AGT/tool gateway audit events in Log Analytics, Application Insights, or Cosmos DB. The endpoint is read-only and must not be used as an authorization control.
+
 ## Known gaps
 
 - Replace the temporary `FARSIGHT_ENABLE_POLICY_ADMIN_WRITES` gate with Entra-authenticated FarSight Admin role checks and audit events.
+- Back the tool-call telemetry endpoint with real AGT/tool gateway audit records.
 - Publish generated OpenAPI, request/response examples, and finalized error schema once the API stabilizes.

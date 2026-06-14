@@ -234,3 +234,35 @@ class PolicyValidateRequest(CamelModel):
 class PolicyActivateRequest(CamelModel):
     activated_by: str = Field(default="admin-ui", alias="activatedBy")
     notes: str | None = None
+
+
+class ToolCallByTool(CamelModel):
+    tool_name: str = Field(alias="toolName")
+    total_calls: int = Field(default=0, alias="totalCalls")
+    allowed_calls: int = Field(default=0, alias="allowedCalls")
+    denied_calls: int = Field(default=0, alias="deniedCalls")
+    approval_required_calls: int = Field(default=0, alias="approvalRequiredCalls")
+    failed_calls: int = Field(default=0, alias="failedCalls")
+    last_seen_utc: datetime | None = Field(default=None, alias="lastSeenUtc")
+
+
+class RecentToolCall(CamelModel):
+    timestamp_utc: datetime = Field(alias="timestampUtc")
+    tool_name: str = Field(alias="toolName")
+    decision: str
+    actor: str | None = None
+    policy_id: str | None = Field(default=None, alias="policyId")
+    policy_version: str | None = Field(default=None, alias="policyVersion")
+    job_id: str | None = Field(default=None, alias="jobId")
+    correlation_id: str | None = Field(default=None, alias="correlationId")
+
+
+class ToolCallTelemetrySummary(CamelModel):
+    window: str = "24h"
+    total_calls: int = Field(default=0, alias="totalCalls")
+    allowed_calls: int = Field(default=0, alias="allowedCalls")
+    denied_calls: int = Field(default=0, alias="deniedCalls")
+    approval_required_calls: int = Field(default=0, alias="approvalRequiredCalls")
+    failed_calls: int = Field(default=0, alias="failedCalls")
+    by_tool: list[ToolCallByTool] = Field(default_factory=list, alias="byTool")
+    recent: list[RecentToolCall] = Field(default_factory=list)

@@ -2,8 +2,9 @@
 
 This guide deploys Agent-Azure-FarSight into a new Azure environment using
 AZD/Bicep, private endpoints, private DNS, and internal Container Apps ingress.
-Use it for a production-style build in Italy North for the collector/control
-plane and Sweden Central for the Azure SRE Agent/tool gateway.
+Use it for a production-style FarSight control-plane build in Italy North. The
+Azure SRE Agent resource is deployed separately with its own package and can use
+Sweden Central when required by service availability.
 
 > Current state: the repository is still early implementation. The AZD scaffold
 > already exposes `FARSIGHT_ENABLE_PRIVATE_ENDPOINTS` and
@@ -53,7 +54,7 @@ The deploying identity needs, at minimum:
 
 ### Region and quota checks
 
-Use Italy North (`italynorth`) for collector-facing resources and Sweden Central (`swedencentral`) for the SRE Agent/tool gateway. Confirm regional availability and quotas before reserving address space.
+Use Italy North (`italynorth`) for the FarSight collector/control-plane resources created by this AZD template. Confirm regional availability and quotas before reserving address space. Sweden Central (`swedencentral`) applies to the separate Azure SRE Agent package, not to the main FarSight Container Apps deployment.
 
 Also check subscription quotas and policy for:
 
@@ -71,20 +72,20 @@ Also check subscription quotas and policy for:
 Complete this worksheet before running `azd provision --preview`. Do not overlap
 with hub, on-premises, VPN, ExpressRoute, or endpoint client ranges.
 
-| Planning item | Italy North collector/control plane | Sweden Central SRE Agent/gateway | Decision/owner |
+| Planning item | Italy North FarSight control plane | Separate Azure SRE Agent package, if used | Decision/owner |
 | --- | --- | --- | --- |
-| Region code | `italynorth` | `swedencentral` | Platform owner |
-| VNet name | `<env>-itn-vnet` | `<env>-sec-vnet` |  |
-| VNet address space | Example: `10.42.0.0/16` | Example: `10.52.0.0/16` |  |
-| Container Apps subnet | Example: `10.42.1.0/23` | Example: `10.52.1.0/23` | Delegate to `Microsoft.App/environments` |
-| Private endpoint subnet | Example: `10.42.4.0/24` | Example: `10.52.4.0/24` | Disable PE network policies if required |
-| Azure SRE Agent VNet | Peered or routed to Sweden Central | Primary SRE Agent VNet | Network owner |
-| Hub/firewall route table | Route to private endpoints and ACA | Route to FarSight API and monitor endpoints | Network owner |
+| Region code | `italynorth` | `swedencentral`, if required | Platform owner |
+| VNet name | `<env>-itn-vnet` | SRE Agent package VNet, if deployed |  |
+| VNet address space | Example: `10.42.0.0/16` | Example: `10.52.0.0/16`, if deployed |  |
+| Container Apps subnet | Example: `10.42.1.0/23` | N/A for this main template | Delegate FarSight subnet to `Microsoft.App/environments` |
+| Private endpoint subnet | Example: `10.42.4.0/24` | SRE Agent package subnet, if deployed | Disable PE network policies if required |
+| Azure SRE Agent VNet | N/A for this main template | Primary SRE Agent VNet, if deployed | Network owner |
+| Hub/firewall route table | Route to FarSight private endpoints and Container Apps | Route from SRE Agent to FarSight endpoints, if needed | Network owner |
 | DNS resolver | Azure DNS, Private Resolver, or custom DNS | Same resolver path | DNS owner |
 | New private DNS zones? | Yes/no per zone | Yes/no per zone | DNS owner |
 | Existing private DNS zone IDs | Record resource IDs | Record resource IDs | DNS owner |
-| VNet links to private zones | Italy VNet, hub, resolver spokes | Sweden VNet, hub, resolver spokes | DNS owner |
-| Cross-region routing | Italy <-> Sweden peering, hub, or VPN | Sweden <-> Italy peering, hub, or VPN | Network owner |
+| VNet links to private zones | Italy VNet, hub, resolver spokes | SRE Agent VNet only if it must resolve FarSight private endpoints | DNS owner |
+| Cross-region routing | Not required by this main template | Required only if the SRE Agent package uses private FarSight endpoints from another region | Network owner |
 | Endpoint client path | Corporate VPN, ExpressRoute, proxy, or other private path | N/A | Endpoint/Intune owner |
 
 Design notes:
@@ -93,7 +94,8 @@ Design notes:
 - Do not deploy private endpoints into delegated Container Apps subnets.
 - Do not associate NAT Gateway directly to Container Apps infrastructure subnets. Use supported Container Apps egress controls or network routing patterns for production egress design, and use `infra-test/` NAT Gateway for Windows client lab outbound internet.
 - Link private DNS zones to every VNet that must resolve FarSight resources,
-  including hub resolver VNets and the SRE Agent VNet.
+  including hub resolver VNets. Link an SRE Agent VNet only after private routing
+  to the FarSight control-plane VNet exists.
 - If endpoint collectors must call an internal API, ensure Windows clients have a
   private route and DNS path through VPN, ExpressRoute, or a managed proxy.
 - Decide whether the deployment creates new private DNS zones or links to
@@ -122,8 +124,8 @@ records automatically.
 | Azure Monitor blob dependency | `privatelink.blob.core.windows.net` |
 | Container Apps managed environment | `privatelink.{regionName}.azurecontainerapps.io` |
 
-For this topology, `{regionName}` is `italynorth` or `swedencentral`. The ACR
-regional data zone may be populated through `privatelink.azurecr.io` depending on
+For this topology, `{regionName}` is normally `italynorth` for the main FarSight
+deployment. The ACR regional data zone may be populated through `privatelink.azurecr.io` depending on
 registry settings; validate generated records during the preview. For Azure
 Monitor, deploy an Azure Monitor Private Link Scope (AMPLS) and associate the Log
 Analytics workspace and Application Insights component so ingestion and query
@@ -138,25 +140,55 @@ Expected Bicep parameter mapping:
 | AZD variable | Bicep parameter | Purpose |
 | --- | --- | --- |
 | `FARSIGHT_ENABLE_PRIVATE_ENDPOINTS` | `enablePrivateEndpoints` | Creates private endpoint-capable topology and disables public network access after endpoints and DNS are ready. |
-| `FARSIGHT_ENABLE_PUBLIC_INGRESS` | `enablePublicIngress` | `false` makes Container Apps ingress internal-only for private deployments. |
-| `FARSIGHT_COLLECTOR_VNET_ADDRESS_PREFIXES` | `collectorVnetAddressPrefixes` | Italy North VNet address space. |
-| `FARSIGHT_COLLECTOR_CONTAINER_APPS_SUBNET_PREFIX` | `collectorContainerAppsSubnetPrefix` | Delegated subnet for Italy North Container Apps environment. |
-| `FARSIGHT_COLLECTOR_PRIVATE_ENDPOINT_SUBNET_PREFIX` | `collectorPrivateEndpointSubnetPrefix` | Private endpoint subnet for Italy North dependencies. |
-| `FARSIGHT_SRE_AGENT_VNET_ADDRESS_PREFIXES` | `sreAgentVnetAddressPrefixes` | Sweden Central SRE Agent/gateway VNet address space. |
-| `FARSIGHT_SRE_AGENT_CONTAINER_APPS_SUBNET_PREFIX` | `sreAgentContainerAppsSubnetPrefix` | Delegated subnet for Sweden Central Container Apps environment. |
-| `FARSIGHT_SRE_AGENT_PRIVATE_ENDPOINT_SUBNET_PREFIX` | `sreAgentPrivateEndpointSubnetPrefix` | Private endpoint subnet for SRE Agent/gateway dependencies. |
+| `FARSIGHT_ENABLE_ACR_TASK_NETWORK_BYPASS` | `enableAcrTaskNetworkBypass` | Keeps ACR in selected-networks/default-deny mode and allows ACR Tasks/trusted Azure services to bypass ACR network rules so AZD remote Docker builds can push images. |
+| `FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_ITALY_NORTH` | `acrFirewallAllowedIpRanges[0]` | Allows the Italy North Azure Container Registry build IP range through the ACR firewall for AZD remote builds. Default: `4.232.51.192/26`. |
+| `FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_SWEDEN_CENTRAL` | `acrFirewallAllowedIpRanges[1]` | Allows the Sweden Central Azure Container Registry build IP range through the ACR firewall for AZD remote builds. Default: `172.160.222.128/26`. |
+| `FARSIGHT_ENABLE_PUBLIC_INGRESS` | `enablePublicIngress` | `true` exposes solution endpoints over public Container Apps ingress. `false` makes Container Apps ingress internal-only. Private endpoints for Azure dependencies are controlled separately by `FARSIGHT_ENABLE_PRIVATE_ENDPOINTS`. |
+| `FARSIGHT_VNET_ADDRESS_PREFIX` | `vnetAddressPrefix` | FarSight control-plane VNet address space. |
+| `FARSIGHT_CONTAINER_APPS_INFRASTRUCTURE_SUBNET_PREFIX` | `containerAppsInfrastructureSubnetPrefix` | Single delegated subnet for the active FarSight Container Apps environment. Default: `10.10.0.0/23`. |
+| `FARSIGHT_PRIVATE_ENDPOINT_SUBNET_PREFIX` | `privateEndpointSubnetPrefix` | Private endpoint subnet for FarSight dependencies. |
 | `FARSIGHT_LINK_EXISTING_PRIVATE_DNS_ZONES` | `linkExistingPrivateDnsZones` | Links central zones instead of creating duplicate zones. |
 | `FARSIGHT_EXISTING_PRIVATE_DNS_ZONE_IDS` | `existingPrivateDnsZoneIds` | Resource IDs for central private DNS zones. |
 
 ### Admin Easy Auth app registration
 
-The admin web app uses Container Apps Easy Auth when enabled. Create or update the Entra app registration with `scripts/provision-admin-app-registration.py` after you know the admin web callback URI or custom domain. Set the emitted `FARSIGHT_ADMIN_AUTH_*` values in the AZD environment, then enable Easy Auth with `FARSIGHT_ENABLE_ADMIN_EASY_AUTH=true`.
+The admin web app uses Container Apps Easy Auth when enabled. The Entra app registration is not created by Bicep and `scripts/provision-admin-app-registration.py` is intentionally not wired as an AZD hook. Run the script manually after the admin web URL or production custom domain is known, then let AZD pass the resulting values into Bicep on the next provision.
 
-For greenfield deployments without a pre-existing custom domain, use a two-step flow: provision with Easy Auth disabled, capture the admin app URL, run the app-registration script with the callback URI, then provision again with Easy Auth enabled.
+Use this flow for greenfield deployments without a pre-existing custom domain:
+
+1. Keep `FARSIGHT_ENABLE_ADMIN_EASY_AUTH=false` for the first provision/deploy so the admin Container App can be created without auth metadata.
+2. Run the initial AZD deployment flow far enough to obtain the admin web host name.
+3. Build the Easy Auth redirect URI as `https://<admin-web-host>/.auth/login/aad/callback`, or use the same path under the approved custom domain.
+4. Run `scripts/provision-admin-app-registration.py` manually with that redirect URI. Use `--create-secret` when the script must create the Container Apps Easy Auth client secret.
+5. Store the emitted `FARSIGHT_ADMIN_AUTH_CLIENT_ID`, `FARSIGHT_ADMIN_AUTH_CLIENT_SECRET`, `FARSIGHT_ADMIN_AUTH_ENCRYPTION_SECRET`, `FARSIGHT_ADMIN_AUTH_ISSUER`, and `FARSIGHT_ADMIN_AUTH_ALLOWED_AUDIENCE` values in the AZD environment.
+6. Set `FARSIGHT_ENABLE_ADMIN_EASY_AUTH=true`.
+7. Re-run the AZD provision or full deployment flow so Bicep creates the Container Apps Easy Auth configuration.
+
+Easy Auth is skipped unless the enable flag, client ID, client secret, auth encryption secret, and issuer are all populated. The auth token store is disabled by default to avoid requiring a Blob SAS URL setting; enable it only after providing a valid token-store SAS URL setting name.
+
+The Easy Auth Entra client secret is stored as `microsoft-provider-authentication-secret` in the admin web Container App configuration. Container Apps Easy Auth also requires a separate encryption secret, stored as `farsight-admin-auth-encryption-secret`; its value must be a base64 string converted from 32 random bytes. The app-registration script emits this value as `FARSIGHT_ADMIN_AUTH_ENCRYPTION_SECRET`.
+
+For production, prefer a stable custom domain before registering redirect URIs. If the admin host name changes after app registration, update the Entra app redirect URI with the script and reprovision the auth configuration.
 
 If the preview reports unused variables, keep them in the worksheet and finish the
 matching Bicep parameter work before production. Do not compensate by leaving
 public network access enabled in a private deployment.
+
+### Public solution ingress with private Azure dependencies
+
+`FARSIGHT_ENABLE_PRIVATE_ENDPOINTS` and `FARSIGHT_ENABLE_PUBLIC_INGRESS` are intentionally independent.
+
+- Set `FARSIGHT_ENABLE_PRIVATE_ENDPOINTS=true` to keep Azure dependencies such as Storage, Key Vault, ACR, Cosmos DB, Service Bus, App Configuration, and monitoring on private endpoints with public network access disabled where supported.
+- Set `FARSIGHT_ENABLE_PUBLIC_INGRESS=true` when the FarSight API, admin web, and AGT tool gateway must be reachable from the internet for dev/test or for an enterprise pattern that later fronts those endpoints with another access layer.
+- Set `FARSIGHT_ENABLE_PUBLIC_INGRESS=false` when clients and operators reach FarSight through VPN, ExpressRoute, peering, private DNS, private resolver, jumpbox, or another approved private path.
+
+With both `FARSIGHT_ENABLE_PRIVATE_ENDPOINTS=true` and `FARSIGHT_ENABLE_PUBLIC_INGRESS=true`, the Container Apps environment is VNet-integrated but not internal-only. The app endpoints are public, while their data-plane dependencies still use private endpoints and managed identities.
+
+Container Apps managed environment internal/public mode is effectively a creation-time network decision. The Bicep names the Container Apps environment and apps with an ingress-mode token (`pub` or `int`) so switching modes creates a fresh compatible environment instead of trying to mutate an existing internal environment. The final topology still uses one Container Apps delegated subnet. Before switching modes in an existing environment, delete the old Container Apps environment and wait until Azure releases the delegated subnet; otherwise the new environment fails with `ManagedEnvironmentSubnetInUse`.
+
+### Provider registration preprovision hook
+
+`azure.yaml` runs `scripts/register-resource-providers.sh` as a `preprovision` hook. The script checks required Azure resource providers in the selected subscription and registers missing providers before Bicep starts. This prevents failures such as an unregistered `Microsoft.App` provider during Container Apps deployment.
 
 ## 5. Preview and deploy
 
@@ -164,24 +196,36 @@ public network access enabled in a private deployment.
 
 Run the AZD provision preview and review the result before approving deployment. Review these items:
 
-- Resource groups and locations match Italy North and Sweden Central.
-- Container Apps environments use the planned subnets.
-- Container Apps ingress is internal when `enablePublicIngress` is `false`.
+- Resource group and location match the FarSight control-plane region.
+- Container Apps environments use the planned subnets when private endpoints are enabled.
+- Container Apps ingress is public when `enablePublicIngress` is `true`, and internal-only when `enablePublicIngress` is `false`.
+- Container Apps resource names include `pub` or `int` to reflect ingress mode. Confirm AZD-managed services are tagged on the active mode's app resources, and remove old mode resources before reprovisioning with the opposite mode.
 - Private endpoints are created for Storage Blob, Key Vault, ACR, Cosmos DB,
   Service Bus, App Configuration, APIM if enabled, Monitor/Log Analytics, and
   Container Apps managed environments.
 - Private DNS zone groups use existing zone IDs when
   `linkExistingPrivateDnsZones` is `true`.
+- VNet child operations are intentionally ordered: subnets are created first, then private DNS VNet links are created serially for each VNet. This avoids `AnotherOperationInProgress` errors from Microsoft.Network when subnet updates and DNS zone links target the same VNet at once.
 - Public network access is not disabled until the corresponding private endpoint
   and DNS record exist.
 - Managed identities and RBAC assignments are scoped to the least privilege
-  needed by the API, worker, admin web, and tool gateway.
+  needed by the API, worker, admin web, and AGT tool gateway.
 
 ### Deploy
 
 Deploy through the approved AZD/release process. If your release process separates infrastructure from images, provision infrastructure first, then deploy signed images through the approved pipeline.
 
 AZD builds and publishes the `api`, `admin-web`, and `agent-tools` container images during the deploy phase. The infrastructure outputs the provisioned container registry endpoint and tags each Container App with `azd-service-name` so AZD can push images and update the correct app. Service folders include `.dockerignore` files to keep remote build archives small.
+
+When private endpoints are enabled, the registry is network-restricted. Keep `FARSIGHT_ENABLE_ACR_TASK_NETWORK_BYPASS=true` when using AZD remote Docker builds. In that mode, Bicep keeps the ACR public endpoint enabled but sets the firewall default action to `Deny`, enables ACR Tasks/trusted-service bypass, and allows the configured regional Azure Container Registry build CIDR range. This is selected-networks mode, not open public access.
+
+The dev defaults `FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_ITALY_NORTH=4.232.51.192/26` and `FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_SWEDEN_CENTRAL=172.160.222.128/26` come from the current `AzureContainerRegistry.ItalyNorth` and `AzureContainerRegistry.SwedenCentral` service tags observed during AZD remote builds. For other regions, or as Azure service tags change, update these values from the published Azure IP ranges before deployment. Fully disabling the registry public endpoint or omitting the active regional build range prevents the remote builder from logging in because its Microsoft-managed public IP is outside the private VNet. If security policy disallows this public firewall exception, use a self-hosted runner or local Docker/Podman environment with private DNS and network reachability to the registry instead of AZD remote build. For an existing failed deployment, reprovision after changing this setting before retrying `azd up`.
+
+Container Apps use managed identity to pull private images from the provisioned ACR. Before AZD updates revisions to the published images, Bicep must apply the Container App `registries` configuration and `AcrPull` role assignments for the app identities. If a deployment fails with `UNAUTHORIZED: authentication required` while pulling an `acrfarsight...azurecr.io/...` image, reprovision to apply the registry identity and RBAC configuration, then retry the deploy phase.
+
+Container Apps use a user-assigned managed identity for Azure SDK access. Bicep sets `AZURE_CLIENT_ID` in the app containers so `DefaultAzureCredential` selects the assigned identity consistently. The admin BFF also receives `FARSIGHT_CONTROL_API_BASE_URL` pointing to the API Container App endpoint so policy proxy calls do not fall back to localhost.
+
+The API, admin web, and AGT tool gateway containers listen on port `8000`; their Container Apps ingress `targetPort` must stay aligned with the Dockerfile startup commands. API and AGT tool gateway revisions can show zero replicas when idle because their minimum replica count is `0`; this is expected scale-to-zero behavior. Treat `ActivationFailed` or repeated container exit events as deployment issues. For the admin BFF, ensure the SPA fallback route disables FastAPI response-model generation when returning either `FileResponse` or a JSON placeholder.
 
 ## 6. Post-deployment private endpoint and DNS checks
 
@@ -208,8 +252,9 @@ Expected result: the queried public name follows a CNAME chain into the
   App Configuration, ACR, and monitoring without public network access.
 - Log Analytics and Application Insights telemetry should appear after AMPLS DNS
   and private link scope associations are configured.
-- The SRE Agent/tool gateway in Sweden Central should reach the FarSight control
-  plane over private routing, not public ingress.
+- If a separate SRE Agent package is deployed in another region, it should reach
+  the FarSight control plane over approved private routing or an explicitly
+  approved public development endpoint.
 
 ## 7. Deploy the SRE Agent package
 
@@ -221,17 +266,18 @@ Use the dedicated AZD template under `src/sre-agent/agent` for the SRE Agent pac
 
 Deployment notes:
 
-- Keep SRE Agent resources in or routed to the Sweden Central VNet from the
-  worksheet.
-- Link the SRE Agent VNet to the same private DNS zones needed to resolve the
-  FarSight API, tool gateway, Key Vault, and monitoring endpoints.
+- Keep SRE Agent resources in the SRE Agent package environment, such as Sweden
+  Central when required by service availability.
+- Link the SRE Agent VNet to FarSight private DNS zones only when private routing
+  to the FarSight VNet exists; otherwise the SRE Agent can resolve private IPs it
+  cannot reach.
 - If `INTUNE_DIAGNOSTICS_AUTH_MODE=key-vault`, add the required Intune secrets to
   the SRE Agent Key Vault after provisioning and verify `Key Vault Secrets User`
   for the SRE Agent identity.
 - Use `python3 deploy.py --dry-run` for content-only validation before uploading
   tools, skills, and knowledge files to an existing SRE Agent resource.
-- Verify the deployed tools call internal FarSight endpoints and do not require
-  public API ingress.
+- Verify the deployed SRE Agent tools call the FarSight AGT gateway/API endpoint
+  through the approved network path.
 
 ## 8. Deploy the Intune collector after cloud setup
 

@@ -8,14 +8,20 @@
     "collectorLocation": {
       "value": "${AZURE_COLLECTOR_LOCATION=italynorth}"
     },
-    "agentLocation": {
-      "value": "${AZURE_AGENT_LOCATION=swedencentral}"
-    },
     "enablePublicIngress": {
       "value": "${FARSIGHT_ENABLE_PUBLIC_INGRESS=true}"
     },
     "enablePrivateEndpoints": {
       "value": "${FARSIGHT_ENABLE_PRIVATE_ENDPOINTS=false}"
+    },
+    "enableAcrTaskNetworkBypass": {
+      "value": "${FARSIGHT_ENABLE_ACR_TASK_NETWORK_BYPASS=true}"
+    },
+    "acrFirewallAllowedIpRanges": {
+      "value": [
+        "${FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_ITALY_NORTH=4.232.51.192/26}",
+        "${FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_SWEDEN_CENTRAL=172.160.222.128/26}"
+      ]
     },
     "vnetAddressPrefix": {
       "value": "${FARSIGHT_VNET_ADDRESS_PREFIX=10.10.0.0/16}"
@@ -51,37 +57,6 @@
     "enableNatGateway": {
       "value": "${FARSIGHT_ENABLE_NAT_GATEWAY=false}"
     },
-    "agentGatewayVnetAddressPrefix": {
-      "value": "${FARSIGHT_AGENT_GATEWAY_VNET_ADDRESS_PREFIX=10.20.0.0/16}"
-    },
-    "agentGatewayContainerAppsInfrastructureSubnetPrefix": {
-      "value": "${FARSIGHT_AGENT_GATEWAY_CONTAINER_APPS_INFRASTRUCTURE_SUBNET_PREFIX=10.20.0.0/23}"
-    },
-    "agentGatewayPrivateEndpointSubnetPrefix": {
-      "value": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_ENDPOINT_SUBNET_PREFIX=10.20.2.0/24}"
-    },
-    "agentGatewayPrivateDnsZoneResourceIds": {
-      "value": {
-        "storageBlob": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_STORAGE_BLOB_RESOURCE_ID=}",
-        "keyVault": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_KEY_VAULT_RESOURCE_ID=}",
-        "containerRegistry": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_CONTAINER_REGISTRY_RESOURCE_ID=}",
-        "cosmosSql": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_COSMOS_SQL_RESOURCE_ID=}",
-        "serviceBus": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_SERVICE_BUS_RESOURCE_ID=}",
-        "appConfiguration": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_APP_CONFIGURATION_RESOURCE_ID=}",
-        "apiManagement": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_API_MANAGEMENT_RESOURCE_ID=}",
-        "azureMonitor": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_AZURE_MONITOR_RESOURCE_ID=}",
-        "logAnalyticsOms": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_LOG_ANALYTICS_OMS_RESOURCE_ID=}",
-        "logAnalyticsOds": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_LOG_ANALYTICS_ODS_RESOURCE_ID=}",
-        "azureMonitorAgentSvc": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_AZURE_MONITOR_AGENT_SVC_RESOURCE_ID=}",
-        "containerAppsEnvironment": "${FARSIGHT_AGENT_GATEWAY_PRIVATE_DNS_ZONE_CONTAINER_APPS_ENVIRONMENT_RESOURCE_ID=}"
-      }
-    },
-    "agentGatewayLinkExistingPrivateDnsZones": {
-      "value": "${FARSIGHT_AGENT_GATEWAY_LINK_EXISTING_PRIVATE_DNS_ZONES=true}"
-    },
-    "agentGatewayEnableNatGateway": {
-      "value": "${FARSIGHT_AGENT_GATEWAY_ENABLE_NAT_GATEWAY=false}"
-    },
     "enableApim": {
       "value": "${FARSIGHT_ENABLE_APIM=false}"
     },
@@ -109,6 +84,9 @@
     "adminAuthClientSecret": {
       "value": "${FARSIGHT_ADMIN_AUTH_CLIENT_SECRET=}"
     },
+    "adminAuthEncryptionSecret": {
+      "value": "${FARSIGHT_ADMIN_AUTH_ENCRYPTION_SECRET=}"
+    },
     "adminAuthIssuer": {
       "value": "${FARSIGHT_ADMIN_AUTH_ISSUER=}"
     },
@@ -116,6 +94,9 @@
       "value": [
         "${FARSIGHT_ADMIN_AUTH_ALLOWED_AUDIENCE=}"
       ]
+    },
+    "adminAuthTokenStoreSasUrlSettingName": {
+      "value": "${FARSIGHT_ADMIN_AUTH_TOKEN_STORE_SAS_URL_SETTING_NAME=}"
     }
   }
 }

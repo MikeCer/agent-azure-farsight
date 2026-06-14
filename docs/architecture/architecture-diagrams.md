@@ -24,6 +24,7 @@ flowchart LR
         Api["Control API<br/>Container Apps + FastAPI"]
         Admin["Admin and monitoring web app<br/>React + FastAPI BFF"]
         Worker["Worker/reconciler<br/>Container App"]
+        Gateway["AGT-governed<br/>FarSight tool gateway"]
         SB["Service Bus<br/>session-enabled jobs queue"]
         Cosmos["Cosmos DB<br/>jobs, devices, approvals, policies"]
         Blob["Blob Storage<br/>diagnostic artifacts"]
@@ -35,8 +36,6 @@ flowchart LR
 
     subgraph Sweden["Sweden Central - Azure SRE Agent integration"]
         SRE["Azure SRE Agent<br/>custom FarSight agent"]
-        Gateway["AGT-governed<br/>FarSight tool gateway"]
-        AgentObs["Gateway observability<br/>App Insights + Log Analytics"]
     end
 
     Operator["SRE operator"] --> SRE

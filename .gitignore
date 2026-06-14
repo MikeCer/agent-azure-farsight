@@ -35,6 +35,7 @@ Thumbs.db
 .idea/
 # Bicep build artifacts
 infra/bicep/main.json
+infra-test/main.json
 
 # Generated package metadata
 **/*.egg-info/
@@ -44,3 +45,5 @@ infra/bicep/main.json
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+*.dev.json

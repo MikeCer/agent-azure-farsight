@@ -10,6 +10,7 @@ administrator's existing login and tenant context.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import secrets
 import subprocess
@@ -113,6 +114,7 @@ def main() -> int:
         "FARSIGHT_ADMIN_AUTH_CLIENT_ID": app["appId"],
         "FARSIGHT_ADMIN_AUTH_ISSUER": f"https://login.microsoftonline.com/{tenant_id}/v2.0",
         "FARSIGHT_ADMIN_AUTH_ALLOWED_AUDIENCE": app["appId"],
+        "FARSIGHT_ADMIN_AUTH_ENCRYPTION_SECRET": base64.b64encode(secrets.token_bytes(32)).decode("ascii"),
     }
     if secret:
         values["FARSIGHT_ADMIN_AUTH_CLIENT_SECRET"] = secret

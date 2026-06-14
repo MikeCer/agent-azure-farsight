@@ -13,7 +13,7 @@ from .models import PolicyDocument, PolicyStatus, PolicySummary, PolicyValidatio
 
 DEFAULT_POLICY_ID = "farsight-tool-policy"
 DEFAULT_POLICY_VERSION = "2026-06-12.1"
-DEFAULT_POLICY_PATH = Path(__file__).resolve().parents[2] / "agent-tools" / "gateway" / "policies" / "farsight-tool-policy.yaml"
+DEFAULT_POLICY_PATH = Path(__file__).resolve().parent / "policies" / "farsight-tool-policy.yaml"
 
 
 def utc_now() -> datetime:
@@ -187,6 +187,38 @@ class CosmosPolicyRepository(PolicyRepository):
 
         client = CosmosClient(endpoint, credential=credential)
         self.container = client.get_database_client(database_name).get_container_client(container_name)
+        self._ensure_seed_policy()
+
+    def _seed_document(self) -> PolicyDocument:
+        seed_content = DEFAULT_POLICY_PATH.read_text(encoding="utf-8") if DEFAULT_POLICY_PATH.exists() else _fallback_policy()
+        now = utc_now()
+        return PolicyDocument(
+            id=f"{DEFAULT_POLICY_ID}:{DEFAULT_POLICY_VERSION}",
+            policyId=DEFAULT_POLICY_ID,
+            version=DEFAULT_POLICY_VERSION,
+            status=PolicyStatus.active,
+            content=seed_content,
+            contentHash=content_hash(seed_content),
+            createdAtUtc=now,
+            createdBy="seed",
+            updatedAtUtc=now,
+            updatedBy="seed",
+            activatedAtUtc=now,
+            activatedBy="seed",
+            notes="Seeded from bundled gateway policy.",
+            validation=validate_policy_content(seed_content),
+        )
+
+    def _ensure_seed_policy(self) -> None:
+        seed = self._seed_document()
+        try:
+            existing = self.get(DEFAULT_POLICY_ID, DEFAULT_POLICY_VERSION)
+        except KeyError:
+            self.container.upsert_item(seed.model_dump(by_alias=True, mode="json"))
+            return
+
+        if existing.created_by == "seed" and existing.content_hash != seed.content_hash:
+            self.container.upsert_item(seed.model_dump(by_alias=True, mode="json"))
 
     def list(self) -> list[PolicySummary]:
         items = list(self.container.query_items(query="SELECT * FROM c", enable_cross_partition_query=True))

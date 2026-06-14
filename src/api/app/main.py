@@ -25,6 +25,7 @@ from .models import (
     PolicyValidateRequest,
     PolicyValidation,
     ResultEnvelope,
+    ToolCallTelemetrySummary,
 )
 from .policy_repository import PolicyRepository, get_policy_repository, validate_policy_content
 
@@ -272,6 +273,12 @@ def activate_policy(
         raise HTTPException(status_code=404, detail="Policy version not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/telemetry/tool-calls/summary", response_model=ToolCallTelemetrySummary)
+def get_tool_call_summary() -> ToolCallTelemetrySummary:
+    # TODO: Query AGT/tool gateway audit events from Log Analytics, Application Insights, or Cosmos.
+    return ToolCallTelemetrySummary()
 
 
 @app.get("/api/v1/admin/config")
