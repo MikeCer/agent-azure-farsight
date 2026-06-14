@@ -4,6 +4,7 @@ import Editor from "@monaco-editor/react";
 import "./styles.css";
 
 type FeatureId = "overview" | "policies" | "tool-calls" | "jobs" | "devices" | "approvals" | "configuration" | "audit";
+type Theme = "light" | "dark";
 
 type ValidationResult = {
   status: "valid" | "invalid" | string;
@@ -62,16 +63,17 @@ type ToolCallTelemetrySummary = {
 
 const defaultPolicyId = "farsight-tool-policy";
 const defaultPolicyVersion = "2026-06-12.1";
+const themeStorageKey = "farsight-admin-theme";
 
-const features: Array<{ id: FeatureId; label: string; description: string }> = [
-  { id: "overview", label: "Overview", description: "Operational landing page and deployment health." },
-  { id: "policies", label: "Policy repository", description: "Version and activate AGT governance policies." },
-  { id: "tool-calls", label: "Tool-call monitoring", description: "Monitor SRE Agent and gateway tool activity." },
-  { id: "jobs", label: "Diagnostic jobs", description: "Track diagnostic job lifecycle and outcomes." },
-  { id: "devices", label: "Devices", description: "Inspect collector check-ins and endpoint state." },
-  { id: "approvals", label: "Approvals", description: "Review approval-gated diagnostic actions." },
-  { id: "configuration", label: "Configuration", description: "Manage runtime and retention settings." },
-  { id: "audit", label: "Audit", description: "Review security-relevant administrative events." },
+const features: Array<{ id: FeatureId; label: string; icon: string; description: string }> = [
+  { id: "overview", label: "Overview", icon: "⌁", description: "Operational landing page and deployment health." },
+  { id: "policies", label: "Policy repository", icon: "◇", description: "Version and activate AGT governance policies." },
+  { id: "tool-calls", label: "Tool-call monitoring", icon: "↯", description: "Monitor SRE Agent and gateway tool activity." },
+  { id: "jobs", label: "Diagnostic jobs", icon: "▣", description: "Track diagnostic job lifecycle and outcomes." },
+  { id: "devices", label: "Devices", icon: "◌", description: "Inspect collector check-ins and endpoint state." },
+  { id: "approvals", label: "Approvals", icon: "✓", description: "Review approval-gated diagnostic actions." },
+  { id: "configuration", label: "Configuration", icon: "⚙", description: "Manage runtime and retention settings." },
+  { id: "audit", label: "Audit", icon: "◎", description: "Review security-relevant administrative events." },
 ];
 
 function newPolicyTemplate(policyId: string, policyVersion: string) {
@@ -103,6 +105,14 @@ function formatTimestamp(value?: string | null) {
   return date.toLocaleString();
 }
 
+function getInitialTheme(): Theme {
+  const stored = window.localStorage.getItem(themeStorageKey);
+  if (stored === "light" || stored === "dark") {
+    return stored;
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) },
@@ -110,12 +120,20 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed with HTTP ${response.status}`);
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text) as { detail?: unknown };
+      detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail ?? parsed);
+    } catch {
+      // Keep the original response text for non-JSON errors.
+    }
+    throw new Error(detail || `Request failed with HTTP ${response.status}`);
   }
   return (await response.json()) as T;
 }
 
 function App() {
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [activeFeature, setActiveFeature] = useState<FeatureId>("overview");
   const [policies, setPolicies] = useState<PolicySummary[]>([]);
   const [selectedPolicyId, setSelectedPolicyId] = useState(defaultPolicyId);
@@ -209,6 +227,29 @@ function App() {
     await loadPolicies();
   }
 
+  async function deleteVersion() {
+    setError("");
+    setMessage("");
+    if (metadata?.status === "active") {
+      setError("Active policy versions cannot be deleted. Activate another version first.");
+      return;
+    }
+    if (!window.confirm(`Delete policy version ${selectedPolicyId}@${version}? This cannot be undone.`)) {
+      return;
+    }
+    await api<{ status: string }>(`/api/bff/policies/${selectedPolicyId}/versions/${version}`, { method: "DELETE" });
+    setContent("");
+    setMetadata(null);
+    setValidation(null);
+    setMessage("Policy version deleted.");
+    await loadPolicies();
+  }
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem(themeStorageKey, theme);
+  }, [theme]);
+
   useEffect(() => {
     loadPolicies().catch((err) => setError(err.message));
   }, []);
@@ -225,15 +266,22 @@ function App() {
         <div className="feature-heading">
           <p className="eyebrow">Overview</p>
           <h2>FarSight operations at a glance</h2>
-          <p>Use the menu to manage governance policy, monitor tool calls, and reach operational areas as they are implemented.</p>
+          <p>
+            Choose a feature from the console menu. Policy management is one workspace in the broader FarSight operations
+            console; monitoring, approvals, devices, jobs, configuration, and audit views will fill in as the platform matures.
+          </p>
         </div>
-        <div className="feature-grid">
-          {features.filter((feature) => feature.id !== "overview").map((feature) => (
-            <button className="feature-card" key={feature.id} onClick={() => setActiveFeature(feature.id)}>
-              <strong>{feature.label}</strong>
-              <span>{feature.description}</span>
-            </button>
-          ))}
+        <div className="overview-strip">
+          <article>
+            <span className="icon-badge">◇</span>
+            <strong>Governance first</strong>
+            <p>Policy edits stay versioned and auditable before gateway enforcement changes.</p>
+          </article>
+          <article>
+            <span className="icon-badge">↯</span>
+            <strong>Tool calls next</strong>
+            <p>Telemetry contracts are ready for AGT/tool gateway audit aggregation.</p>
+          </article>
         </div>
       </section>
     );
@@ -283,12 +331,20 @@ function App() {
             <button onClick={() => validateCurrent().catch((err) => setError(err.message))}>Validate</button>
             <button onClick={() => saveDraft().catch((err) => setError(err.message))}>Save draft</button>
             <button className="primary" onClick={() => activateVersion().catch((err) => setError(err.message))}>Activate</button>
+            <button
+              className="danger-button"
+              disabled={!metadata || metadata.status === "active"}
+              title={metadata?.status === "active" ? "Active policy versions cannot be deleted." : "Delete this policy version."}
+              onClick={() => deleteVersion().catch((err) => setError(err.message))}
+            >
+              Delete
+            </button>
           </div>
 
           <Editor
             height="560px"
             language="yaml"
-            theme="vs-dark"
+            theme={theme === "dark" ? "vs-dark" : "light"}
             value={content}
             options={{ minimap: { enabled: false }, fontSize: 14, wordWrap: "on", scrollBeyondLastLine: false }}
             onChange={(value) => setContent(value ?? "")}
@@ -439,12 +495,23 @@ function App() {
   return (
     <main className="shell">
       <section className="hero">
-        <p className="eyebrow">Agent-Azure-FarSight</p>
-        <h1>Admin and monitoring console</h1>
-        <p>
-          Manage governed diagnostics, approvals, module policy, and operational configuration. Policy changes are stored
-          as versioned FarSight documents and evaluated by the AGT-backed gateway before tool execution.
-        </p>
+        <div>
+          <p className="eyebrow">Agent-Azure-FarSight</p>
+          <h1>Admin and monitoring console</h1>
+          <p>
+            Manage governed diagnostics, approvals, module policy, and operational configuration. Policy changes are stored
+            as versioned FarSight documents and evaluated by the AGT-backed gateway before tool execution.
+          </p>
+        </div>
+        <button
+          className="theme-toggle"
+          type="button"
+          aria-pressed={theme === "dark"}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          <span aria-hidden="true">{theme === "dark" ? "☾" : "☼"}</span>
+          {theme === "dark" ? "Dark" : "Light"}
+        </button>
       </section>
 
       <div className="console-layout">
@@ -455,6 +522,7 @@ function App() {
               className={activeFeature === feature.id ? "selected" : ""}
               onClick={() => setActiveFeature(feature.id)}
             >
+              <span className="nav-icon" aria-hidden="true">{feature.icon}</span>
               <strong>{feature.label}</strong>
               <span>{feature.description}</span>
             </button>

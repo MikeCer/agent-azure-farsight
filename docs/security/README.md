@@ -101,6 +101,7 @@ Expected controls:
 - Admins edit policy YAML through the admin UI.
 - Drafts are validated before activation.
 - Only validated versions can become active.
+- Active policy versions cannot be deleted; administrators must activate a replacement version before deleting archived or draft versions.
 - Gateways load the active version and cache it for a short, bounded interval.
 - The default `farsight-tool-policy` is seeded from the canonical gateway policy bundle. The repository can store additional policy IDs and versions, but a gateway only evaluates the policy ID it is configured to load.
 - Policy changes are audited with actor, timestamp, version, diff metadata, and validation result.
@@ -177,7 +178,7 @@ The admin console Tool-call monitoring view is an observability surface over the
 
 - Complete API-side mTLS enforcement and device certificate-to-device record binding.
 - Complete Entra/managed-identity authorization for API write paths.
-- Replace temporary policy-admin write gates with FarSight Admin role checks.
+- Replace the temporary policy-admin write gate with FarSight Admin role checks; the current deployment enables the gate only to support the admin policy editor during early implementation.
 - Back tool-call monitoring with real AGT/tool gateway audit events.
 - Finalize production certificate issuance, renewal, and revocation runbooks.
 - Add STRIDE threat model and approved retention schedule.

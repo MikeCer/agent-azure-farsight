@@ -114,6 +114,12 @@ async def activate_policy(policy_id: str, version: str, body: dict[str, Any], cu
     return await _control_api("POST", f"/api/v1/policies/{policy_id}/versions/{version}/activate", actor=str(current_admin["id"]), json=body)
 
 
+@app.delete("/api/bff/policies/{policy_id}/versions/{version}")
+async def delete_policy_version(policy_id: str, version: str, current_admin: dict[str, Any] = Depends(get_current_admin)) -> dict[str, str]:
+    await _control_api("DELETE", f"/api/v1/policies/{policy_id}/versions/{version}", actor=str(current_admin["id"]))
+    return {"status": "deleted"}
+
+
 @app.get("/api/bff/telemetry/tool-calls/summary")
 async def tool_call_summary(current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
     return await _control_api("GET", "/api/v1/telemetry/tool-calls/summary", actor=str(current_admin["id"]))

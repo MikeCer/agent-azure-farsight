@@ -13,6 +13,7 @@ The FarSight control API is an early FastAPI implementation. Contracts below des
 - `POST /api/v1/policies/{policyId}/validate` validates AGT YAML before save or activation.
 - `PUT /api/v1/policies/{policyId}/versions/{version}` saves a draft or version.
 - `POST /api/v1/policies/{policyId}/versions/{version}/activate` activates a validated version.
+- `DELETE /api/v1/policies/{policyId}/versions/{version}` deletes a non-active policy version.
 - `GET /api/v1/telemetry/tool-calls/summary` returns the tool-call telemetry summary used by the admin console.
 
 ## Authentication and authorization
@@ -54,6 +55,6 @@ Future implementations should populate this from AGT/tool gateway audit events i
 
 ## Known gaps
 
-- Replace the temporary `FARSIGHT_ENABLE_POLICY_ADMIN_WRITES` gate with Entra-authenticated FarSight Admin role checks and audit events.
+- Replace the temporary `FARSIGHT_ENABLE_POLICY_ADMIN_WRITES` gate, currently enabled for the admin policy editor flow, with Entra-authenticated FarSight Admin role checks and audit events.
 - Back the tool-call telemetry endpoint with real AGT/tool gateway audit records.
 - Publish generated OpenAPI, request/response examples, and finalized error schema once the API stabilizes.

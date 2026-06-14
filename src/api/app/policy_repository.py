@@ -77,6 +77,9 @@ class PolicyRepository:
     def activate(self, policy_id: str, version: str, actor: str, notes: str | None = None) -> PolicyDocument:
         raise NotImplementedError
 
+    def delete_version(self, policy_id: str, version: str, actor: str) -> None:
+        raise NotImplementedError
+
 
 class InMemoryPolicyRepository(PolicyRepository):
     def __init__(self) -> None:
@@ -160,6 +163,15 @@ class InMemoryPolicyRepository(PolicyRepository):
         activated = doc.model_copy(update={"status": PolicyStatus.active, "activated_at_utc": now, "activated_by": actor, "updated_at_utc": now, "updated_by": actor, "notes": notes or doc.notes})
         versions[version] = activated
         return activated
+
+    def delete_version(self, policy_id: str, version: str, actor: str) -> None:
+        doc = self.get(policy_id, version)
+        if doc.status == PolicyStatus.active:
+            raise ValueError("Active policy versions cannot be deleted. Activate another version first.")
+        versions = self._documents.get(policy_id, {})
+        versions.pop(version, None)
+        if not versions:
+            self._documents.pop(policy_id, None)
 
 
 def _fallback_policy() -> str:
@@ -300,6 +312,12 @@ class CosmosPolicyRepository(PolicyRepository):
         activated = doc.model_copy(update={"status": PolicyStatus.active, "activated_at_utc": now, "activated_by": actor, "updated_at_utc": now, "updated_by": actor, "notes": notes or doc.notes})
         self.container.upsert_item(activated.model_dump(by_alias=True, mode="json"))
         return activated
+
+    def delete_version(self, policy_id: str, version: str, actor: str) -> None:
+        doc = self.get(policy_id, version)
+        if doc.status == PolicyStatus.active:
+            raise ValueError("Active policy versions cannot be deleted. Activate another version first.")
+        self.container.delete_item(item=f"{policy_id}:{version}", partition_key=policy_id)
 
 
 _in_memory_policy_repository = InMemoryPolicyRepository()

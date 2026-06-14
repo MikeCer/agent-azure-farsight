@@ -264,6 +264,10 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: 'policies'
             }
             {
+              name: 'FARSIGHT_ENABLE_POLICY_ADMIN_WRITES'
+              value: 'true'
+            }
+            {
               name: 'APPINSIGHTS_CONNECTION_STRING'
               value: appInsights.properties.ConnectionString
             }

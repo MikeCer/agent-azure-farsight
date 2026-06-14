@@ -275,6 +275,22 @@ def activate_policy(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.delete("/api/v1/policies/{policyId}/versions/{version}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_policy_version(
+    policyId: str,
+    version: str,
+    repository: PolicyRepository = Depends(get_policy_repository),
+    actor: str = Depends(require_policy_admin),
+) -> Response:
+    try:
+        repository.delete_version(policyId, version, actor)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Policy version not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.get("/api/v1/telemetry/tool-calls/summary", response_model=ToolCallTelemetrySummary)
 def get_tool_call_summary() -> ToolCallTelemetrySummary:
     # TODO: Query AGT/tool gateway audit events from Log Analytics, Application Insights, or Cosmos.
