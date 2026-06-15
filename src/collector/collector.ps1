@@ -11,6 +11,7 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Import-Module (Join-Path $scriptRoot 'common.psm1') -Force
 $lockPath = Join-Path $InstallRoot 'state\collector.lock'
 $lockStream = $null
+$logPath = $null  # Initialize early so catch block can reference it
 
 try {
     $config = Read-FarSightJsonFile -Path $ConfigPath
@@ -91,7 +92,9 @@ try {
     $state | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $statePath -Encoding UTF8
 }
 catch {
-    Write-FarSightLog -Level Error -Message $_.Exception.Message -LogPath $logPath
+    if ($null -ne $logPath) {
+        Write-FarSightLog -Level Error -Message $_.Exception.Message -LogPath $logPath
+    }
     throw
 }
 finally {
