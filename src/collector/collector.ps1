@@ -9,9 +9,15 @@ Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Import-Module (Join-Path $scriptRoot 'common.psm1') -Force
-$lockPath = Join-Path $InstallRoot 'state\collector.lock'
+$stateRoot = Join-Path $InstallRoot 'state'
+$lockPath = Join-Path $stateRoot 'collector.lock'
 $lockStream = $null
 $logPath = $null  # Initialize early so catch block can reference it
+
+# Ensure state directory exists
+if (-not (Test-Path -LiteralPath $stateRoot -PathType Container)) {
+    New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
+}
 
 try {
     $config = Read-FarSightJsonFile -Path $ConfigPath

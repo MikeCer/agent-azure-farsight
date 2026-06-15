@@ -161,7 +161,11 @@ function Invoke-FarSightApi {
         $parameters['ContentType'] = 'application/json'
     }
     if (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
-        $parameters['CertificateThumbprint'] = $CertificateThumbprint
+        $cert = Get-ChildItem -Path 'Cert:\LocalMachine\My' | Where-Object { $_.Thumbprint -eq $CertificateThumbprint }
+        if ($null -eq $cert) {
+            throw "Certificate with thumbprint '$CertificateThumbprint' not found in LocalMachine\My store"
+        }
+        $parameters['Certificate'] = $cert
     }
     return Invoke-RestMethod @parameters
 }
