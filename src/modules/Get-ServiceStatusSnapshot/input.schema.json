@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.farsight.local/modules/Get-ServiceStatusSnapshot/input.schema.json",
+  "title": "Get-ServiceStatusSnapshot input",
+  "description": "Captures a bounded read-only snapshot of Windows services and runtime status.",
+  "type": "object",
+  "required": ["appId"],
+  "properties": {
+    "appId": { "type": "string", "minLength": 1 },
+    "serviceNames": {
+      "type": "array",
+      "description": "Optional explicit service-name allowlist; if omitted, module returns the first maxServices services sorted by name.",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "maxItems": 50
+    },
+    "includeStartupType": { "type": "boolean", "default": true },
+    "includeServiceAccount": { "type": "boolean", "default": false },
+    "includeArtifact": { "type": "boolean", "default": false },
+    "maxServices": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 }
+  },
+  "additionalProperties": false
+}

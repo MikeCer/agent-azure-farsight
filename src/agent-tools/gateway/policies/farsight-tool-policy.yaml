@@ -9,7 +9,7 @@ rules:
     description: "FarSight tools must never accept arbitrary PowerShell, shell commands, script text, encoded commands, or free-form paths."
 
   - name: deny-unsupported-diagnostic-module
-    condition: "tool_name in ['create_diagnostic_job', 'request_follow_up_module_execution'] and task_type not in ['Get-AppLogBundle', 'Get-AppEventSlice', 'Get-AppHealthSnapshot', 'Test-AppConnectivity', 'Get-ConfigEvidence', 'Get-AppDiskEvidence']"
+    condition: "tool_name in ['create_diagnostic_job', 'request_follow_up_module_execution'] and task_type not in ['Get-AppLogBundle', 'Get-AppEventSlice', 'Get-AppHealthSnapshot', 'Test-AppConnectivity', 'Get-ConfigEvidence', 'Get-ServiceStatusSnapshot']"
     action: deny
     description: "Diagnostic job creation is limited to approved named FarSight modules."
 

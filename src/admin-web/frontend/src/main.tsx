@@ -493,16 +493,16 @@ function App() {
   }
 
   return (
-    <main className="shell">
-      <section className="hero">
-        <div>
-          <p className="eyebrow">Agent-Azure-FarSight</p>
-          <h1>Admin and monitoring console</h1>
-          <p>
-            Manage governed diagnostics, approvals, module policy, and operational configuration. Policy changes are stored
-            as versioned FarSight documents and evaluated by the AGT-backed gateway before tool execution.
-          </p>
+    <main className="portal-shell">
+      <header className="portal-topbar">
+        <div className="portal-brand">
+          <span className="waffle" aria-hidden="true">▦</span>
+          <strong>Agent-Azure-FarSight</strong>
         </div>
+        <label className="portal-search">
+          <span aria-hidden="true">⌕</span>
+          <input placeholder="Search diagnostics, devices, policies, jobs (G+/)" />
+        </label>
         <button
           className="theme-toggle"
           type="button"
@@ -512,31 +512,53 @@ function App() {
           <span aria-hidden="true">{theme === "dark" ? "☾" : "☼"}</span>
           {theme === "dark" ? "Dark" : "Light"}
         </button>
-      </section>
+      </header>
 
-      <div className="console-layout">
-        <nav className="feature-nav" aria-label="Admin console features">
-          {features.map((feature) => (
-            <button
-              key={feature.id}
-              className={activeFeature === feature.id ? "selected" : ""}
-              onClick={() => setActiveFeature(feature.id)}
-            >
-              <span className="nav-icon" aria-hidden="true">{feature.icon}</span>
-              <strong>{feature.label}</strong>
-              <span>{feature.description}</span>
-            </button>
-          ))}
-        </nav>
+      <div className="portal-body">
+        <aside className="resource-menu" aria-label="Admin console blade navigation">
+          <div className="resource-menu-title">
+            <span className="resource-glyph" aria-hidden="true">◆</span>
+            <div>
+              <strong>FarSight Admin</strong>
+              <small>Container App console</small>
+            </div>
+          </div>
+          <label className="blade-search">
+            <span aria-hidden="true">⌕</span>
+            <input placeholder="Search menu" />
+          </label>
+          <nav>
+            {features.map((feature) => (
+              <button
+                key={feature.id}
+                className={activeFeature === feature.id ? "selected" : ""}
+                onClick={() => setActiveFeature(feature.id)}
+              >
+                <span className="nav-icon" aria-hidden="true">{feature.icon}</span>
+                <span>{feature.label}</span>
+              </button>
+            ))}
+          </nav>
+        </aside>
 
-        <section className="console-content">
-          {renderActiveFeature()}
-          {message && activeFeature !== "policies" && <p className="message">{message}</p>}
-          {error && <p className="error">{error}</p>}
-          <p className="note">
-            Production authorization is still enforced server-side. This UI is the editing surface; activation and future
-            monitoring views must remain auditable and role-gated by the FarSight API/BFF.
-          </p>
+        <section className="portal-content">
+          <div className="breadcrumb">Home &gt; Agent-Azure-FarSight &gt; Admin</div>
+          <section className="resource-header">
+            <div className="resource-title">
+              <span className="resource-icon" aria-hidden="true">▣</span>
+              <div>
+                <h1>Admin and monitoring console</h1>
+                <p>Governed diagnostics, policy, approvals, telemetry, and operational configuration.</p>
+              </div>
+            </div>
+            <button className="close-blade" type="button" aria-label="Close blade">×</button>
+          </section>
+
+          <section className="blade-content">
+            {renderActiveFeature()}
+            {message && activeFeature !== "policies" && <p className="message">{message}</p>}
+            {error && <p className="error">{error}</p>}
+          </section>
         </section>
       </div>
     </main>

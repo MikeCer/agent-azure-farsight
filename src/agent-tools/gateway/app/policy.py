@@ -23,7 +23,7 @@ SAFE_DIAGNOSTIC_MODULES = {
     "Get-AppHealthSnapshot",
     "Test-AppConnectivity",
     "Get-ConfigEvidence",
-    "Get-AppDiskEvidence",
+    "Get-ServiceStatusSnapshot",
 }
 DANGEROUS_INPUT_PATTERNS = (
     r"(?i)\bpowershell(\.exe)?\b",

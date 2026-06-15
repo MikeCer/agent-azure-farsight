@@ -74,6 +74,8 @@ Container Apps pull private images from ACR with their user-assigned managed ide
 
 Bicep sets `AZURE_CLIENT_ID` for Container Apps that use Azure SDKs so `DefaultAzureCredential` selects the user-assigned identity. The admin BFF gets `FARSIGHT_CONTROL_API_BASE_URL` set to the API Container App endpoint for policy proxy calls.
 
+Set `FARSIGHT_API_INTERNAL_AUTH_SECRET` to a strong random value before enabling admin policy mutations. Bicep stores it as a Container Apps secret for both API and admin web. The BFF uses it to sign Easy Auth admin context for policy save, activate, and delete requests.
+
 Each service folder includes a `.dockerignore` file so remote builds do not upload local build artifacts such as `node_modules`, `dist`, Python caches, or local environment files.
 
 The API, admin web, and AGT tool gateway containers listen on port `8000`, and the Container Apps ingress `targetPort` values must match. API and AGT tool gateway apps use `minReplicas=0`, so seeing zero replicas while idle is expected; `ActivationFailed` indicates a real container startup or ingress configuration issue. The admin BFF SPA fallback must use `response_model=None` because it may return either static files or a JSON placeholder.

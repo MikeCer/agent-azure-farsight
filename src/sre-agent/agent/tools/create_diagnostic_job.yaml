@@ -13,7 +13,7 @@ parameters:
   type: string
   required: true
   description: 'Approved module/task type: Get-AppLogBundle, Get-AppEventSlice, Get-AppHealthSnapshot,
-    Test-AppConnectivity, Get-ConfigEvidence, or Get-AppDiskEvidence.'
+    Test-AppConnectivity, Get-ConfigEvidence, Get-AppDiskEvidence, or Get-ServiceStatusSnapshot.'
 - name: correlation_id
   type: string
   required: true
@@ -106,7 +106,23 @@ parameters:
 - name: service_names_csv
   type: string
   required: false
-  description: Comma-separated service names for Get-AppHealthSnapshot.
+  description: Comma-separated service names for Get-AppHealthSnapshot or Get-ServiceStatusSnapshot.
+- name: include_startup_type
+  type: bool
+  required: false
+  description: Include startup type details for Get-ServiceStatusSnapshot. Defaults to true.
+- name: include_service_account
+  type: bool
+  required: false
+  description: Include service account values (redacted by module defaults) for Get-ServiceStatusSnapshot.
+- name: include_artifact
+  type: bool
+  required: false
+  description: Emit a bounded JSON artifact snapshot for Get-ServiceStatusSnapshot.
+- name: max_services
+  type: int
+  required: false
+  description: Maximum services returned by Get-ServiceStatusSnapshot. Range 1-200.
 - name: process_names_csv
   type: string
   required: false

@@ -21,6 +21,8 @@ The FarSight control API is an early FastAPI implementation. Contracts below des
 - Agent tools use managed identity or an approved service principal.
 - Collectors use mTLS-bound device identity.
 - Authorization checks module allowlists, device scope, RBAC, AGT policy outcome, and approval state.
+- Admin policy mutations require signed BFF-to-API admin context derived from Easy Auth. The shared signing secret is `FARSIGHT_API_INTERNAL_AUTH_SECRET` and is stored as a Container Apps secret.
+- Policy version metadata (`updatedBy`) stores the propagated admin display name when available (falling back to actor ID).
 
 ## Idempotency
 
@@ -55,6 +57,6 @@ Future implementations should populate this from AGT/tool gateway audit events i
 
 ## Known gaps
 
-- Replace the temporary `FARSIGHT_ENABLE_POLICY_ADMIN_WRITES` gate, currently enabled for the admin policy editor flow, with Entra-authenticated FarSight Admin role checks and audit events.
+- Replace the shared-secret BFF-to-API policy mutation signature with Entra service-token validation and persistent audit events.
 - Back the tool-call telemetry endpoint with real AGT/tool gateway audit records.
 - Publish generated OpenAPI, request/response examples, and finalized error schema once the API stabilizes.

@@ -28,6 +28,15 @@ State must be minimal, encrypted or access-controlled where practical, and safe 
 - Do not log secrets, raw certificates, tokens, usernames, or arbitrary paths.
 - Start troubleshooting with collector health, certificate validity, API reachability, manifest version, and module schema validation.
 
+## First full-flow module validation
+
+`Get-ServiceStatusSnapshot` is the first built-in module intended for end-to-end flow validation. For a validation run:
+
+1. Ensure `config/module-manifest.json` includes `Get-ServiceStatusSnapshot`.
+2. Submit a read-only job for `taskType=Get-ServiceStatusSnapshot` with bounded `serviceNames` and `maxServices`.
+3. Confirm collector run posts a `Succeeded` result envelope with service summary counts and warning findings for non-running or missing services.
+4. If `includeArtifact=true`, verify bounded artifact metadata is included in the result envelope.
+
 ## Known gaps
 
 - Add exact Windows Event Log source and log file paths after implementation stabilizes.

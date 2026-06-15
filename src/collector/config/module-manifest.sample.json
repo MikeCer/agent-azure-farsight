@@ -55,6 +55,17 @@
       "maxArtifactBytes": 524288,
       "allowedPathProfiles": [],
       "schemaRef": "Get-ConfigEvidence/input.schema.json"
+    },
+    {
+      "name": "Get-ServiceStatusSnapshot",
+      "version": "0.1.0",
+      "riskLevel": "read-only",
+      "scriptPath": "Get-ServiceStatusSnapshot/Get-ServiceStatusSnapshot.ps1",
+      "sha256": "sha256-placeholder",
+      "timeoutSeconds": 60,
+      "maxArtifactBytes": 524288,
+      "allowedPathProfiles": [],
+      "schemaRef": "Get-ServiceStatusSnapshot/input.schema.json"
     }
   ]
 }

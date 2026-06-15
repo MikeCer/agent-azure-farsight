@@ -22,6 +22,8 @@ Evaluate AGT policy before every FarSight API call:
 
 The bootstrap policy bundle lives at `src/agent-tools/gateway/policies/farsight-tool-policy.yaml`. The API image carries the same seed policy under `src/api/app/policies/` so a new Cosmos DB policy repository can initialize with the canonical gateway policy. Production gateway instances should use `FARSIGHT_POLICY_SOURCE=api` so the active AGT policy is retrieved from the FarSight API and Cosmos DB `policies` container. The gateway fails closed if AGT or the active policy cannot be loaded; local development can opt into a deterministic fallback evaluator with `FARSIGHT_ALLOW_POLICY_FALLBACK=true`.
 
+The default policy module allowlist matches the built-in modules currently implemented under `src/modules`: `Get-AppLogBundle`, `Get-AppEventSlice`, `Get-AppHealthSnapshot`, `Test-AppConnectivity`, `Get-ConfigEvidence`, and `Get-ServiceStatusSnapshot`. Extension sample modules are not enabled by default until they are promoted into the built-in module set.
+
 Policy authors manage versions through the admin web policy repository page. The lifecycle is draft, active, archived. Only validated policies should be activated.
 
 The gateway currently evaluates one configured policy ID, `farsight-tool-policy` by default. The repository can store multiple policy documents so future deployments can separate tool policies by environment, gateway instance, tenant segment, or specialized diagnostic scope. A new policy is not used by the gateway until the gateway is configured to load that policy ID, for example with `FARSIGHT_POLICY_ID`.

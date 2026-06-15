@@ -12,6 +12,10 @@ param enableApim bool
 param enableDevEnrollmentApi bool
 param adminGroupObjectIds array
 
+@secure()
+@description('Shared secret used by the admin BFF to sign privileged API calls during the current authorization phase.')
+param apiInternalAuthSecret string = ''
+
 @description('Collector/control-plane virtual network address prefix.')
 param vnetAddressPrefix string = '10.10.0.0/16'
 
@@ -91,6 +95,7 @@ var containerAppIngressExternal = enablePublicIngress
 var cosmosBuiltInDataContributorRoleDefinitionId = resourceId('Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions', cosmosAccountName, '00000000-0000-0000-0000-000000000002')
 var acrPullRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
 var adminEasyAuthConfigured = enableAdminEasyAuth && !empty(adminAuthClientId) && !empty(adminAuthClientSecret) && !empty(adminAuthEncryptionSecret) && !empty(adminAuthIssuer)
+var apiInternalAuthConfigured = !empty(apiInternalAuthSecret)
 
 module networking 'networking.bicep' = if (enablePrivateEndpoints) {
   name: 'networking-${namePrefix}-${location}'
@@ -216,6 +221,12 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: environment.id
     configuration: {
       activeRevisionsMode: 'Single'
+      secrets: apiInternalAuthConfigured ? [
+        {
+          name: 'api-internal-auth-secret'
+          value: apiInternalAuthSecret
+        }
+      ] : []
       registries: [
         {
           server: acr.properties.loginServer
@@ -234,7 +245,7 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'api'
           image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
-          env: [
+          env: concat([
             {
               name: 'AZURE_CLIENT_ID'
               value: appIdentity.properties.clientId
@@ -271,7 +282,12 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'APPINSIGHTS_CONNECTION_STRING'
               value: appInsights.properties.ConnectionString
             }
-          ]
+          ], apiInternalAuthConfigured ? [
+            {
+              name: 'FARSIGHT_API_INTERNAL_AUTH_SECRET'
+              secretRef: 'api-internal-auth-secret'
+            }
+          ] : [])
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
@@ -311,7 +327,12 @@ resource adminApp 'Microsoft.App/containerApps@2024-03-01' = {
           identity: appIdentity.id
         }
       ]
-      secrets: adminEasyAuthConfigured ? [
+      secrets: concat(apiInternalAuthConfigured ? [
+        {
+          name: 'api-internal-auth-secret'
+          value: apiInternalAuthSecret
+        }
+      ] : [], adminEasyAuthConfigured ? [
         {
           name: 'microsoft-provider-authentication-secret'
           value: adminAuthClientSecret
@@ -320,7 +341,7 @@ resource adminApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'farsight-admin-auth-encryption-secret'
           value: adminAuthEncryptionSecret
         }
-      ] : []
+      ] : [])
       ingress: {
         external: containerAppIngressExternal
         targetPort: 8000
@@ -333,7 +354,7 @@ resource adminApp 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'admin-web'
           image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
-          env: [
+          env: concat([
             {
               name: 'AZURE_CLIENT_ID'
               value: appIdentity.properties.clientId
@@ -342,7 +363,12 @@ resource adminApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'FARSIGHT_CONTROL_API_BASE_URL'
               value: 'https://${apiApp.properties.configuration.ingress.fqdn}'
             }
-          ]
+          ], apiInternalAuthConfigured ? [
+            {
+              name: 'FARSIGHT_API_INTERNAL_AUTH_SECRET'
+              secretRef: 'api-internal-auth-secret'
+            }
+          ] : [])
           resources: {
             cpu: json('0.5')
             memory: '1Gi'

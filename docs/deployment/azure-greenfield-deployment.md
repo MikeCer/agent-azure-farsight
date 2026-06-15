@@ -225,6 +225,8 @@ Container Apps use managed identity to pull private images from the provisioned 
 
 Container Apps use a user-assigned managed identity for Azure SDK access. Bicep sets `AZURE_CLIENT_ID` in the app containers so `DefaultAzureCredential` selects the assigned identity consistently. The admin BFF also receives `FARSIGHT_CONTROL_API_BASE_URL` pointing to the API Container App endpoint so policy proxy calls do not fall back to localhost.
 
+Set `FARSIGHT_API_INTERNAL_AUTH_SECRET` to a strong random value before using admin policy mutation workflows. The admin BFF signs Easy Auth admin context with this secret for policy save, activate, and delete calls, and the API verifies the signature and short expiry before accepting the mutation.
+
 The API, admin web, and AGT tool gateway containers listen on port `8000`; their Container Apps ingress `targetPort` must stay aligned with the Dockerfile startup commands. API and AGT tool gateway revisions can show zero replicas when idle because their minimum replica count is `0`; this is expected scale-to-zero behavior. Treat `ActivationFailed` or repeated container exit events as deployment issues. For the admin BFF, ensure the SPA fallback route disables FastAPI response-model generation when returning either `FileResponse` or a JSON placeholder.
 
 ## 6. Post-deployment private endpoint and DNS checks

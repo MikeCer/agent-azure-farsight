@@ -34,6 +34,16 @@ FarSightPolicy
 - Certificate expiry or revocation.
 - Suspected sensitive artifact exposure.
 
+### End-to-end module flow check: Get-ServiceStatusSnapshot
+
+Use this sequence to validate the complete FarSight path after policy/module updates:
+
+1. Invoke `create_diagnostic_job` with `task_type=Get-ServiceStatusSnapshot`, `risk_level=read-only`, bounded `service_names_csv`, and `max_services`.
+2. Verify gateway policy decision is `allow` for `farsight-tool-policy`.
+3. Confirm API job creation (`Queued`), collector lease transition (`Leased`), and result submission (`Succeeded`).
+4. Query `get_job_result_summary` and `retrieve_artifact_metadata` for the same job.
+5. Confirm summary fields include service counts and warnings, and artifact metadata is present only when `include_artifact=true`.
+
 ## Backup and restore
 
 Back up configuration, policy, schemas, and required operational metadata. Do not keep raw evidence longer than retention policy.

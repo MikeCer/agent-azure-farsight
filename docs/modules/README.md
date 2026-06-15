@@ -11,6 +11,7 @@ Modules are the only executable diagnostic surface on endpoints. The current cat
 | `Get-AppLogBundle` | Early bounded log bundle collection | Low/Medium by scope | Built-in skeleton |
 | `Get-ConfigEvidence` | Early configuration evidence collection | Low | Built-in skeleton |
 | `Test-AppConnectivity` | Early connectivity checks to allowlisted endpoints | Low | Built-in skeleton |
+| `Get-ServiceStatusSnapshot` | Bounded Windows service inventory with runtime status | Low | Built-in implemented module |
 | `Get-AppDiskEvidence` | Sample read-only disk evidence for an allowlisted app profile | Low | Extension sample |
 
 ## Module contract

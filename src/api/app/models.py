@@ -266,3 +266,16 @@ class ToolCallTelemetrySummary(CamelModel):
     failed_calls: int = Field(default=0, alias="failedCalls")
     by_tool: list[ToolCallByTool] = Field(default_factory=list, alias="byTool")
     recent: list[RecentToolCall] = Field(default_factory=list)
+
+
+class AuditEvent(CamelModel):
+    id: str
+    event_type: str = Field(alias="eventType")
+    action: str
+    actor_id: str = Field(alias="actorId")
+    actor_name: str | None = Field(default=None, alias="actorName")
+    target: str
+    decision: str
+    reason: str | None = None
+    correlation_id: str | None = Field(default=None, alias="correlationId")
+    created_at_utc: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="createdAtUtc")

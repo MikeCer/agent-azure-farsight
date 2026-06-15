@@ -75,6 +75,9 @@
     "adminGroupObjectIds": {
       "value": []
     },
+    "apiInternalAuthSecret": {
+      "value": "${FARSIGHT_API_INTERNAL_AUTH_SECRET=}"
+    },
     "enableAdminEasyAuth": {
       "value": "${FARSIGHT_ENABLE_ADMIN_EASY_AUTH=false}"
     },

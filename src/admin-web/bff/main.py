@@ -1,7 +1,10 @@
 import base64
+import hmac
 import json
 import os
 from pathlib import Path
+from hashlib import sha256
+from time import time
 from typing import Any
 
 import httpx
@@ -14,6 +17,7 @@ static_root = Path(__file__).resolve().parent / "static"
 control_api_base_url = os.environ.get("FARSIGHT_CONTROL_API_BASE_URL", "http://localhost:8000").rstrip("/")
 admin_group_object_ids = {item.strip() for item in os.environ.get("FARSIGHT_ADMIN_GROUP_OBJECT_IDS", "").split(",") if item.strip()}
 allow_local_admin_fallback = os.environ.get("FARSIGHT_ADMIN_ALLOW_LOCAL_FALLBACK", "").lower() in {"1", "true", "yes"}
+api_internal_auth_secret = os.environ.get("FARSIGHT_API_INTERNAL_AUTH_SECRET", "")
 
 
 def _decode_client_principal(encoded: str | None) -> dict[str, Any] | None:
@@ -84,6 +88,31 @@ async def _control_api(method: str, path: str, actor: str, json: dict[str, Any] 
         return response.json() if response.content else None
 
 
+def _signed_admin_headers(current_admin: dict[str, Any]) -> dict[str, str]:
+    if not api_internal_auth_secret:
+        raise HTTPException(status_code=500, detail="FARSIGHT_API_INTERNAL_AUTH_SECRET is not configured for admin API calls.")
+    actor = str(current_admin["id"])
+    name = str(current_admin.get("name") or "")
+    groups = ",".join(str(item) for item in current_admin.get("groups", []))
+    expires = str(int(time()) + 300)
+    payload = "\n".join([actor, name, groups, expires])
+    signature = hmac.new(api_internal_auth_secret.encode("utf-8"), payload.encode("utf-8"), sha256).hexdigest()
+    return {
+        "X-FarSight-Admin-Actor": actor,
+        "X-FarSight-Admin-Name": name,
+        "X-FarSight-Admin-Groups": groups,
+        "X-FarSight-Admin-Expires": expires,
+        "X-FarSight-Admin-Signature": signature,
+    }
+
+
+async def _control_api_admin(method: str, path: str, current_admin: dict[str, Any], json: dict[str, Any] | None = None) -> Any:
+    async with httpx.AsyncClient(base_url=control_api_base_url, timeout=15.0) as client:
+        response = await client.request(method, path, json=json, headers=_signed_admin_headers(current_admin))
+        response.raise_for_status()
+        return response.json() if response.content else None
+
+
 @app.get("/api/bff/policies")
 async def list_policies(current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
     return await _control_api("GET", "/api/v1/policies", actor=str(current_admin["id"]))
@@ -106,17 +135,17 @@ async def validate_policy(policy_id: str, body: dict[str, Any], current_admin: d
 
 @app.put("/api/bff/policies/{policy_id}/versions/{version}")
 async def save_policy(policy_id: str, version: str, body: dict[str, Any], current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
-    return await _control_api("PUT", f"/api/v1/policies/{policy_id}/versions/{version}", actor=str(current_admin["id"]), json=body)
+    return await _control_api_admin("PUT", f"/api/v1/policies/{policy_id}/versions/{version}", current_admin=current_admin, json=body)
 
 
 @app.post("/api/bff/policies/{policy_id}/versions/{version}/activate")
 async def activate_policy(policy_id: str, version: str, body: dict[str, Any], current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
-    return await _control_api("POST", f"/api/v1/policies/{policy_id}/versions/{version}/activate", actor=str(current_admin["id"]), json=body)
+    return await _control_api_admin("POST", f"/api/v1/policies/{policy_id}/versions/{version}/activate", current_admin=current_admin, json=body)
 
 
 @app.delete("/api/bff/policies/{policy_id}/versions/{version}")
 async def delete_policy_version(policy_id: str, version: str, current_admin: dict[str, Any] = Depends(get_current_admin)) -> dict[str, str]:
-    await _control_api("DELETE", f"/api/v1/policies/{policy_id}/versions/{version}", actor=str(current_admin["id"]))
+    await _control_api_admin("DELETE", f"/api/v1/policies/{policy_id}/versions/{version}", current_admin=current_admin)
     return {"status": "deleted"}
 
 

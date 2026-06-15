@@ -73,9 +73,10 @@ Runtime model:
 - The BFF consumes Easy Auth headers such as `x-ms-client-principal`, `x-ms-client-principal-id`, and `x-ms-client-principal-name`.
 - `FARSIGHT_ADMIN_GROUP_OBJECT_IDS` should be configured so privileged write operations require FarSight admin group membership.
 - Policy write operations should propagate the authenticated principal to the control API as the administrative actor.
+- During the current authorization phase, BFF-to-API policy mutations are signed with `FARSIGHT_API_INTERNAL_AUTH_SECRET`. The API verifies actor, group, expiry, and HMAC signature before accepting save, activate, or delete.
 - Local fallback authentication is for development only and must not be enabled in production.
 
-Production must replace temporary write gates with Entra-authenticated FarSight Admin role checks and audited authorization decisions.
+Production must evolve this into Entra-authenticated service-token validation, FarSight Admin role checks, and durable audited authorization decisions.
 
 ## Azure SRE Agent and AGT-governed tools
 
@@ -178,7 +179,7 @@ The admin console Tool-call monitoring view is an observability surface over the
 
 - Complete API-side mTLS enforcement and device certificate-to-device record binding.
 - Complete Entra/managed-identity authorization for API write paths.
-- Replace the temporary policy-admin write gate with FarSight Admin role checks; the current deployment enables the gate only to support the admin policy editor during early implementation.
+- Replace the current shared-secret BFF-to-API policy mutation signature with Entra service-token validation and FarSight Admin role checks.
 - Back tool-call monitoring with real AGT/tool gateway audit events.
 - Finalize production certificate issuance, renewal, and revocation runbooks.
 - Add STRIDE threat model and approved retention schedule.

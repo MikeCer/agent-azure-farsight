@@ -20,6 +20,7 @@ ALLOWED_TASK_TYPES = {
     "Test-AppConnectivity",
     "Get-ConfigEvidence",
     "Get-AppDiskEvidence",
+    "Get-ServiceStatusSnapshot",
 }
 ALLOWED_RISK_LEVELS = {"read-only", "sensitive-diagnostic"}
 ALLOWED_DISK_PROFILES = {"contoso-app", "winget-cache"}
@@ -320,6 +321,10 @@ def _build_module_parameters(
     levels_csv: str | None,
     max_events: int | None,
     service_names_csv: str | None,
+    include_startup_type: bool,
+    include_service_account: bool,
+    include_artifact: bool,
+    max_services: int | None,
     process_names_csv: str | None,
     config_profiles_csv: str | None,
     targets_csv: str | None,
@@ -410,6 +415,25 @@ def _build_module_parameters(
             "configProfiles": config_profiles,
         }, justification, approval_id)
 
+    if task_type == "Get-ServiceStatusSnapshot":
+        err = _validate_text(action, "app_id", app_id, required=True, max_len=128)
+        if err:
+            return err
+        services = _csv_list(action, "service_names_csv", service_names_csv, max_items=50, max_item_len=128)
+        if isinstance(services, dict):
+            return services
+        services_limit = _bounded_int(action, "max_services", max_services, default=100, min_value=1, max_value=200)
+        if isinstance(services_limit, dict):
+            return services_limit
+        return _with_common_job_parameters({
+            "appId": app_id,
+            "serviceNames": services,
+            "includeStartupType": bool(include_startup_type),
+            "includeServiceAccount": bool(include_service_account),
+            "includeArtifact": bool(include_artifact),
+            "maxServices": services_limit,
+        }, justification, approval_id)
+
     if task_type == "Test-AppConnectivity":
         targets = _csv_list(action, "targets_csv", targets_csv, max_items=20)
         ports = _int_list(action, "ports_csv", ports_csv, min_value=1, max_value=65535, max_items=20)
@@ -493,6 +517,10 @@ def _build_job_payload(
     levels_csv: str | None,
     max_events: int | None,
     service_names_csv: str | None,
+    include_startup_type: bool,
+    include_service_account: bool,
+    include_artifact: bool,
+    max_services: int | None,
     process_names_csv: str | None,
     config_profiles_csv: str | None,
     targets_csv: str | None,
@@ -540,6 +568,10 @@ def _build_job_payload(
         levels_csv,
         max_events,
         service_names_csv,
+        include_startup_type,
+        include_service_account,
+        include_artifact,
+        max_services,
         process_names_csv,
         config_profiles_csv,
         targets_csv,
@@ -603,6 +635,10 @@ def main(
     levels_csv: str | None = None,
     max_events: int | None = None,
     service_names_csv: str | None = None,
+    include_startup_type: bool = True,
+    include_service_account: bool = False,
+    include_artifact: bool = False,
+    max_services: int | None = None,
     process_names_csv: str | None = None,
     config_profiles_csv: str | None = None,
     targets_csv: str | None = None,
@@ -653,6 +689,10 @@ def main(
         levels_csv=levels_csv,
         max_events=max_events,
         service_names_csv=service_names_csv,
+        include_startup_type=include_startup_type,
+        include_service_account=include_service_account,
+        include_artifact=include_artifact,
+        max_services=max_services,
         process_names_csv=process_names_csv,
         config_profiles_csv=config_profiles_csv,
         targets_csv=targets_csv,

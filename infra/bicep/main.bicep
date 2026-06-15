@@ -73,6 +73,10 @@ param logAnalyticsRetentionDays int = 90
 @description('Admin group object IDs allowed to manage FarSight.')
 param adminGroupObjectIds array = []
 
+@secure()
+@description('Shared secret used by the admin BFF to sign privileged API calls during the current authorization phase.')
+param apiInternalAuthSecret string = ''
+
 @description('Enable Container Apps Easy Auth for the admin web application.')
 param enableAdminEasyAuth bool = false
 
@@ -118,6 +122,7 @@ module core 'modules/core.bicep' = {
     enableApim: enableApim
     enableDevEnrollmentApi: enableDevEnrollmentApi
     adminGroupObjectIds: adminGroupObjectIds
+    apiInternalAuthSecret: apiInternalAuthSecret
     vnetAddressPrefix: vnetAddressPrefix
     containerAppsInfrastructureSubnetPrefix: containerAppsInfrastructureSubnetPrefix
     privateEndpointSubnetPrefix: privateEndpointSubnetPrefix

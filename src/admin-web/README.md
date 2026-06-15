@@ -19,7 +19,7 @@ Only Policy repository and the initial Tool-call monitoring read-only surface ar
 
 The shell supports light and dark themes. The toggle is displayed in the page header, follows the user's system preference on first load, and stores the selected theme in browser local storage.
 
-The layout is intentionally wide for code-editing workflows and uses icon-led navigation so administrators can distinguish feature areas quickly. The overview page gives directional context instead of duplicating the full feature menu.
+The layout is intentionally wide for code-editing workflows and follows a simplified Azure-portal-style blade pattern: top bar, resource menu, and a wide content blade. The overview page gives directional context without duplicating the full feature menu.
 
 ## Authentication
 
@@ -28,6 +28,8 @@ Production uses Container Apps Easy Auth with Microsoft Entra ID. The app regist
 The BFF reads Easy Auth headers such as `x-ms-client-principal`, `x-ms-client-principal-id`, and `x-ms-client-principal-name`. Policy write calls forward the authenticated principal ID to the control API as `X-FarSight-Admin-Actor`.
 
 Set `FARSIGHT_ADMIN_GROUP_OBJECT_IDS` on the admin app to enforce group membership in the BFF. Local development can use `FARSIGHT_ADMIN_ALLOW_LOCAL_FALLBACK=true`; do not enable this in production.
+
+Privileged BFF-to-API calls are signed with `FARSIGHT_API_INTERNAL_AUTH_SECRET`. The BFF signs the authenticated Easy Auth actor, display name, groups, and a short expiry before calling policy save, activate, and delete endpoints. The control API verifies that signature before accepting the mutation.
 
 ## Policy repository editor
 
@@ -46,7 +48,7 @@ In Azure, Bicep sets `FARSIGHT_CONTROL_API_BASE_URL` on the admin BFF so policy 
 
 The policy repository can store multiple policy IDs and versions. The AGT gateway uses the configured active policy ID, defaulting to `farsight-tool-policy`; additional policy IDs are stored for future gateway/environment/scope separation until a gateway is configured to load them.
 
-Policy write endpoints currently require `FARSIGHT_ENABLE_POLICY_ADMIN_WRITES=true` on the control API. Bicep enables this temporary gate for the current admin editor flow, but production must replace it with Entra-authenticated FarSight Admin role checks before enabling policy writes broadly.
+Policy write endpoints require a signed admin context from the BFF. Production must continue to evolve this into full Entra service-token validation and immutable audit persistence.
 
 Active policy versions cannot be deleted from the UI or API. Activate another valid version first, then delete the archived or draft version.
 

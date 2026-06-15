@@ -20,6 +20,7 @@ ALLOWED_TASK_TYPES = {
     "Test-AppConnectivity",
     "Get-ConfigEvidence",
     "Get-AppDiskEvidence",
+    "Get-ServiceStatusSnapshot",
 }
 ALLOWED_RISK_LEVELS = {"read-only", "sensitive-diagnostic"}
 ALLOWED_DISK_PROFILES = {"contoso-app", "winget-cache"}

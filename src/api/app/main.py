@@ -4,8 +4,10 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 
+from .auth import AdminActor, require_admin_actor
 from .dependencies import AzureClients, get_azure_clients
 from .models import (
+    AuditEvent,
     ApprovalDecision,
     ApprovalRequest,
     ArtifactCommitRequest,
@@ -37,22 +39,26 @@ jobs: dict[str, JobDocument] = {}
 results: dict[str, ResultEnvelope] = {}
 approvals: dict[str, ApprovalRequest] = {}
 artifact_index: dict[str, list[dict[str, object]]] = {}
+audit_events: list[AuditEvent] = []
 
 
-def require_policy_admin(x_farsight_admin_actor: str | None = Header(default=None, alias="X-FarSight-Admin-Actor")) -> str:
-    """Temporary fail-closed admin-write gate until Entra role auth is wired.
+def append_audit_event(action: str, actor: AdminActor, target: str, decision: str = "allowed", reason: str | None = None) -> None:
+    audit_events.append(
+        AuditEvent(
+            id=f"audit-{uuid4()}",
+            eventType="policy-admin",
+            action=action,
+            actorId=actor.actor_id,
+            actorName=actor.actor_name,
+            target=target,
+            decision=decision,
+            reason=reason,
+        )
+    )
 
-    Production deployments must replace this with Entra-authenticated FarSight
-    Admin role checks. The explicit env var prevents policy mutation endpoints
-    from being accidentally exposed while the API skeleton is still maturing.
-    """
 
-    enabled = os.getenv("FARSIGHT_ENABLE_POLICY_ADMIN_WRITES", "").strip().lower() in {"1", "true", "yes"}
-    if not enabled:
-        raise HTTPException(status_code=403, detail="Policy write endpoints are disabled until FarSight Admin authorization is configured.")
-    if not x_farsight_admin_actor:
-        raise HTTPException(status_code=403, detail="X-FarSight-Admin-Actor is required for policy write operations.")
-    return x_farsight_admin_actor
+def actor_display(actor: AdminActor) -> str:
+    return actor.actor_name or actor.actor_id
 
 
 @app.get("/api/v1/health")
@@ -251,11 +257,13 @@ def upsert_policy(
     version: str,
     request: PolicyUpsertRequest,
     repository: PolicyRepository = Depends(get_policy_repository),
-    actor: str = Depends(require_policy_admin),
+    actor: AdminActor = Depends(require_admin_actor),
 ) -> PolicyDocument:
     if request.status != PolicyStatus.draft:
         raise HTTPException(status_code=400, detail="Policy save only supports draft status. Use the activate endpoint to change the active version.")
-    return repository.upsert(policyId, version, request.content, PolicyStatus.draft, actor, request.notes)
+    doc = repository.upsert(policyId, version, request.content, PolicyStatus.draft, actor_display(actor), request.notes)
+    append_audit_event("policy.version.save", actor, f"{policyId}:{version}")
+    return doc
 
 
 @app.post("/api/v1/policies/{policyId}/versions/{version}/activate", response_model=PolicyDocument)
@@ -264,11 +272,12 @@ def activate_policy(
     version: str,
     request: PolicyActivateRequest,
     repository: PolicyRepository = Depends(get_policy_repository),
-    actor: str = Depends(require_policy_admin),
+    actor: AdminActor = Depends(require_admin_actor),
 ) -> PolicyDocument:
-    # TODO: Add immutable audit event and Entra group/role evidence once auth is wired.
     try:
-        return repository.activate(policyId, version, actor, request.notes)
+        doc = repository.activate(policyId, version, actor_display(actor), request.notes)
+        append_audit_event("policy.version.activate", actor, f"{policyId}:{version}")
+        return doc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Policy version not found") from exc
     except ValueError as exc:
@@ -280,10 +289,11 @@ def delete_policy_version(
     policyId: str,
     version: str,
     repository: PolicyRepository = Depends(get_policy_repository),
-    actor: str = Depends(require_policy_admin),
+    actor: AdminActor = Depends(require_admin_actor),
 ) -> Response:
     try:
-        repository.delete_version(policyId, version, actor)
+        repository.delete_version(policyId, version, actor_display(actor))
+        append_audit_event("policy.version.delete", actor, f"{policyId}:{version}")
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Policy version not found") from exc
     except ValueError as exc:
