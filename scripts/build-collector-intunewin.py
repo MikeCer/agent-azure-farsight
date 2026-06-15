@@ -442,7 +442,6 @@ def invoke_intune_tool() -> None:
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -File install.ps1",
         "-o",
         str(INTUNE_OUTPUT_ROOT),
-        "-q",
     ]
     subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     generated = sorted(INTUNE_OUTPUT_ROOT.glob("*.intunewin"), key=lambda path: path.stat().st_mtime, reverse=True)

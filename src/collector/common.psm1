@@ -6,6 +6,24 @@ function Get-FarSightUtcNow {
     return [DateTime]::UtcNow.ToString('o')
 }
 
+function Resolve-FarSightLogPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$LogRoot,
+        [string]$FileName = 'collector.ndjson'
+    )
+
+    if ([string]::IsNullOrWhiteSpace($LogRoot)) {
+        throw 'Log root is required'
+    }
+
+    if ($LogRoot -match '\.ndjson$') {
+        return $LogRoot
+    }
+
+    return (Join-Path $LogRoot $FileName)
+}
+
 function Write-FarSightLog {
     [CmdletBinding()]
     param(
@@ -22,23 +40,6 @@ function Write-FarSightLog {
         context = Protect-FarSightObject -InputObject $Context
     }
 
-    function Resolve-FarSightLogPath {
-        [CmdletBinding()]
-        param(
-            [Parameter(Mandatory = $true)][string]$LogRoot,
-            [string]$FileName = 'collector.ndjson'
-        )
-
-        if ([string]::IsNullOrWhiteSpace($LogRoot)) {
-            throw 'Log root is required'
-        }
-
-        if ($LogRoot -match '\.ndjson$') {
-            return $LogRoot
-        }
-
-        return (Join-Path $LogRoot $FileName)
-    }
     $json = $entry | ConvertTo-Json -Depth 8 -Compress
     if ([string]::IsNullOrWhiteSpace($LogPath)) {
         Write-Output $json
