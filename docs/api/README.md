@@ -24,6 +24,22 @@ The FarSight control API is an early FastAPI implementation. Contracts below des
 - Admin policy mutations require signed BFF-to-API admin context derived from Easy Auth. The shared signing secret is `FARSIGHT_API_INTERNAL_AUTH_SECRET` and is stored as a Container Apps secret.
 - Policy version metadata (`updatedBy`) stores the propagated admin display name when available (falling back to actor ID).
 
+### Workload token enforcement for SRE/gateway machine calls
+
+FarSight API machine-to-machine endpoints now support Entra workload-token validation when enabled.
+
+Environment settings:
+
+- `FARSIGHT_API_ENFORCE_WORKLOAD_AUTH=true`
+- `FARSIGHT_ENTRA_TENANT_ID=<tenant-guid>` (or explicit `FARSIGHT_ENTRA_ISSUER`)
+- `FARSIGHT_API_ALLOWED_AUDIENCES=<csv of accepted audiences>`
+- `FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS=<csv of allowed SP object IDs>` and/or
+- `FARSIGHT_API_REQUIRED_APP_ROLE=<app role value expected in token roles claim>`
+
+Use `scripts/provision-farsight-api-app-registration.py` to create/update the FarSight API app registration and application app role, then grant that role to the SRE managed identity with `src/sre-agent/scripts/grant-farsight-api-access.sh`.
+
+When enforcement is enabled, the API validates JWT signature/issuer/audience using Entra JWKS and then enforces caller allowlist and/or required app role.
+
 ## Idempotency
 
 - Clients provide an `Idempotency-Key` for job creation.

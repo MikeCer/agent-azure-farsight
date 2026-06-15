@@ -49,3 +49,5 @@ infra-test/main.json
 *.dev.json
 
 .logs
+
+.farsight-dist

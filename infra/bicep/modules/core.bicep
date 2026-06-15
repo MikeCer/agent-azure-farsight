@@ -11,6 +11,11 @@ param acrFirewallAllowedIpRanges array = []
 param enableApim bool
 param enableDevEnrollmentApi bool
 param adminGroupObjectIds array
+param apiTenantId string
+param enableApiWorkloadAuth bool = false
+param apiAllowedAudiences string = ''
+param apiAllowedServicePrincipalObjectIds string = ''
+param apiRequiredAppRole string = ''
 
 @secure()
 @description('Shared secret used by the admin BFF to sign privileged API calls during the current authorization phase.')
@@ -257,6 +262,26 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'FARSIGHT_ENABLE_DEV_ENROLLMENT_API'
               value: string(enableDevEnrollmentApi)
+            }
+            {
+              name: 'FARSIGHT_ENTRA_TENANT_ID'
+              value: apiTenantId
+            }
+            {
+              name: 'FARSIGHT_API_ENFORCE_WORKLOAD_AUTH'
+              value: string(enableApiWorkloadAuth)
+            }
+            {
+              name: 'FARSIGHT_API_ALLOWED_AUDIENCES'
+              value: apiAllowedAudiences
+            }
+            {
+              name: 'FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS'
+              value: apiAllowedServicePrincipalObjectIds
+            }
+            {
+              name: 'FARSIGHT_API_REQUIRED_APP_ROLE'
+              value: apiRequiredAppRole
             }
             {
               name: 'FARSIGHT_ADMIN_GROUP_OBJECT_IDS'

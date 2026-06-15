@@ -63,6 +63,18 @@
     "enableDevEnrollmentApi": {
       "value": "${FARSIGHT_ENABLE_DEV_ENROLLMENT_API=true}"
     },
+    "enableApiWorkloadAuth": {
+      "value": "${FARSIGHT_ENABLE_API_WORKLOAD_AUTH=false}"
+    },
+    "apiAllowedAudiences": {
+      "value": "${FARSIGHT_API_ALLOWED_AUDIENCES=}"
+    },
+    "apiAllowedServicePrincipalObjectIds": {
+      "value": "${FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS=}"
+    },
+    "apiRequiredAppRole": {
+      "value": "${FARSIGHT_API_REQUIRED_APP_ROLE=}"
+    },
     "cosmosJobRetentionDays": {
       "value": "${FARSIGHT_COSMOS_JOB_RETENTION_DAYS=30}"
     },

@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 
-from .auth import AdminActor, require_admin_actor
+from .auth import AdminActor, WorkloadCaller, require_admin_actor, require_workload_caller
 from .dependencies import AzureClients, get_azure_clients
 from .models import (
     AuditEvent,
@@ -100,7 +100,7 @@ def get_device_policy(deviceId: str) -> dict[str, object]:
 
 
 @app.get("/api/v1/devices/{deviceId}/investigations")
-def get_device_investigations(deviceId: str) -> dict[str, object]:
+def get_device_investigations(deviceId: str, _: WorkloadCaller = Depends(require_workload_caller)) -> dict[str, object]:
     # TODO: Query Cosmos investigations container and redact sensitive history.
     return {"deviceId": deviceId, "investigations": []}
 
@@ -110,6 +110,7 @@ def create_job(
     request: JobCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     _: AzureClients = Depends(get_azure_clients),
+    __: WorkloadCaller = Depends(require_workload_caller),
 ) -> JobDocument:
     # TODO: Enforce Entra/managed identity authorization and idempotency key persistence.
     # TODO: Write Cosmos job document, then enqueue Service Bus jobs message using deviceId as session ID.
@@ -136,7 +137,7 @@ def create_job(
 
 
 @app.get("/api/v1/jobs/{jobId}", response_model=JobDocument)
-def get_job(jobId: str) -> JobDocument:
+def get_job(jobId: str, _: WorkloadCaller = Depends(require_workload_caller)) -> JobDocument:
     job = jobs.get(jobId)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -144,7 +145,7 @@ def get_job(jobId: str) -> JobDocument:
 
 
 @app.get("/api/v1/jobs/{jobId}/summary")
-def get_job_summary(jobId: str) -> dict[str, object]:
+def get_job_summary(jobId: str, _: WorkloadCaller = Depends(require_workload_caller)) -> dict[str, object]:
     if jobId not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     result = results.get(jobId)
@@ -173,14 +174,19 @@ def submit_job_result(jobId: str, result: ResultEnvelope, _: AzureClients = Depe
 
 
 @app.get("/api/v1/jobs/{jobId}/artifacts")
-def get_job_artifacts(jobId: str) -> dict[str, object]:
+def get_job_artifacts(jobId: str, _: WorkloadCaller = Depends(require_workload_caller)) -> dict[str, object]:
     if jobId not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"jobId": jobId, "artifacts": artifact_index.get(jobId, [])}
 
 
 @app.post("/api/v1/jobs/{jobId}/followups", response_model=JobDocument, status_code=status.HTTP_201_CREATED)
-def request_followup(jobId: str, request: JobCreateRequest, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> JobDocument:
+def request_followup(
+    jobId: str,
+    request: JobCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    _: WorkloadCaller = Depends(require_workload_caller),
+) -> JobDocument:
     if jobId not in jobs:
         raise HTTPException(status_code=404, detail="Parent job not found")
     return create_job(request, idempotency_key)
@@ -203,7 +209,11 @@ def commit_artifact_upload(request: ArtifactCommitRequest, _: AzureClients = Dep
 
 
 @app.post("/api/v1/approvals", response_model=ApprovalRequest, status_code=status.HTTP_201_CREATED)
-def create_approval(request: ApprovalRequest, _: AzureClients = Depends(get_azure_clients)) -> ApprovalRequest:
+def create_approval(
+    request: ApprovalRequest,
+    _: AzureClients = Depends(get_azure_clients),
+    __: WorkloadCaller = Depends(require_workload_caller),
+) -> ApprovalRequest:
     # TODO: Persist approval in Cosmos and send Teams notification through configured transport.
     approvals[request.approval_id] = request
     return request
@@ -220,7 +230,10 @@ def decide_approval(approvalId: str, decision: ApprovalDecision, _: AzureClients
 
 
 @app.get("/api/v1/policy")
-def get_policy(repository: PolicyRepository = Depends(get_policy_repository)) -> PolicyDocument:
+def get_policy(
+    repository: PolicyRepository = Depends(get_policy_repository),
+    _: WorkloadCaller = Depends(require_workload_caller),
+) -> PolicyDocument:
     # Backwards-compatible active policy endpoint for gateway consumers.
     return repository.get("farsight-tool-policy")
 
@@ -231,7 +244,11 @@ def list_policies(repository: PolicyRepository = Depends(get_policy_repository))
 
 
 @app.get("/api/v1/policies/{policyId}", response_model=PolicyDocument)
-def get_active_policy(policyId: str, repository: PolicyRepository = Depends(get_policy_repository)) -> PolicyDocument:
+def get_active_policy(
+    policyId: str,
+    repository: PolicyRepository = Depends(get_policy_repository),
+    _: WorkloadCaller = Depends(require_workload_caller),
+) -> PolicyDocument:
     try:
         return repository.get(policyId)
     except KeyError as exc:

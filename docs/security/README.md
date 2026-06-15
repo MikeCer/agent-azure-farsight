@@ -63,6 +63,7 @@ The admin web app uses **Container Apps Easy Auth** with Microsoft Entra ID.
 Deployment model:
 
 - The Entra app registration is created or updated manually with `scripts/provision-admin-app-registration.py` after the admin URL or custom domain is known.
+- FarSight API app registration and API app role for workload-token enforcement are created or updated manually with `scripts/provision-farsight-api-app-registration.py`.
 - The resulting `FARSIGHT_ADMIN_AUTH_*` values are stored in the AZD environment.
 - Bicep enables Easy Auth only when the enable flag, client ID, client secret, auth encryption secret, and issuer are all populated.
 - The Easy Auth Entra client secret is stored on the admin web Container App as `microsoft-provider-authentication-secret`.

@@ -61,6 +61,18 @@ param enableApim bool = false
 @description('Enable development certificate enrollment API path.')
 param enableDevEnrollmentApi bool = true
 
+@description('Enable Entra workload-token enforcement for FarSight API machine-to-machine endpoints.')
+param enableApiWorkloadAuth bool = false
+
+@description('Allowed token audiences for FarSight API workload auth as CSV.')
+param apiAllowedAudiences string = ''
+
+@description('Allowed caller service principal object IDs for FarSight API workload auth as CSV.')
+param apiAllowedServicePrincipalObjectIds string = ''
+
+@description('Required FarSight API app role value in caller token when workload auth is enabled. Leave empty to skip role enforcement.')
+param apiRequiredAppRole string = ''
+
 @description('Cosmos DB job retention in days.')
 param cosmosJobRetentionDays int = 30
 
@@ -121,6 +133,11 @@ module core 'modules/core.bicep' = {
     acrFirewallAllowedIpRanges: acrFirewallAllowedIpRanges
     enableApim: enableApim
     enableDevEnrollmentApi: enableDevEnrollmentApi
+    apiTenantId: tenant().tenantId
+    enableApiWorkloadAuth: enableApiWorkloadAuth
+    apiAllowedAudiences: apiAllowedAudiences
+    apiAllowedServicePrincipalObjectIds: apiAllowedServicePrincipalObjectIds
+    apiRequiredAppRole: apiRequiredAppRole
     adminGroupObjectIds: adminGroupObjectIds
     apiInternalAuthSecret: apiInternalAuthSecret
     vnetAddressPrefix: vnetAddressPrefix

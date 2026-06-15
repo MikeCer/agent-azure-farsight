@@ -76,6 +76,21 @@ Bicep sets `AZURE_CLIENT_ID` for Container Apps that use Azure SDKs so `DefaultA
 
 Set `FARSIGHT_API_INTERNAL_AUTH_SECRET` to a strong random value before enabling admin policy mutations. Bicep stores it as a Container Apps secret for both API and admin web. The BFF uses it to sign Easy Auth admin context for policy save, activate, and delete requests.
 
+For SRE Agent and AGT gateway machine-to-machine calls, optional Entra workload-token enforcement on FarSight API can be enabled with:
+
+- `FARSIGHT_ENABLE_API_WORKLOAD_AUTH=true`
+- `FARSIGHT_API_ALLOWED_AUDIENCES=<csv api app audiences>`
+- `FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS=<csv caller service principal object IDs>`
+- optional `FARSIGHT_API_REQUIRED_APP_ROLE=<role value>` for app-role claim enforcement
+
+When enabled, the API validates bearer tokens against Entra issuer/JWKS and enforces caller allowlist and/or required app role.
+
+Prepare the API app registration and application role manually with:
+
+```bash
+python3 scripts/provision-farsight-api-app-registration.py
+```
+
 Each service folder includes a `.dockerignore` file so remote builds do not upload local build artifacts such as `node_modules`, `dist`, Python caches, or local environment files.
 
 The API, admin web, and AGT tool gateway containers listen on port `8000`, and the Container Apps ingress `targetPort` values must match. API and AGT tool gateway apps use `minReplicas=0`, so seeing zero replicas while idle is expected; `ActivationFailed` indicates a real container startup or ingress configuration issue. The admin BFF SPA fallback must use `response_model=None` because it may return either static files or a JSON placeholder.
