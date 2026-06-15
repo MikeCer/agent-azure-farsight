@@ -21,6 +21,13 @@ param apiRequiredAppRole string = ''
 @description('Shared secret used by the admin BFF to sign privileged API calls during the current authorization phase.')
 param apiInternalAuthSecret string = ''
 
+@description('Enable device client certificate authentication for the API.')
+param enableApiDeviceCertAuth bool = false
+
+@secure()
+@description('Base64-encoded PEM of the trusted root/issuing CA for device certificates. Required if enableApiDeviceCertAuth is true.')
+param apiDeviceCertTrustedCaPem string = ''
+
 @description('Collector/control-plane virtual network address prefix.')
 param vnetAddressPrefix string = '10.10.0.0/16'
 
@@ -226,23 +233,29 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: environment.id
     configuration: {
       activeRevisionsMode: 'Single'
-      secrets: apiInternalAuthConfigured ? [
+      secrets: concat(apiInternalAuthConfigured ? [
         {
           name: 'api-internal-auth-secret'
           value: apiInternalAuthSecret
         }
-      ] : []
+      ] : [], (enableApiDeviceCertAuth && !empty(apiDeviceCertTrustedCaPem)) ? [
+        {
+          name: 'api-device-cert-ca'
+          value: apiDeviceCertTrustedCaPem
+        }
+      ] : [])
       registries: [
         {
           server: acr.properties.loginServer
           identity: appIdentity.id
         }
       ]
-      ingress: {
+       ingress: {
         external: containerAppIngressExternal
         targetPort: 8000
         transport: 'http'
         allowInsecure: false
+        clientCertificateMode: enableApiDeviceCertAuth ? 'accept' : 'ignore'
       }
     }
     template: {
@@ -307,10 +320,19 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'APPINSIGHTS_CONNECTION_STRING'
               value: appInsights.properties.ConnectionString
             }
+            {
+              name: 'FARSIGHT_API_ENFORCE_DEVICE_CERT_AUTH'
+              value: string(enableApiDeviceCertAuth)
+            }
           ], apiInternalAuthConfigured ? [
             {
               name: 'FARSIGHT_API_INTERNAL_AUTH_SECRET'
               secretRef: 'api-internal-auth-secret'
+            }
+          ] : [], (enableApiDeviceCertAuth && !empty(apiDeviceCertTrustedCaPem)) ? [
+            {
+              name: 'FARSIGHT_API_DEVICE_CERT_TRUSTED_CA_PEM'
+              secretRef: 'api-device-cert-ca'
             }
           ] : [])
           resources: {

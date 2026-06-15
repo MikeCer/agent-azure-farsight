@@ -89,6 +89,13 @@ param adminGroupObjectIds array = []
 @description('Shared secret used by the admin BFF to sign privileged API calls during the current authorization phase.')
 param apiInternalAuthSecret string = ''
 
+@description('Enable device client certificate authentication for the API.')
+param enableApiDeviceCertAuth bool = false
+
+@secure()
+@description('Base64-encoded PEM of the trusted root/issuing CA for device certificates. Required if enableApiDeviceCertAuth is true.')
+param apiDeviceCertTrustedCaPem string = ''
+
 @description('Enable Container Apps Easy Auth for the admin web application.')
 param enableAdminEasyAuth bool = false
 
@@ -140,6 +147,8 @@ module core 'modules/core.bicep' = {
     apiRequiredAppRole: apiRequiredAppRole
     adminGroupObjectIds: adminGroupObjectIds
     apiInternalAuthSecret: apiInternalAuthSecret
+    enableApiDeviceCertAuth: enableApiDeviceCertAuth
+    apiDeviceCertTrustedCaPem: apiDeviceCertTrustedCaPem
     vnetAddressPrefix: vnetAddressPrefix
     containerAppsInfrastructureSubnetPrefix: containerAppsInfrastructureSubnetPrefix
     privateEndpointSubnetPrefix: privateEndpointSubnetPrefix
