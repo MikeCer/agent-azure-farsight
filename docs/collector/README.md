@@ -10,13 +10,13 @@ This page is the practical operator guide for:
 3. How to distribute and validate it in rollout rings.
 4. How to configure certificate-based authentication.
 
-For full Intune workflow details, see also `docs/intune/collector-distribution.md`.
+This page is the canonical guide for collector + Intune packaging, distribution, certificate setup, and remediation.
 
 ## 1. How collector works on endpoint
 
 ### Runtime layout
 
-Default install root:
+Default install root is company-specific and chosen during packaging. For example:
 
 ```text
 C:\ProgramData\Company\SreCollector
@@ -73,10 +73,10 @@ Create environment-specific files from:
 | `api.timeoutSeconds` | API timeout per call |
 | `api.certificateThumbprint` | Client cert thumbprint for TLS client auth |
 | `device.tenantId` | Entra tenant ID |
-| `device.deviceId` | Stable device identity (usually Entra device ID) |
-| `device.hostnameHash` | Redacted host correlation value |
-| `runtime.artifactRoot` | Artifact staging path |
-| `runtime.logPath` | Collector log path |
+| `device.deviceId` | Stable device identity, stamped per device at install time from the enrolled certificate CN |
+| `device.hostnameHash` | Redacted host correlation value, stamped per device at install time from the local machine name |
+| `runtime.artifactRoot` | Artifact staging path (Windows path) |
+| `runtime.logPath` | Collector log directory (Windows path); the collector writes `collector.ndjson` inside it |
 | `redaction.enabled` | Keep `true` outside isolated tests |
 
 ### `module-manifest.json` expectations
@@ -95,6 +95,12 @@ Recommended artifacts:
 3. **Remediation package** for drift detection/repair.
 
 For the fastest operator flow, use `scripts/build-collector-intunewin.py`. It first asks for the customer/company name, then stages a package under `.farsight-dist/collector-package/`, interactively collects `config.json`, the final `module-manifest.json`, and certificate metadata, then invokes `scripts/IntuneWinAppUtil.exe` to produce the `.intunewin` output.
+
+**Install command**: The helper automatically includes the `-i` parameter with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File install.ps1` so Intune knows how to execute the PowerShell install script. This is essential for the Win32 app installation to proceed after detection succeeds.
+
+The helper separates shared package settings from install-time lookup values, so it should not ask for per-device IDs or thumbprints when Intune PKI is selected.
+
+The helper also emits package metadata (`package-metadata.json`) so the generated install/uninstall scripts use the chosen company name in the install root and scheduled task name.
 
 ### Package staging structure
 
@@ -161,11 +167,23 @@ In Intune:
 
 ### Recommended detection rule
 
-Detect all of:
+In the Intune Win32 app, configure **Detection rules** as:
 
-- collector core files exist;
-- config + manifest exist;
-- scheduled task exists with approved path/command.
+1. **Rules format**: `Use a custom detection script`.
+2. **Script type**: PowerShell.
+3. **Run script as 64-bit**: `Yes`.
+4. **Run script in 32-bit PowerShell**: `No`.
+5. **Script file**: upload [`scripts/intune-collector-detection.ps1`](../../scripts/intune-collector-detection.ps1).
+6. **Detection logic**: the script returns success only when all of these are true:
+   - the collector install root exists;
+   - `config\config.json` exists;
+   - `config\module-manifest.json` exists;
+   - `collector.ps1` and `common.psm1` exist;
+   - `config\package-metadata.json` exists;
+   - the scheduled task exists and its command still points to the approved install root;
+   - the device certificate thumbprint exists in the expected cert store.
+
+If you need to customize the install root or task name, edit the script before uploading it to Intune.
 
 ### Assignment rings
 
@@ -192,24 +210,159 @@ Collector API calls use certificate-based auth via:
 - `api.certificateThumbprint` in `config.json`
 - local certificate in Windows cert store with private key
 
-### Recommended certificate profile model
+Certificate options from lowest to highest operational maturity:
 
-Use Intune-delivered **SCEP or PKCS** profile with:
+| Option | Use case |
+| --- | --- |
+| Known thumbprint at packaging time | Lab or single-device test only. Do not use in production. |
+| Intune-managed PKCS (third-party CA) | Existing on-premises PKI issuing PKCS#12 profiles through Intune. |
+| **Intune Cloud PKI + SCEP** | Recommended for production. Fully cloud-managed, no on-premises CA required. |
 
-- client authentication EKU
-- non-exportable key (preferred)
-- predictable target store (for thumbprint lookup)
-- rotation before expiry
-- revocation/decommission process
+### Option A: Intune Cloud PKI with SCEP (recommended)
+
+Microsoft Intune Cloud PKI is a fully cloud-managed PKI built into Intune. No on-premises CA, NDES server, or certificate connector is required.
+
+#### Step 1 — Create a Cloud PKI root CA
+
+1. In **Intune admin center** → **Tenant administration** → **Cloud PKI**.
+2. Select **Create** → **Root CA**.
+3. Configure:
+   - **Name**: e.g. `FarSight Collector Root CA`
+   - **Validity period**: 10 years (recommended)
+   - **Key algorithm**: RSA 2048 or ECDSA P-256
+   - **Subject**: set `O=<company>`, `CN=FarSight Collector Root CA`
+4. Save and wait for provisioning to complete.
+5. Download the Root CA certificate for distribution to client trust stores.
+
+#### Step 2 — Create a Cloud PKI issuing CA
+
+1. In **Cloud PKI**, select **Create** → **Issuing CA**.
+2. Set **Parent CA** to the root CA created in step 1.
+3. Configure:
+   - **Name**: e.g. `FarSight Collector Issuing CA`
+   - **Validity period**: 3 years
+   - **Key algorithm**: match root CA
+   - **Subject**: set `O=<company>`, `CN=FarSight Collector Issuing CA`
+4. Save and copy the **SCEP URL** from the issuing CA properties — you need it for the certificate profile.
+
+#### Step 3 — Distribute root CA to client trust stores
+
+The Windows client must trust the issuing CA chain before the SCEP profile can reference it, and the FarSight API endpoint must trust the root CA.
+
+For Windows clients:
+1. In **Devices** → **Configuration** → **Create** → **New policy**.
+2. Platform: **Windows 10 and later**. Profile type: **Trusted certificate**.
+3. Upload the Root CA `.cer` file downloaded in step 1.
+4. Destination store: **Computer certificate store - Root**.
+5. Assign to the same device groups.
+
+For the FarSight API (Azure Container App):
+
+Azure Container Apps does not perform OS-level CA trust for inbound mTLS. Instead, configure the Container Apps Environment to accept and forward client certificates so the API application can validate them.
+
+1. **Export the Root CA certificate from Intune Cloud PKI.**
+   In Intune admin center → **Tenant administration** → **Cloud PKI** → select the root CA → **Download certificate**. Save as `farsight-root-ca.cer`.
+
+2. **Make the Root CA available to the API container.**
+   Azure Container Apps has no CA trust store for client certificate validation — chain validation is the application's responsibility. Provide the Root CA PEM to the API as an environment variable.
+
+   Base64-encode the PEM file:
+   ```bash
+   base64 -w 0 FarSightCollectorRootCA.pem
+   ```
+   Set the output as an AZD environment variable:
+   ```bash
+   azd env set FARSIGHT_API_DEVICE_CERT_TRUSTED_CA_PEM <base64-output>
+   ```
+   The API's `require_device_cert` dependency loads this at startup and verifies each device certificate's signature against the CA public key.
+
+3. **Enable client certificate pass-through on the API Container App ingress.**
+   Set `clientCertificateMode` to `accept` (forwards cert if present; does not require it) or `require` (rejects requests with no cert).
+   ```bash
+   az containerapp ingress update \
+     --resource-group <rg> \
+     --name <api-container-app-name> \
+     --client-certificate-mode accept
+   ```
+   If your `containerapp` extension version does not support `--client-certificate-mode`, use ARM REST patch:
+   ```bash
+   az rest --method PATCH \
+     --uri "https://management.azure.com/subscriptions/<subscription-id>/resourceGroups/<rg>/providers/Microsoft.App/containerApps/<api-container-app-name>?api-version=2024-03-01" \
+     --body '{"properties":{"configuration":{"ingress":{"clientCertificateMode":"accept"}}}}'
+   ```
+   Or in Bicep, add to the `ingress` block:
+   ```bicep
+   ingress: {
+     external: containerAppIngressExternal
+     targetPort: 8000
+     transport: 'http'
+     allowInsecure: false
+     clientCertificateMode: 'accept'
+   }
+   ```
+
+4. **The API validates the forwarded certificate on collector-facing endpoints.**
+   Azure Container Apps forwards the client certificate via the `X-Forwarded-Client-Cert` header (URL-encoded PEM). The `require_device_cert` dependency in `src/api/app/auth.py` parses the certificate, checks validity period and Client Authentication EKU, and binds the certificate CN to the claimed `device_id` in the request body.
+
+   Enable enforcement by setting the env var:
+   ```
+   FARSIGHT_API_ENFORCE_DEVICE_CERT_AUTH=true
+   ```
+   When unset or `false`, the dependency passes through (safe for local development without a certificate).
+
+#### Step 4 — Create a SCEP certificate profile
+
+1. In **Devices** → **Configuration** → **Create** → **New policy**.
+2. Platform: **Windows 10 and later**. Profile type: **SCEP certificate**.
+3. Configure:
+   - **Certificate type**: Device
+   - **Subject name format**: `CN={{AAD_Device_ID}}` (device ID as subject so each cert is unique)
+   - **Subject alternative name**: `URI: spiffe://<tenant-id>/farsight/collector/{{AAD_Device_ID}}` (optional, recommended for future mTLS validation)
+   - **Certificate validity**: 1 year
+   - **Key size**: 2048 or P-256
+   - **Extended key usage**: **Client Authentication** (OID 1.3.6.1.5.5.7.3.2)
+   - **Key storage provider**: TPM KSP if required, otherwise Software KSP
+   - **Root certificate**: select the trusted certificate profile created in step 3
+   - **SCEP server URLs**: paste the SCEP URL from step 2
+4. Assign to the same device groups used for the collector Win32 app.
+
+> Certificate enrollment happens before the collector install script runs, as long as the trusted certificate and SCEP profiles are assigned earlier in the ring.
+
+#### Step 5 — Run the packaging helper in Intune PKI mode
+
+When running `scripts/build-collector-intunewin.py`, select **Intune PKI (SCEP/PKCS)** for the certificate mode. The helper prompts:
+
+- Certificate store location: `LocalMachine`
+- Certificate store name: `My`
+- Subject contains: value matching your SCEP profile subject (e.g. `farsight`)
+- Issuer contains: (optional) partial issuer CN from the issuing CA
+
+The helper writes `certificate-source.json` and leaves `api.certificateThumbprint` as an install-time placeholder. At install time, `install.ps1` searches the device certificate store using these criteria, finds the SCEP-enrolled certificate, and writes the resolved thumbprint into `config.json` before registering the scheduled task.
+
+#### Step 6 — Verify certificate delivery order in deployment
+
+Ensure the Intune assignment deployment order is:
+1. Trusted root CA certificate profile ← deploys first
+2. SCEP certificate profile ← enrolls device cert
+3. FarSight collector Win32 app ← installs and resolves thumbprint from enrolled cert
+
+### Option B: Intune-managed PKCS (on-premises CA)
+
+If using an existing enterprise PKI through Intune PKCS profile instead of Cloud PKI:
+
+1. Configure a Intune Certificate Connector on a server with access to your CA.
+2. Create a PKCS certificate profile with **Client Authentication** EKU.
+3. In the packaging helper, select **Intune PKI (SCEP/PKCS)** and provide the subject/issuer match criteria matching the PKCS profile.
+4. The install-time resolution flow is identical to Cloud PKI.
 
 ### How to wire thumbprint safely
 
-Preferred order:
+Summary regardless of option:
 
-1. Issue cert via Intune profile.
-2. Resolve thumbprint during packaging/install (or generate config during install from local cert selection policy).
-3. Write final `config.json` on device.
-4. Validate cert presence in detection/remediation scripts.
+1. Issue cert via Intune profile (Cloud PKI SCEP or PKCS).
+2. At install time, `install.ps1` resolves the thumbprint from the enrolled cert using `certificate-source.json` selector.
+3. `config.json` is written with the resolved thumbprint.
+4. Detection/remediation scripts validate cert presence on every compliance cycle.
 
 Avoid hardcoding a static thumbprint shared across all devices.
 
@@ -219,11 +372,20 @@ When the package is built for Intune PKI, the helper script writes a `certificat
 
 If check-in fails:
 
-1. Verify cert exists in expected store and has private key.
-2. Verify thumbprint in `config.json` matches installed cert.
-3. Verify cert validity period and chain trust.
-4. Verify API endpoint TLS trust and route reachability.
-5. Verify API requires/accepts client cert on that endpoint path.
+1. Verify cert exists in `LocalMachine\My` store and has private key.
+2. Verify SCEP/PKCS profile enrollment succeeded in Intune device reports.
+3. Verify subject/issuer selector in `certificate-source.json` matches the enrolled cert.
+4. Verify thumbprint in `config.json` is uppercase and without spaces.
+5. Verify cert validity period and chain trust to root CA.
+6. Verify FarSight API TLS trust for the issuing CA chain.
+7. Verify API endpoint reachability from the managed device (DNS, routing, firewall).
+
+### Cloud PKI operational notes
+
+- Cloud PKI SCEP URL is per-issuing-CA; do not share it between tenants or customer environments.
+- Certificate revocation is handled through Cloud PKI CRL/OCSP automatically.
+- Rotate issuing CA before expiry; renew root CA well in advance (18 months before expiry recommended).
+- Monitor Cloud PKI quota usage in Intune admin center (Tenant administration → Cloud PKI → Usage).
 
 ## 6. Remediation strategy (required)
 

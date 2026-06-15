@@ -28,6 +28,7 @@ INTUNE_TOOL = ROOT / "scripts" / "IntuneWinAppUtil.exe"
 DIST_ROOT = ROOT / ".farsight-dist"
 PACKAGE_ROOT = DIST_ROOT / "collector-package"
 INTUNE_OUTPUT_ROOT = DIST_ROOT / "intunewin"
+INTUNE_PACKAGE_NAME = "FarSightCollector.intunewin"
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,10 @@ def sanitize_path_segment(value: str) -> str:
 
 def ps_single_quoted(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
+
+
+def windows_join(*parts: str) -> str:
+    return "\\".join(part.strip("\\/") for part in parts if part).replace(":/", ":\\")
 
 
 def prompt_multi_select(entries: list[ModuleCatalogEntry]) -> list[str]:
@@ -171,47 +176,45 @@ def write_json(path: Path, data: object) -> None:
 def build_config(install_root: str) -> dict:
     sample_path = COLLECTOR_SRC / "config" / "config.sample.json"
     config = json.loads(sample_path.read_text(encoding="utf-8"))
-    print("\nCollector config.json")
-    config["collectorVersion"] = prompt("Collector version", config.get("collectorVersion", "0.1.0"))
-    config["api"]["baseUrl"] = prompt("FarSight API base URL", config["api"]["baseUrl"])
-    config["api"]["timeoutSeconds"] = int(prompt("API timeout seconds", str(config["api"]["timeoutSeconds"])))
-    config["device"]["tenantId"] = prompt("Entra tenant ID", config["device"]["tenantId"])
-    config["device"]["deviceId"] = prompt("Device ID", config["device"]["deviceId"])
-    config["device"]["hostnameHash"] = prompt("Hostname hash", config["device"]["hostnameHash"])
-    config["runtime"]["maxSingleRunSeconds"] = int(prompt("Max single-run seconds", str(config["runtime"]["maxSingleRunSeconds"])))
-    config["runtime"]["artifactRoot"] = prompt("Artifact root", str(Path(install_root) / "artifacts"))
-    config["runtime"]["logPath"] = prompt("Log path", str(Path(install_root) / "logs" / "collector.ndjson"))
-    config["redaction"]["enabled"] = prompt_bool("Enable redaction", bool(config["redaction"]["enabled"]))
+    print("\nPackage-wide collector config.json")
+    config["collectorVersion"] = prompt("Collector version (shared package setting)", config.get("collectorVersion", "0.1.0"))
+    config["api"]["baseUrl"] = prompt("FarSight API base URL (shared package setting)", config["api"]["baseUrl"])
+    config["api"]["timeoutSeconds"] = int(prompt("API timeout seconds (shared package setting)", str(config["api"]["timeoutSeconds"])))
+    config["device"]["tenantId"] = prompt("Entra tenant ID (shared package setting)", config["device"]["tenantId"])
+    config["device"]["deviceId"] = "__DEVICE_ID_FROM_CERT_CN__"
+    print("Device ID will be stamped at install time from the enrolled certificate CN.")
+    config["device"]["hostnameHash"] = "__HOSTNAME_HASH_FROM_DEVICE_NAME__"
+    print("Hostname hash will be stamped at install time from the local machine name.")
+    config["runtime"]["maxSingleRunSeconds"] = int(prompt("Max single-run seconds (shared package setting)", str(config["runtime"]["maxSingleRunSeconds"])))
+    config["runtime"]["artifactRoot"] = prompt("Artifact root (shared package setting)", windows_join(install_root, "artifacts"))
+    config["runtime"]["logPath"] = prompt("Log path directory (shared package setting)", windows_join(install_root, "logs"))
+    config["redaction"]["enabled"] = prompt_bool("Enable redaction for the packaged collector", bool(config["redaction"]["enabled"]))
     return config
 
 
 def build_certificate_metadata(config: dict) -> dict:
-    print("\nCertificate authentication")
+    print("\nCertificate provisioning and install-time lookup")
     mode = prompt_choice(
-        "How will the collector certificate be provided?",
+        "How will the collector certificate be provided for this package?",
         ["Existing thumbprint", "Intune PKI (SCEP/PKCS)", "Not yet decided"],
         default="Intune PKI (SCEP/PKCS)",
     )
 
     if mode == "Existing thumbprint":
-        thumbprint = prompt("Certificate thumbprint").replace(" ", "")
+        thumbprint = prompt("Certificate thumbprint (shared package only)").replace(" ", "")
         config["api"]["certificateThumbprint"] = thumbprint
         return {"mode": "thumbprint", "thumbprint": thumbprint}
 
     if mode == "Intune PKI (SCEP/PKCS)":
         selector = {
             "mode": "intune-pki",
-            "storeLocation": prompt_choice("Certificate store location", ["LocalMachine", "CurrentUser"], default="LocalMachine"),
-            "storeName": prompt("Certificate store name", "My"),
-            "subjectContains": prompt("Subject contains", "FarSight Collector"),
-            "issuerContains": prompt("Issuer contains (optional)", ""),
-            "requirePrivateKey": prompt_bool("Require private key", True),
-            "thumbprint": prompt("Known thumbprint now (leave blank if not yet issued)", ""),
+            "storeLocation": prompt_choice("Certificate store location for install-time lookup", ["LocalMachine", "CurrentUser"], default="LocalMachine"),
+            "storeName": prompt("Certificate store name for install-time lookup", "My"),
+            "subjectContains": prompt("Subject contains (install-time lookup filter)", "FarSight Collector"),
+            "issuerContains": prompt("Issuer contains (optional install-time lookup filter)", ""),
+            "requirePrivateKey": prompt_bool("Require private key during install-time lookup", True),
         }
-        if selector["thumbprint"]:
-            config["api"]["certificateThumbprint"] = selector["thumbprint"].replace(" ", "")
-        else:
-            config["api"]["certificateThumbprint"] = "__INTUNE_PKI_RESOLVE_AT_INSTALL__"
+        config["api"]["certificateThumbprint"] = "__INTUNE_PKI_RESOLVE_AT_INSTALL__"
         return selector
 
     config["api"]["certificateThumbprint"] = "__CERTIFICATE_THUMBPRINT_PENDING__"
@@ -300,6 +303,70 @@ def make_install_script(install_root: str, task_name: str) -> str:
             return $selected[0].Thumbprint.Replace(' ', '').ToUpperInvariant()
         }
 
+        function Resolve-FarSightDeviceId {
+            param([string]$ConfigPath, [string]$CertificateProfilePath)
+
+            $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $deviceId = [string]$config.device.deviceId
+            if (-not [string]::IsNullOrWhiteSpace($deviceId) -and $deviceId -notlike '__*') {
+                return $deviceId
+            }
+
+            if (-not (Test-Path -LiteralPath $CertificateProfilePath -PathType Leaf)) {
+                throw 'Certificate metadata file is missing and the config does not contain a usable device ID.'
+            }
+
+            $profile = Get-Content -LiteralPath $CertificateProfilePath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $stores = @()
+            if ($profile.storeLocation -and $profile.storeName) {
+                $stores += "Cert:\$($profile.storeLocation)\$($profile.storeName)"
+            } else {
+                $stores += 'Cert:\LocalMachine\My'
+            }
+
+            $candidates = foreach ($store in $stores) {
+                if (Test-Path -LiteralPath $store) {
+                    Get-ChildItem -Path $store | Where-Object {
+                        $_.HasPrivateKey -and
+                        (-not $profile.subjectContains -or $_.Subject -like "*$($profile.subjectContains)*") -and
+                        (-not $profile.issuerContains -or $_.Issuer -like "*$($profile.issuerContains)*")
+                    }
+                }
+            }
+
+            $selected = @($candidates | Sort-Object NotAfter -Descending | Select-Object -First 1)
+            if (-not $selected) {
+                throw 'No matching certificate found. Install the Intune PKI certificate profile before deploying the collector.'
+            }
+
+            $cn = [string]($selected[0].Subject -replace '.*CN=([^,]+).*', '$1')
+            if ([string]::IsNullOrWhiteSpace($cn) -or $cn -eq $selected[0].Subject) {
+                throw 'Selected device certificate does not expose a usable CN for device ID stamping.'
+            }
+            return $cn
+        }
+
+        function Resolve-FarSightHostnameHash {
+            param([string]$ConfigPath)
+
+            $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $hostnameHash = [string]$config.device.hostnameHash
+            if (-not [string]::IsNullOrWhiteSpace($hostnameHash) -and $hostnameHash -notlike '__*') {
+                return $hostnameHash
+            }
+
+            $hostname = [System.Environment]::MachineName.Trim().ToLowerInvariant()
+            $sha256 = [System.Security.Cryptography.SHA256]::Create()
+            try {
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($hostname)
+                $hashBytes = $sha256.ComputeHash($bytes)
+                $hex = ($hashBytes | ForEach-Object { $_.ToString('x2') }) -join ''
+                return "sha256:$hex"
+            } finally {
+                $sha256.Dispose()
+            }
+        }
+
         $collectorSource = Join-Path $SourceRoot 'collector'
         $moduleSource = Join-Path $SourceRoot 'modules'
 
@@ -310,9 +377,13 @@ def make_install_script(install_root: str, task_name: str) -> str:
         $configPath = Join-Path $InstallRoot 'config\config.json'
         $profilePath = Join-Path $InstallRoot 'config\certificate-source.json'
         $resolvedThumbprint = Resolve-FarSightCertificateThumbprint -ConfigPath $configPath -CertificateProfilePath $profilePath
+        $resolvedDeviceId = Resolve-FarSightDeviceId -ConfigPath $configPath -CertificateProfilePath $profilePath
+        $resolvedHostnameHash = Resolve-FarSightHostnameHash -ConfigPath $configPath
 
         $config = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $config.api.certificateThumbprint = $resolvedThumbprint
+        $config.device.deviceId = $resolvedDeviceId
+        $config.device.hostnameHash = $resolvedHostnameHash
         $config | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $configPath -Encoding UTF8
 
         & (Join-Path $InstallRoot 'bootstrap.ps1') -InstallRoot $InstallRoot
@@ -367,11 +438,22 @@ def invoke_intune_tool() -> None:
         str(PACKAGE_ROOT),
         "-s",
         "install.ps1",
+        "-i",
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File install.ps1",
         "-o",
         str(INTUNE_OUTPUT_ROOT),
         "-q",
     ]
-    subprocess.run(command, check=True)
+    subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    generated = sorted(INTUNE_OUTPUT_ROOT.glob("*.intunewin"), key=lambda path: path.stat().st_mtime, reverse=True)
+    if not generated:
+        raise FileNotFoundError(f"Intune package was not generated in {INTUNE_OUTPUT_ROOT}")
+    source = generated[0]
+    target = INTUNE_OUTPUT_ROOT / INTUNE_PACKAGE_NAME
+    if source != target:
+        if target.exists():
+            target.unlink()
+        source.rename(target)
 
 
 def main() -> int:
@@ -446,7 +528,7 @@ def main() -> int:
 
     print("\nInvoking Intune Win32 Content Prep Tool...")
     invoke_intune_tool()
-    print(f"Package output: {INTUNE_OUTPUT_ROOT}")
+    print(f"\n✓ Final package: {INTUNE_OUTPUT_ROOT / INTUNE_PACKAGE_NAME}")
     return 0
 
 
