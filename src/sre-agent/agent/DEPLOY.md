@@ -67,7 +67,7 @@ It accepts either `properties.endpoint` or `properties.agentEndpoint`, then remo
 
 The Bicep deployment now aligns with the migrated stable SRE Agent resource shape by explicitly setting:
 
-- `logConfiguration.applicationInsightsConfiguration.applicationInsightsResourceId` (instead of sending an App Insights connection string),
+- `logConfiguration.applicationInsightsConfiguration` with both `appId` and `connectionString` (the SRE Agent API requires these together), while still linking the App Insights resource ID,
 - `monthlyAgentUnitLimit` (default `10000`),
 - `experimentalSettings.EnableSandboxGroup` (default `true`),
 - `experimentalSettings.EnableWorkspaceTools` (default `true`).
@@ -78,10 +78,21 @@ The script reads `INTUNE_DIAGNOSTICS_AUTH_MODE` to decide which tool call shape 
 
 | Value | Injected tool authentication | Use when |
 | --- | --- | --- |
-| `key-vault` | `auth_mode: client-secret` plus Key Vault URL and secret names | The Intune tenant is accessed with service-principal credentials stored in Key Vault. This is the default. |
-| `managed-identity` | `auth_mode: default` | The SRE Agent assigned identity has Microsoft Graph/Intune application permissions and admin consent. |
+| `managed-identity` | `auth_mode: default` | The SRE Agent assigned identity has Microsoft Graph/Intune application permissions and admin consent. This is the default. |
+| `key-vault` | `auth_mode: client-secret` plus Key Vault URL and secret names | Optional fallback for deployments that intentionally store Intune credentials in Key Vault. |
 
-In `key-vault` mode, the script searches the resource group for the generated Key Vault:
+In `managed-identity` mode, the injected tool call is:
+
+```json
+{
+  "device_name": "<deviceName>",
+  "auth_mode": "default"
+}
+```
+
+No Key Vault URI is injected, and no Key Vault RBAC repair is attempted. The script prints a managed-identity reminder at the end of deployment, explicitly calling out that Microsoft Graph Intune application permissions with admin consent must be assigned to the runtime SRE Agent identity (system-assigned or user-assigned).
+
+If you explicitly set `INTUNE_DIAGNOSTICS_AUTH_MODE=key-vault`, the script searches the resource group for the generated Key Vault:
 
 ```bash
 az keyvault list \
@@ -114,17 +125,6 @@ When a Key Vault is found in `key-vault` mode, the script also verifies RBAC for
 
 This complements the infrastructure template, which grants the user-assigned managed identity secret read access. Both identities can exist on the SRE Agent resource, but the Python tool sandbox may authenticate with the system-assigned identity.
 
-In `managed-identity` mode, the injected tool call is:
-
-```json
-{
-  "device_name": "<deviceName>",
-  "auth_mode": "default"
-}
-```
-
-No Key Vault URI is injected, and no Key Vault RBAC repair is attempted.
-The script prints a managed-identity reminder at the end of deployment, explicitly calling out that Microsoft Graph Intune application permissions with admin consent must be assigned to the runtime SRE Agent identity (system-assigned or user-assigned).
 
 ### 4. Upload knowledge files
 

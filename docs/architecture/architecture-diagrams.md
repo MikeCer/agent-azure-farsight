@@ -23,7 +23,6 @@ flowchart LR
     subgraph Italy["Italy North - FarSight collector/control plane"]
         Api["Control API<br/>Container Apps + FastAPI"]
         Admin["Admin and monitoring web app<br/>React + FastAPI BFF"]
-        Worker["Worker/reconciler<br/>Container App"]
         Gateway["AGT-governed<br/>FarSight tool gateway"]
         SB["Service Bus<br/>session-enabled jobs queue"]
         Cosmos["Cosmos DB<br/>jobs, devices, approvals, policies"]
@@ -48,9 +47,6 @@ flowchart LR
     Api --> LA
     Api --> KV
     Api --> AppConfig
-    Worker --> SB
-    Worker --> Cosmos
-    Worker --> LA
     Collector -->|mTLS check-in, fetch, result| APIM
     APIM --> Api
     Collector -->|dev/test direct HTTPS if APIM disabled| Api
@@ -164,7 +160,6 @@ flowchart TB
             ACA1["Container Apps env"]
             APIApp["ca-farsight-api"]
             AdminApp["ca-farsight-admin"]
-            WorkerApp["ca-farsight-worker"]
             Data["Cosmos DB, Service Bus,<br/>Storage, Key Vault, App Config"]
             Monitor["Log Analytics, App Insights,<br/>DCR/DCE, alerts"]
             Optional["Optional APIM, VNet,<br/>private endpoints"]

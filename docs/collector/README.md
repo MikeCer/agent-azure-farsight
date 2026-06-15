@@ -22,6 +22,8 @@ Default install root is company-specific and chosen during packaging. For exampl
 C:\ProgramData\Company\SreCollector
 ```
 
+When you run collector scripts without passing `-InstallRoot`, they now default to the script directory (`$PSScriptRoot`) first, then fall back to the legacy `C:\ProgramData\Company\SreCollector` path. This keeps manual test runs aligned with the actual packaged install location.
+
 Expected folders:
 
 - `config/` - `config.json`, `module-manifest.json`, task intent metadata.

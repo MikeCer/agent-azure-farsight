@@ -18,16 +18,16 @@ The agent can analyze:
 
 ## Tooling
 
-Use the `intune_diagnostics_tool` Python tool when Microsoft Graph/Intune device evidence is needed. Provide `device_name` and the configured Key Vault credential parameters:
+Use the `intune_diagnostics_tool` Python tool when Microsoft Graph/Intune device evidence is needed. The default auth path is managed identity:
 
 ```json
 {
   "device_name": "<deviceName>",
-  {{INTUNE_KEY_VAULT_TOOL_ARGUMENTS}}
+  "auth_mode": "default"
 }
 ```
 
-{{INTUNE_AUTH_MODE_GUIDANCE}}
+Use `key-vault` only when you explicitly want Key Vault-backed service-principal credentials. In that case, provide the configured Key Vault credential parameters.
 
 Use the FarSight tools only for governed diagnostic workflows with clear scope and approved named modules:
 

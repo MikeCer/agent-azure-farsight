@@ -118,7 +118,7 @@ FarSight apps use managed identities for Azure resource access.
 Current intended assignments include:
 
 - Container Apps identities receive ACR pull permissions for the provisioned registry.
-- API and worker identities receive only the Cosmos DB, Service Bus, Storage, Key Vault, App Configuration, and monitoring permissions they require.
+- API and tool gateway identities receive only the Cosmos DB, Service Bus, Storage, Key Vault, App Configuration, and monitoring permissions they require.
 - Admin web/BFF identity receives only permissions needed to call the control API and read public UI configuration.
 - SRE Agent package identities receive only the Microsoft Graph, Key Vault, and FarSight permissions required by their tools.
 

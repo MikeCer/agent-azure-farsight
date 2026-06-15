@@ -79,8 +79,10 @@ Set these with `azd env set <KEY> <VALUE>` before `azd up`:
 | `SRE_AGENT_MONTHLY_AGENT_UNIT_LIMIT` | No | Defaults to `10000`. Matches current migrated SRE Agent resource unit-limit shape. |
 | `SRE_AGENT_ENABLE_SANDBOX_GROUP` | No | Defaults to `true`. Enables the newer SRE sandbox feature on resource creation. |
 | `SRE_AGENT_ENABLE_WORKSPACE_TOOLS` | No | Defaults to `true`. Enables newer workspace tool capabilities on resource creation. |
-| `SRE_AGENT_INITIAL_SPONSOR_GROUP_ID` | Recommended | Entra group object ID used to initialize the 2026 SRE Agent identity. Falls back to `AZURE_PRINCIPAL_ID` when omitted. |
+| `SRE_AGENT_INITIAL_SPONSOR_GROUP_ID` | Optional | Entra group object ID used to initialize the 2026 SRE Agent identity on first create. Leave empty for repeatable updates. |
 | `SRE_AGENT_ENABLE_AGENT_SPACE` | No | Defaults to `false`. Set to `true` only when `Microsoft.App/agentSpaces` is enabled for the tenant/subscription. |
+| `FARSIGHT_API_BASE_URL` | Recommended | FarSight control-plane API base URL. Injected as the default `api_base_url` for all FarSight tools (`create_diagnostic_job`, `get_job_status`, `get_job_result_summary`, `retrieve_artifact_metadata`, `query_device_investigation_history`, `request_follow_up_module_execution`, `request_approval_for_action`). If omitted, the agent must supply `api_base_url` explicitly on each tool call. Set to the `FARSIGHT_API_BASE_URL` output from the main FarSight azd environment. |
+| `FARSIGHT_API_SCOPE` | Recommended | Token scope for FarSight API managed identity auth. Format: `api://<farsight-api-app-id>/.default`. Obtain `<farsight-api-app-id>` from the `FARSIGHT_API_APP_ID` output of `scripts/provision-farsight-api-app-registration.py`. If omitted, tools fall back to `{api_base_url}/.default` which will fail with `invalid_scope` when the FarSight API is Entra-protected. |
 
 ## Intune runtime credentials
 
@@ -89,7 +91,16 @@ The deployment creates a Key Vault for Intune diagnostics runtime credentials an
 - the SRE Agent user-assigned managed identity `Key Vault Secrets User`
 - `AZURE_PRINCIPAL_ID`, when provided, `Key Vault Secrets Officer`
 
-After `azd up`, open the Key Vault from the `INTUNE_DIAGNOSTICS_KEY_VAULT_URI` output and add these secrets:
+The default deployment mode is **managed identity**. After `azd up`, call `intune_diagnostics_tool` with:
+
+```json
+{
+  "device_name": "<deviceName>",
+  "auth_mode": "default"
+}
+```
+
+If you explicitly opt into `key-vault` mode, use the Key Vault output and secret names below:
 
 | Secret name | Value |
 | --- | --- |
@@ -97,20 +108,7 @@ After `azd up`, open the Key Vault from the `INTUNE_DIAGNOSTICS_KEY_VAULT_URI` o
 | `intune-client-id` | App registration / service principal client id |
 | `intune-client-secret` | Client secret for the app registration |
 
-Then call `intune_diagnostics_tool` with:
-
-```json
-{
-  "device_name": "<deviceName>",
-  "auth_mode": "client-secret",
-  "key_vault_url": "<INTUNE_DIAGNOSTICS_KEY_VAULT_URI>",
-  "tenant_id_secret_name": "intune-tenant-id",
-  "client_id_secret_name": "intune-client-id",
-  "client_secret_secret_name": "intune-client-secret"
-}
-```
-
-The collector also supports direct service-principal auth with:
+Optional direct service-principal auth:
 
 ```bash
 AZURE_TENANT_ID
@@ -118,7 +116,7 @@ AZURE_CLIENT_ID
 AZURE_CLIENT_SECRET
 ```
 
-Do not commit these values. Configure them through Key Vault or another approved secret mechanism for the target Azure SRE Agent execution environment.
+Do not commit these values. Configure them through managed identity by default, or through Key Vault only when you explicitly choose `key-vault` mode.
 
 The service principal needs Microsoft Graph permissions for the Intune collector, including the read-only Device Management permissions documented in `knowledge/intune-data-catalog.md`.
 

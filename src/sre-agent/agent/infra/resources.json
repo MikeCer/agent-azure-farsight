@@ -1,0 +1,1838 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.44.1.10279",
+      "templateHash": "100243724601612756"
+    }
+  },
+  "parameters": {
+    "environmentName": {
+      "type": "string",
+      "metadata": {
+        "description": "Environment name used for unique resource naming."
+      }
+    },
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region for all resources."
+      }
+    },
+    "tags": {
+      "type": "object",
+      "metadata": {
+        "description": "Tags applied to all resources."
+      }
+    },
+    "principalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Object ID of the deploying user. Receives SRE Agent Administrator role. Leave empty to skip."
+      }
+    },
+    "upgradeChannel": {
+      "type": "string",
+      "defaultValue": "Stable",
+      "allowedValues": [
+        "Stable",
+        "Preview"
+      ],
+      "metadata": {
+        "description": "SRE Agent runtime upgrade channel."
+      }
+    },
+    "defaultModelProvider": {
+      "type": "string",
+      "defaultValue": "Anthropic",
+      "allowedValues": [
+        "Anthropic",
+        "MicrosoftFoundry"
+      ],
+      "metadata": {
+        "description": "Default model provider for the SRE Agent runtime."
+      }
+    },
+    "defaultModelName": {
+      "type": "string",
+      "defaultValue": "Automatic",
+      "metadata": {
+        "description": "Default model name for the SRE Agent runtime."
+      }
+    },
+    "monthlyAgentUnitLimit": {
+      "type": "int",
+      "defaultValue": 10000,
+      "minValue": 1,
+      "metadata": {
+        "description": "Monthly SRE Agent unit cap for the resource."
+      }
+    },
+    "enableSandboxGroup": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable the newer SRE sandbox group feature."
+      }
+    },
+    "enableWorkspaceTools": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable newer workspace tool capabilities on the SRE Agent runtime."
+      }
+    },
+    "initialSponsorGroupId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Initial sponsor group ID used to initialize 2026 SRE Agent identity on first create. Leave empty for idempotent updates."
+      }
+    },
+    "enableAgentSpace": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Create and attach a Microsoft.App/agentSpaces resource. Requires Agent Spaces to be enabled for the tenant/subscription."
+      }
+    },
+    "enablePrivateEndpoints": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable private endpoint-capable topology for SRE Agent dependencies."
+      }
+    },
+    "vnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.42.0.0/16",
+      "metadata": {
+        "description": "Address prefix reserved for the SRE Agent virtual network."
+      }
+    },
+    "privateEndpointSubnetPrefix": {
+      "type": "string",
+      "defaultValue": "10.42.1.0/24",
+      "metadata": {
+        "description": "Address prefix reserved for the SRE Agent private endpoint subnet."
+      }
+    },
+    "privateDnsZoneResourceIds": {
+      "type": "object",
+      "defaultValue": {
+        "keyVault": "",
+        "azureMonitor": "",
+        "logAnalyticsOms": "",
+        "logAnalyticsOds": "",
+        "azureMonitorAgentSvc": ""
+      },
+      "metadata": {
+        "description": "Existing Private DNS zone resource IDs keyed by service: keyVault, azureMonitor, logAnalyticsOms, logAnalyticsOds, azureMonitorAgentSvc. Empty values let child modules create zones when implemented."
+      }
+    },
+    "linkExistingPrivateDnsZones": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Link the SRE Agent VNet to existing Private DNS zones when privateDnsZoneResourceIds are provided."
+      }
+    }
+  },
+  "variables": {
+    "uniqueSuffix": "[substring(uniqueString(resourceGroup().id, parameters('environmentName')), 0, 8)]",
+    "agentName": "[format('sre-farsight-{0}', variables('uniqueSuffix'))]",
+    "agentSpaceName": "[format('space-sre-farsight-{0}', variables('uniqueSuffix'))]",
+    "logAnalyticsName": "[format('law-sre-farsight-{0}', variables('uniqueSuffix'))]",
+    "appInsightsName": "[format('appi-sre-farsight-{0}', variables('uniqueSuffix'))]",
+    "identityName": "[format('id-sre-farsight-{0}', variables('uniqueSuffix'))]",
+    "keyVaultName": "[format('kv-sre-farsight-{0}', variables('uniqueSuffix'))]",
+    "vnetName": "[format('vnet-sre-farsight-{0}', variables('uniqueSuffix'))]",
+    "normalizedPrivateDnsZoneResourceIds": "[union(createObject('keyVault', '', 'azureMonitor', '', 'logAnalyticsOms', '', 'logAnalyticsOds', '', 'azureMonitorAgentSvc', ''), parameters('privateDnsZoneResourceIds'))]",
+    "privateNetworking": {
+      "enablePrivateEndpoints": "[parameters('enablePrivateEndpoints')]",
+      "vnetAddressPrefix": "[parameters('vnetAddressPrefix')]",
+      "privateEndpointSubnetPrefix": "[parameters('privateEndpointSubnetPrefix')]",
+      "privateDnsZoneResourceIds": "[variables('normalizedPrivateDnsZoneResourceIds')]",
+      "linkExistingPrivateDnsZones": "[parameters('linkExistingPrivateDnsZones')]"
+    }
+  },
+  "resources": [
+    {
+      "condition": "[parameters('enablePrivateEndpoints')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "networking",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "environmentName": {
+            "value": "[parameters('environmentName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "vnetName": {
+            "value": "[variables('vnetName')]"
+          },
+          "vnetAddressPrefix": {
+            "value": "[variables('privateNetworking').vnetAddressPrefix]"
+          },
+          "privateEndpointSubnetPrefix": {
+            "value": "[variables('privateNetworking').privateEndpointSubnetPrefix]"
+          },
+          "privateDnsZoneResourceIds": {
+            "value": "[variables('privateNetworking').privateDnsZoneResourceIds]"
+          },
+          "linkExistingPrivateDnsZones": {
+            "value": "[variables('privateNetworking').linkExistingPrivateDnsZones]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.44.1.10279",
+              "templateHash": "12908455128417766915"
+            }
+          },
+          "parameters": {
+            "environmentName": {
+              "type": "string",
+              "metadata": {
+                "description": "Environment name used for deterministic link names."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for regional networking resources."
+              }
+            },
+            "vnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "Virtual network name."
+              }
+            },
+            "vnetAddressPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Address prefix reserved for the SRE Agent virtual network."
+              }
+            },
+            "privateEndpointSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Address prefix reserved for the SRE Agent private endpoint subnet."
+              }
+            },
+            "privateDnsZoneResourceIds": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Existing Private DNS zone resource IDs keyed by service: keyVault, azureMonitor, logAnalyticsOms, logAnalyticsOds, azureMonitorAgentSvc. Empty values create zones in this resource group."
+              }
+            },
+            "linkExistingPrivateDnsZones": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Link existing Private DNS zones to the SRE Agent VNet. Zones created by this module are always linked."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags applied to resources."
+              }
+            }
+          },
+          "variables": {
+            "privateEndpointSubnetName": "snet-private-endpoints",
+            "normalizedPrivateDnsZoneResourceIds": "[union(createObject('keyVault', '', 'azureMonitor', '', 'logAnalyticsOms', '', 'logAnalyticsOds', '', 'azureMonitorAgentSvc', ''), parameters('privateDnsZoneResourceIds'))]",
+            "privateDnsZoneNames": {
+              "keyVault": "privatelink.vaultcore.azure.net",
+              "azureMonitor": "privatelink.monitor.azure.com",
+              "logAnalyticsOms": "privatelink.oms.opinsights.azure.com",
+              "logAnalyticsOds": "privatelink.ods.opinsights.azure.com",
+              "azureMonitorAgentSvc": "privatelink.agentsvc.azure-automation.net"
+            },
+            "linkSuffix": "[uniqueString(resourceGroup().id, parameters('environmentName'), parameters('vnetName'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-05-01",
+              "name": "[parameters('vnetName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('vnetAddressPrefix')]"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks/subnets",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', parameters('vnetName'), variables('privateEndpointSubnetName'))]",
+              "properties": {
+                "addressPrefix": "[parameters('privateEndpointSubnetPrefix')]",
+                "privateEndpointNetworkPolicies": "Disabled"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            },
+            {
+              "condition": "[empty(variables('normalizedPrivateDnsZoneResourceIds').keyVault)]",
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "[variables('privateDnsZoneNames').keyVault]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "condition": "[empty(variables('normalizedPrivateDnsZoneResourceIds').azureMonitor)]",
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "[variables('privateDnsZoneNames').azureMonitor]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "condition": "[empty(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOms)]",
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "[variables('privateDnsZoneNames').logAnalyticsOms]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "condition": "[empty(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOds)]",
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "[variables('privateDnsZoneNames').logAnalyticsOds]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "condition": "[empty(variables('normalizedPrivateDnsZoneResourceIds').azureMonitorAgentSvc)]",
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "[variables('privateDnsZoneNames').azureMonitorAgentSvc]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "condition": "[empty(variables('normalizedPrivateDnsZoneResourceIds').keyVault)]",
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', variables('privateDnsZoneNames').keyVault, format('vnet-{0}', variables('linkSuffix')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneNames').keyVault)]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            },
+            {
+              "condition": "[empty(variables('normalizedPrivateDnsZoneResourceIds').azureMonitor)]",
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', variables('privateDnsZoneNames').azureMonitor, format('vnet-{0}', variables('linkSuffix')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneNames').azureMonitor)]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            },
+            {
+              "condition": "[empty(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOms)]",
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', variables('privateDnsZoneNames').logAnalyticsOms, format('vnet-{0}', variables('linkSuffix')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneNames').logAnalyticsOms)]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            },
+            {
+              "condition": "[empty(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOds)]",
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', variables('privateDnsZoneNames').logAnalyticsOds, format('vnet-{0}', variables('linkSuffix')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneNames').logAnalyticsOds)]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            },
+            {
+              "condition": "[empty(variables('normalizedPrivateDnsZoneResourceIds').azureMonitorAgentSvc)]",
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', variables('privateDnsZoneNames').azureMonitorAgentSvc, format('vnet-{0}', variables('linkSuffix')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneNames').azureMonitorAgentSvc)]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('linkExistingPrivateDnsZones'), not(empty(variables('normalizedPrivateDnsZoneResourceIds').keyVault)))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "[format('dns-link-kv-{0}', variables('linkSuffix'))]",
+              "subscriptionId": "[split(variables('normalizedPrivateDnsZoneResourceIds').keyVault, '/')[2]]",
+              "resourceGroup": "[split(variables('normalizedPrivateDnsZoneResourceIds').keyVault, '/')[4]]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "privateDnsZoneName": {
+                    "value": "[last(split(variables('normalizedPrivateDnsZoneResourceIds').keyVault, '/'))]"
+                  },
+                  "virtualNetworkId": {
+                    "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+                  },
+                  "linkName": {
+                    "value": "[format('vnet-{0}', variables('linkSuffix'))]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.44.1.10279",
+                      "templateHash": "8610295115670395591"
+                    }
+                  },
+                  "parameters": {
+                    "privateDnsZoneName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Existing Private DNS zone name."
+                      }
+                    },
+                    "virtualNetworkId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Virtual network resource ID to link to the Private DNS zone."
+                      }
+                    },
+                    "linkName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Virtual network link name."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+                      "apiVersion": "2020-06-01",
+                      "name": "[format('{0}/{1}', parameters('privateDnsZoneName'), parameters('linkName'))]",
+                      "location": "global",
+                      "properties": {
+                        "registrationEnabled": false,
+                        "virtualNetwork": {
+                          "id": "[parameters('virtualNetworkId')]"
+                        }
+                      }
+                    }
+                  ],
+                  "outputs": {
+                    "virtualNetworkLinkId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', parameters('privateDnsZoneName'), parameters('linkName'))]"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('linkExistingPrivateDnsZones'), not(empty(variables('normalizedPrivateDnsZoneResourceIds').azureMonitor)))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "[format('dns-link-monitor-{0}', variables('linkSuffix'))]",
+              "subscriptionId": "[split(variables('normalizedPrivateDnsZoneResourceIds').azureMonitor, '/')[2]]",
+              "resourceGroup": "[split(variables('normalizedPrivateDnsZoneResourceIds').azureMonitor, '/')[4]]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "privateDnsZoneName": {
+                    "value": "[last(split(variables('normalizedPrivateDnsZoneResourceIds').azureMonitor, '/'))]"
+                  },
+                  "virtualNetworkId": {
+                    "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+                  },
+                  "linkName": {
+                    "value": "[format('vnet-{0}', variables('linkSuffix'))]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.44.1.10279",
+                      "templateHash": "8610295115670395591"
+                    }
+                  },
+                  "parameters": {
+                    "privateDnsZoneName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Existing Private DNS zone name."
+                      }
+                    },
+                    "virtualNetworkId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Virtual network resource ID to link to the Private DNS zone."
+                      }
+                    },
+                    "linkName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Virtual network link name."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+                      "apiVersion": "2020-06-01",
+                      "name": "[format('{0}/{1}', parameters('privateDnsZoneName'), parameters('linkName'))]",
+                      "location": "global",
+                      "properties": {
+                        "registrationEnabled": false,
+                        "virtualNetwork": {
+                          "id": "[parameters('virtualNetworkId')]"
+                        }
+                      }
+                    }
+                  ],
+                  "outputs": {
+                    "virtualNetworkLinkId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', parameters('privateDnsZoneName'), parameters('linkName'))]"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('linkExistingPrivateDnsZones'), not(empty(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOms)))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "[format('dns-link-oms-{0}', variables('linkSuffix'))]",
+              "subscriptionId": "[split(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOms, '/')[2]]",
+              "resourceGroup": "[split(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOms, '/')[4]]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "privateDnsZoneName": {
+                    "value": "[last(split(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOms, '/'))]"
+                  },
+                  "virtualNetworkId": {
+                    "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+                  },
+                  "linkName": {
+                    "value": "[format('vnet-{0}', variables('linkSuffix'))]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.44.1.10279",
+                      "templateHash": "8610295115670395591"
+                    }
+                  },
+                  "parameters": {
+                    "privateDnsZoneName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Existing Private DNS zone name."
+                      }
+                    },
+                    "virtualNetworkId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Virtual network resource ID to link to the Private DNS zone."
+                      }
+                    },
+                    "linkName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Virtual network link name."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+                      "apiVersion": "2020-06-01",
+                      "name": "[format('{0}/{1}', parameters('privateDnsZoneName'), parameters('linkName'))]",
+                      "location": "global",
+                      "properties": {
+                        "registrationEnabled": false,
+                        "virtualNetwork": {
+                          "id": "[parameters('virtualNetworkId')]"
+                        }
+                      }
+                    }
+                  ],
+                  "outputs": {
+                    "virtualNetworkLinkId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', parameters('privateDnsZoneName'), parameters('linkName'))]"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('linkExistingPrivateDnsZones'), not(empty(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOds)))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "[format('dns-link-ods-{0}', variables('linkSuffix'))]",
+              "subscriptionId": "[split(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOds, '/')[2]]",
+              "resourceGroup": "[split(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOds, '/')[4]]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "privateDnsZoneName": {
+                    "value": "[last(split(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOds, '/'))]"
+                  },
+                  "virtualNetworkId": {
+                    "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+                  },
+                  "linkName": {
+                    "value": "[format('vnet-{0}', variables('linkSuffix'))]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.44.1.10279",
+                      "templateHash": "8610295115670395591"
+                    }
+                  },
+                  "parameters": {
+                    "privateDnsZoneName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Existing Private DNS zone name."
+                      }
+                    },
+                    "virtualNetworkId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Virtual network resource ID to link to the Private DNS zone."
+                      }
+                    },
+                    "linkName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Virtual network link name."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+                      "apiVersion": "2020-06-01",
+                      "name": "[format('{0}/{1}', parameters('privateDnsZoneName'), parameters('linkName'))]",
+                      "location": "global",
+                      "properties": {
+                        "registrationEnabled": false,
+                        "virtualNetwork": {
+                          "id": "[parameters('virtualNetworkId')]"
+                        }
+                      }
+                    }
+                  ],
+                  "outputs": {
+                    "virtualNetworkLinkId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', parameters('privateDnsZoneName'), parameters('linkName'))]"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('linkExistingPrivateDnsZones'), not(empty(variables('normalizedPrivateDnsZoneResourceIds').azureMonitorAgentSvc)))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "[format('dns-link-agentsvc-{0}', variables('linkSuffix'))]",
+              "subscriptionId": "[split(variables('normalizedPrivateDnsZoneResourceIds').azureMonitorAgentSvc, '/')[2]]",
+              "resourceGroup": "[split(variables('normalizedPrivateDnsZoneResourceIds').azureMonitorAgentSvc, '/')[4]]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "privateDnsZoneName": {
+                    "value": "[last(split(variables('normalizedPrivateDnsZoneResourceIds').azureMonitorAgentSvc, '/'))]"
+                  },
+                  "virtualNetworkId": {
+                    "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+                  },
+                  "linkName": {
+                    "value": "[format('vnet-{0}', variables('linkSuffix'))]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.44.1.10279",
+                      "templateHash": "8610295115670395591"
+                    }
+                  },
+                  "parameters": {
+                    "privateDnsZoneName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Existing Private DNS zone name."
+                      }
+                    },
+                    "virtualNetworkId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Virtual network resource ID to link to the Private DNS zone."
+                      }
+                    },
+                    "linkName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Virtual network link name."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+                      "apiVersion": "2020-06-01",
+                      "name": "[format('{0}/{1}', parameters('privateDnsZoneName'), parameters('linkName'))]",
+                      "location": "global",
+                      "properties": {
+                        "registrationEnabled": false,
+                        "virtualNetwork": {
+                          "id": "[parameters('virtualNetworkId')]"
+                        }
+                      }
+                    }
+                  ],
+                  "outputs": {
+                    "virtualNetworkLinkId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', parameters('privateDnsZoneName'), parameters('linkName'))]"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "vnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+            },
+            "privateEndpointSubnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), variables('privateEndpointSubnetName'))]"
+            },
+            "privateDnsZoneResourceIds": {
+              "type": "object",
+              "value": {
+                "keyVault": "[if(empty(variables('normalizedPrivateDnsZoneResourceIds').keyVault), resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneNames').keyVault), variables('normalizedPrivateDnsZoneResourceIds').keyVault)]",
+                "azureMonitor": "[if(empty(variables('normalizedPrivateDnsZoneResourceIds').azureMonitor), resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneNames').azureMonitor), variables('normalizedPrivateDnsZoneResourceIds').azureMonitor)]",
+                "logAnalyticsOms": "[if(empty(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOms), resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneNames').logAnalyticsOms), variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOms)]",
+                "logAnalyticsOds": "[if(empty(variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOds), resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneNames').logAnalyticsOds), variables('normalizedPrivateDnsZoneResourceIds').logAnalyticsOds)]",
+                "azureMonitorAgentSvc": "[if(empty(variables('normalizedPrivateDnsZoneResourceIds').azureMonitorAgentSvc), resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneNames').azureMonitorAgentSvc), variables('normalizedPrivateDnsZoneResourceIds').azureMonitorAgentSvc)]"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "monitoring",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "logAnalyticsName": {
+            "value": "[variables('logAnalyticsName')]"
+          },
+          "appInsightsName": {
+            "value": "[variables('appInsightsName')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "enablePrivateEndpoints": {
+            "value": "[parameters('enablePrivateEndpoints')]"
+          },
+          "privateEndpointSubnetId": "[if(parameters('enablePrivateEndpoints'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.privateEndpointSubnetId.value), createObject('value', ''))]",
+          "azureMonitorPrivateDnsZoneId": "[if(parameters('enablePrivateEndpoints'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.privateDnsZoneResourceIds.value.azureMonitor), createObject('value', ''))]",
+          "logAnalyticsOmsPrivateDnsZoneId": "[if(parameters('enablePrivateEndpoints'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.privateDnsZoneResourceIds.value.logAnalyticsOms), createObject('value', ''))]",
+          "logAnalyticsOdsPrivateDnsZoneId": "[if(parameters('enablePrivateEndpoints'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.privateDnsZoneResourceIds.value.logAnalyticsOds), createObject('value', ''))]",
+          "azureMonitorAgentSvcPrivateDnsZoneId": "[if(parameters('enablePrivateEndpoints'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.privateDnsZoneResourceIds.value.azureMonitorAgentSvc), createObject('value', ''))]"
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.44.1.10279",
+              "templateHash": "3999409134281909825"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for resources."
+              }
+            },
+            "logAnalyticsName": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics Workspace name."
+              }
+            },
+            "appInsightsName": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights name."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags applied to all resources."
+              }
+            },
+            "enablePrivateEndpoints": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Create Azure Monitor private link resources and disable public ingestion/query."
+              }
+            },
+            "privateEndpointSubnetId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Subnet resource ID for Azure Monitor private endpoint placement."
+              }
+            },
+            "azureMonitorPrivateDnsZoneId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Private DNS zone resource ID for privatelink.monitor.azure.com."
+              }
+            },
+            "logAnalyticsOmsPrivateDnsZoneId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Private DNS zone resource ID for privatelink.oms.opinsights.azure.com."
+              }
+            },
+            "logAnalyticsOdsPrivateDnsZoneId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Private DNS zone resource ID for privatelink.ods.opinsights.azure.com."
+              }
+            },
+            "azureMonitorAgentSvcPrivateDnsZoneId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Private DNS zone resource ID for privatelink.agentsvc.azure-automation.net."
+              }
+            }
+          },
+          "variables": {
+            "monitorPrivateDnsZones": "[concat(if(not(empty(parameters('azureMonitorPrivateDnsZoneId'))), createArray(createObject('name', 'azureMonitor', 'id', parameters('azureMonitorPrivateDnsZoneId'))), createArray()), if(not(empty(parameters('logAnalyticsOmsPrivateDnsZoneId'))), createArray(createObject('name', 'logAnalyticsOms', 'id', parameters('logAnalyticsOmsPrivateDnsZoneId'))), createArray()), if(not(empty(parameters('logAnalyticsOdsPrivateDnsZoneId'))), createArray(createObject('name', 'logAnalyticsOds', 'id', parameters('logAnalyticsOdsPrivateDnsZoneId'))), createArray()), if(not(empty(parameters('azureMonitorAgentSvcPrivateDnsZoneId'))), createArray(createObject('name', 'azureMonitorAgentSvc', 'id', parameters('azureMonitorAgentSvcPrivateDnsZoneId'))), createArray()))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2023-09-01",
+              "name": "[parameters('logAnalyticsName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                },
+                "retentionInDays": 30,
+                "features": {
+                  "enableLogAccessUsingOnlyResourcePermissions": true
+                },
+                "publicNetworkAccessForIngestion": "[if(parameters('enablePrivateEndpoints'), 'Disabled', 'Enabled')]",
+                "publicNetworkAccessForQuery": "[if(parameters('enablePrivateEndpoints'), 'Disabled', 'Enabled')]"
+              }
+            },
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[parameters('appInsightsName')]",
+              "location": "[parameters('location')]",
+              "kind": "web",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "Application_Type": "web",
+                "Request_Source": "IbizaAIExtension",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName'))]",
+                "publicNetworkAccessForIngestion": "[if(parameters('enablePrivateEndpoints'), 'Disabled', 'Enabled')]",
+                "publicNetworkAccessForQuery": "[if(parameters('enablePrivateEndpoints'), 'Disabled', 'Enabled')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enablePrivateEndpoints')]",
+              "type": "Microsoft.Insights/privateLinkScopes",
+              "apiVersion": "2021-09-01",
+              "name": "[format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName')))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "accessModeSettings": {
+                  "ingestionAccessMode": "PrivateOnly",
+                  "queryAccessMode": "PrivateOnly"
+                }
+              }
+            },
+            {
+              "condition": "[parameters('enablePrivateEndpoints')]",
+              "type": "Microsoft.Insights/privateLinkScopes/scopedResources",
+              "apiVersion": "2021-09-01",
+              "name": "[format('{0}/{1}', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName'))), format('law-{0}', uniqueString(resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName')))))]",
+              "properties": {
+                "linkedResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/privateLinkScopes', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName'))))]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enablePrivateEndpoints')]",
+              "type": "Microsoft.Insights/privateLinkScopes/scopedResources",
+              "apiVersion": "2021-09-01",
+              "name": "[format('{0}/{1}', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName'))), format('appi-{0}', uniqueString(resourceId('Microsoft.Insights/components', parameters('appInsightsName')))))]",
+              "properties": {
+                "linkedResourceId": "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]",
+                "[resourceId('Microsoft.Insights/privateLinkScopes', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName'))))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enablePrivateEndpoints')]",
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2024-05-01",
+              "name": "[format('pe-{0}', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName'))))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('privateEndpointSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[format('pls-{0}', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName'))))]",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.Insights/privateLinkScopes', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName'))))]",
+                      "groupIds": [
+                        "azuremonitor"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/privateLinkScopes/scopedResources', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName'))), format('appi-{0}', uniqueString(resourceId('Microsoft.Insights/components', parameters('appInsightsName')))))]",
+                "[resourceId('Microsoft.Insights/privateLinkScopes', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName'))))]",
+                "[resourceId('Microsoft.Insights/privateLinkScopes/scopedResources', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName'))), format('law-{0}', uniqueString(resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName')))))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('enablePrivateEndpoints'), greater(length(variables('monitorPrivateDnsZones')), 0))]",
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', format('pe-{0}', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName')))), 'default')]",
+              "properties": {
+                "copy": [
+                  {
+                    "name": "privateDnsZoneConfigs",
+                    "count": "[length(variables('monitorPrivateDnsZones'))]",
+                    "input": {
+                      "name": "[variables('monitorPrivateDnsZones')[copyIndex('privateDnsZoneConfigs')].name]",
+                      "properties": {
+                        "privateDnsZoneId": "[variables('monitorPrivateDnsZones')[copyIndex('privateDnsZoneConfigs')].id]"
+                      }
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName')))))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName'))]"
+            },
+            "logAnalyticsWorkspaceName": {
+              "type": "string",
+              "value": "[parameters('logAnalyticsName')]"
+            },
+            "appInsightsId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]"
+            },
+            "appInsightsAppId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), '2020-02-02').AppId]"
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), '2020-02-02').ConnectionString]"
+            },
+            "azureMonitorPrivateLinkScopeId": {
+              "type": "string",
+              "value": "[if(parameters('enablePrivateEndpoints'), resourceId('Microsoft.Insights/privateLinkScopes', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName')))), '')]"
+            },
+            "azureMonitorPrivateEndpointId": {
+              "type": "string",
+              "value": "[if(parameters('enablePrivateEndpoints'), resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}', format('ampls-{0}', uniqueString(resourceGroup().id, parameters('logAnalyticsName'), parameters('appInsightsName'))))), '')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'networking')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "identity",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "identityName": {
+            "value": "[variables('identityName')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.44.1.10279",
+              "templateHash": "16511841160395286587"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for resources."
+              }
+            },
+            "identityName": {
+              "type": "string",
+              "metadata": {
+                "description": "User-assigned managed identity name."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags applied to all resources."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2024-11-30",
+              "name": "[parameters('identityName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "isolationScope": "Regional"
+              }
+            }
+          ],
+          "outputs": {
+            "identityId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('identityName'))]"
+            },
+            "identityName": {
+              "type": "string",
+              "value": "[parameters('identityName')]"
+            },
+            "identityPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('identityName')), '2024-11-30').principalId]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('enableAgentSpace')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "agent-space",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "agentSpaceName": {
+            "value": "[variables('agentSpaceName')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.44.1.10279",
+              "templateHash": "8401974849101544719"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for resources."
+              }
+            },
+            "agentSpaceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Agent Space resource name."
+              }
+            },
+            "maxAgentCount": {
+              "type": "int",
+              "defaultValue": 15,
+              "metadata": {
+                "description": "Maximum number of agents allowed in this Agent Space."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags applied to all resources."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/agentSpaces",
+              "apiVersion": "2026-01-01",
+              "name": "[parameters('agentSpaceName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "description": "Agent-Azure-FarSight SRE Agent space",
+                "maxAgentCount": "[parameters('maxAgentCount')]"
+              }
+            }
+          ],
+          "outputs": {
+            "agentSpaceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.App/agentSpaces', parameters('agentSpaceName'))]"
+            },
+            "agentSpaceName": {
+              "type": "string",
+              "value": "[parameters('agentSpaceName')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "key-vault",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "keyVaultName": {
+            "value": "[variables('keyVaultName')]"
+          },
+          "agentIdentityPrincipalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.identityPrincipalId.value]"
+          },
+          "principalId": {
+            "value": "[parameters('principalId')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "enablePrivateEndpoints": {
+            "value": "[parameters('enablePrivateEndpoints')]"
+          },
+          "privateEndpointSubnetId": "[if(parameters('enablePrivateEndpoints'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.privateEndpointSubnetId.value), createObject('value', ''))]",
+          "privateDnsZoneId": "[if(parameters('enablePrivateEndpoints'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.privateDnsZoneResourceIds.value.keyVault), createObject('value', ''))]"
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.44.1.10279",
+              "templateHash": "16293556059392036828"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for resources."
+              }
+            },
+            "keyVaultName": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault name."
+              }
+            },
+            "agentIdentityPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Principal ID of the SRE Agent user-assigned managed identity."
+              }
+            },
+            "principalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Object ID of the deploying user. Receives Key Vault Secrets Officer role. Leave empty to skip."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags applied to all resources."
+              }
+            },
+            "enablePrivateEndpoints": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Create a private endpoint for Key Vault and disable public network access."
+              }
+            },
+            "privateEndpointSubnetId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Subnet resource ID for Key Vault private endpoint placement."
+              }
+            },
+            "privateDnsZoneId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Private DNS zone resource ID for privatelink.vaultcore.azure.net."
+              }
+            }
+          },
+          "variables": {
+            "keyVaultSecretsUserRoleId": "4633458b-17de-408a-b874-0445c86b69e6",
+            "keyVaultSecretsOfficerRoleId": "b86a8fe4-44ce-4948-aee5-eccb2c155cd7"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults",
+              "apiVersion": "2024-11-01",
+              "name": "[parameters('keyVaultName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "tenantId": "[tenant().tenantId]",
+                "sku": {
+                  "family": "A",
+                  "name": "standard"
+                },
+                "enableRbacAuthorization": true,
+                "enabledForDeployment": false,
+                "enabledForDiskEncryption": false,
+                "enabledForTemplateDeployment": false,
+                "enableSoftDelete": true,
+                "softDeleteRetentionInDays": 7,
+                "publicNetworkAccess": "[if(parameters('enablePrivateEndpoints'), 'Disabled', 'Enabled')]"
+              }
+            },
+            {
+              "condition": "[parameters('enablePrivateEndpoints')]",
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2024-05-01",
+              "name": "[format('pe-{0}', parameters('keyVaultName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('privateEndpointSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[format('pls-{0}', parameters('keyVaultName'))]",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+                      "groupIds": [
+                        "vault"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('enablePrivateEndpoints'), not(empty(parameters('privateDnsZoneId'))))]",
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', format('pe-{0}', parameters('keyVaultName')), 'default')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "keyVault",
+                    "properties": {
+                      "privateDnsZoneId": "[parameters('privateDnsZoneId')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}', parameters('keyVaultName')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('agentIdentityPrincipalId'), variables('keyVaultSecretsUserRoleId'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVaultSecretsUserRoleId'))]",
+                "principalId": "[parameters('agentIdentityPrincipalId')]",
+                "principalType": "ServicePrincipal",
+                "description": "Allow Agent-Azure-FarSight SRE Agent identity to read Intune diagnostics runtime secrets."
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+              ]
+            },
+            {
+              "condition": "[not(empty(parameters('principalId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('principalId'), variables('keyVaultSecretsOfficerRoleId'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVaultSecretsOfficerRoleId'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "User",
+                "description": "Allow deploying user to add Intune diagnostics secrets after deployment."
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "keyVaultName": {
+              "type": "string",
+              "value": "[parameters('keyVaultName')]"
+            },
+            "keyVaultUri": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), '2024-11-01').vaultUri]"
+            },
+            "keyVaultPrivateEndpointId": {
+              "type": "string",
+              "value": "[if(parameters('enablePrivateEndpoints'), resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}', parameters('keyVaultName'))), '')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'identity')]",
+        "[resourceId('Microsoft.Resources/deployments', 'networking')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "sre-agent",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "agentName": {
+            "value": "[variables('agentName')]"
+          },
+          "agentSpaceId": "[if(parameters('enableAgentSpace'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'agent-space'), '2025-04-01').outputs.agentSpaceId.value), createObject('value', ''))]",
+          "initialSponsorGroupId": "[if(parameters('enableAgentSpace'), createObject('value', parameters('initialSponsorGroupId')), createObject('value', ''))]",
+          "identityId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.identityId.value]"
+          },
+          "appInsightsAppId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'monitoring'), '2025-04-01').outputs.appInsightsAppId.value]"
+          },
+          "appInsightsId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'monitoring'), '2025-04-01').outputs.appInsightsId.value]"
+          },
+          "appInsightsConnectionString": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'monitoring'), '2025-04-01').outputs.appInsightsConnectionString.value]"
+          },
+          "managedResourceGroupId": {
+            "value": "[resourceGroup().id]"
+          },
+          "principalId": {
+            "value": "[parameters('principalId')]"
+          },
+          "upgradeChannel": {
+            "value": "[parameters('upgradeChannel')]"
+          },
+          "defaultModelProvider": {
+            "value": "[parameters('defaultModelProvider')]"
+          },
+          "defaultModelName": {
+            "value": "[parameters('defaultModelName')]"
+          },
+          "monthlyAgentUnitLimit": {
+            "value": "[parameters('monthlyAgentUnitLimit')]"
+          },
+          "enableSandboxGroup": {
+            "value": "[parameters('enableSandboxGroup')]"
+          },
+          "enableWorkspaceTools": {
+            "value": "[parameters('enableWorkspaceTools')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.44.1.10279",
+              "templateHash": "7427649336166928832"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for resources."
+              }
+            },
+            "agentName": {
+              "type": "string",
+              "metadata": {
+                "description": "SRE Agent resource name."
+              }
+            },
+            "agentSpaceId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Agent Space resource ID referenced by this SRE Agent."
+              }
+            },
+            "initialSponsorGroupId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Initial sponsor group ID used to initialize 2026 SRE Agent identity. Leave empty to skip agent identity initialization."
+              }
+            },
+            "identityId": {
+              "type": "string",
+              "metadata": {
+                "description": "User-assigned managed identity resource ID."
+              }
+            },
+            "appInsightsAppId": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights App ID used for SRE Agent internal logging."
+              }
+            },
+            "appInsightsId": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights resource ID used as hidden-link tag."
+              }
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights connection string used for SRE Agent internal logging."
+              }
+            },
+            "managedResourceGroupId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource group ID registered as the managed resource for agent investigations."
+              }
+            },
+            "principalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Object ID of the deploying user. Receives SRE Agent Administrator role. Leave empty to skip."
+              }
+            },
+            "upgradeChannel": {
+              "type": "string",
+              "defaultValue": "Stable",
+              "allowedValues": [
+                "Stable",
+                "Preview"
+              ],
+              "metadata": {
+                "description": "SRE Agent runtime upgrade channel."
+              }
+            },
+            "defaultModelProvider": {
+              "type": "string",
+              "defaultValue": "Anthropic",
+              "allowedValues": [
+                "Anthropic",
+                "MicrosoftFoundry"
+              ],
+              "metadata": {
+                "description": "Default model provider for the SRE Agent runtime."
+              }
+            },
+            "defaultModelName": {
+              "type": "string",
+              "defaultValue": "Automatic",
+              "metadata": {
+                "description": "Default model name for the SRE Agent runtime."
+              }
+            },
+            "monthlyAgentUnitLimit": {
+              "type": "int",
+              "defaultValue": 10000,
+              "minValue": 1,
+              "metadata": {
+                "description": "Monthly SRE Agent unit cap for the resource."
+              }
+            },
+            "enableSandboxGroup": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Enable the newer SRE sandbox group feature."
+              }
+            },
+            "enableWorkspaceTools": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Enable newer workspace tool capabilities on the SRE Agent runtime."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags applied to all resources."
+              }
+            }
+          },
+          "variables": {
+            "sreAgentAdminRoleId": "e79298df-d852-4c6d-84f9-5d13249d1e55",
+            "agentSpaceProperties": "[if(not(empty(parameters('agentSpaceId'))), createObject('agentSpaceId', parameters('agentSpaceId')), createObject())]",
+            "agentIdentityProperties": "[if(not(empty(parameters('initialSponsorGroupId'))), createObject('agentIdentity', createObject('initialSponsorGroupId', parameters('initialSponsorGroupId'))), createObject())]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/agents",
+              "apiVersion": "2026-01-01",
+              "name": "[parameters('agentName')]",
+              "location": "[parameters('location')]",
+              "tags": "[union(parameters('tags'), createObject('hidden-link: /app-insights-resource-id', parameters('appInsightsId')))]",
+              "identity": {
+                "type": "SystemAssigned, UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('identityId'))]": {}
+                }
+              },
+              "properties": "[union(createObject('knowledgeGraphConfiguration', createObject('managedResources', createArray(parameters('managedResourceGroupId')), 'identity', parameters('identityId')), 'actionConfiguration', createObject('mode', 'Autonomous', 'identity', parameters('identityId'), 'accessLevel', 'Low'), 'logConfiguration', createObject('applicationInsightsConfiguration', createObject('appId', parameters('appInsightsAppId'), 'connectionString', parameters('appInsightsConnectionString'), 'applicationInsightsResourceId', parameters('appInsightsId'))), 'upgradeChannel', parameters('upgradeChannel'), 'defaultModel', createObject('provider', parameters('defaultModelProvider'), 'name', parameters('defaultModelName')), 'monthlyAgentUnitLimit', parameters('monthlyAgentUnitLimit'), 'experimentalSettings', createObject('EnableSandboxGroup', parameters('enableSandboxGroup'), 'EnableWorkspaceTools', parameters('enableWorkspaceTools'))), variables('agentSpaceProperties'), variables('agentIdentityProperties'))]"
+            },
+            {
+              "condition": "[not(empty(parameters('principalId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.App/agents', parameters('agentName'))]",
+              "name": "[guid(resourceId('Microsoft.App/agents', parameters('agentName')), parameters('principalId'), variables('sreAgentAdminRoleId'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('sreAgentAdminRoleId'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "User",
+                "description": "Agent-Azure-FarSight SRE Agent - Administrator access for deploying user"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/agents', parameters('agentName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "agentName": {
+              "type": "string",
+              "value": "[parameters('agentName')]"
+            },
+            "agentId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.App/agents', parameters('agentName'))]"
+            },
+            "agentEndpoint": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/agents', parameters('agentName')), '2026-01-01').agentEndpoint]"
+            },
+            "agentPortalUrl": {
+              "type": "string",
+              "value": "https://sre.azure.com"
+            },
+            "agentPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/agents', parameters('agentName')), '2026-01-01', 'full').identity.principalId]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'agent-space')]",
+        "[resourceId('Microsoft.Resources/deployments', 'identity')]",
+        "[resourceId('Microsoft.Resources/deployments', 'monitoring')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "agentName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2025-04-01').outputs.agentName.value]"
+    },
+    "agentEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2025-04-01').outputs.agentEndpoint.value]"
+    },
+    "agentPortalUrl": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2025-04-01').outputs.agentPortalUrl.value]"
+    },
+    "agentPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2025-04-01').outputs.agentPrincipalId.value]"
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'monitoring'), '2025-04-01').outputs.logAnalyticsWorkspaceId.value]"
+    },
+    "appInsightsAppId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'monitoring'), '2025-04-01').outputs.appInsightsAppId.value]"
+    },
+    "identityPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.identityPrincipalId.value]"
+    },
+    "keyVaultName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.keyVaultName.value]"
+    },
+    "keyVaultUri": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.keyVaultUri.value]"
+    },
+    "agentSpaceId": {
+      "type": "string",
+      "value": "[if(parameters('enableAgentSpace'), reference(resourceId('Microsoft.Resources/deployments', 'agent-space'), '2025-04-01').outputs.agentSpaceId.value, '')]"
+    },
+    "privateEndpointVnetId": {
+      "type": "string",
+      "value": "[if(parameters('enablePrivateEndpoints'), reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.vnetId.value, '')]"
+    },
+    "privateEndpointSubnetId": {
+      "type": "string",
+      "value": "[if(parameters('enablePrivateEndpoints'), reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.privateEndpointSubnetId.value, '')]"
+    },
+    "privateDnsZoneResourceIds": {
+      "type": "object",
+      "value": "[if(parameters('enablePrivateEndpoints'), reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.privateDnsZoneResourceIds.value, variables('normalizedPrivateDnsZoneResourceIds'))]"
+    },
+    "keyVaultPrivateEndpointId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.keyVaultPrivateEndpointId.value]"
+    },
+    "azureMonitorPrivateLinkScopeId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'monitoring'), '2025-04-01').outputs.azureMonitorPrivateLinkScopeId.value]"
+    },
+    "azureMonitorPrivateEndpointId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'monitoring'), '2025-04-01').outputs.azureMonitorPrivateEndpointId.value]"
+    }
+  }
+}

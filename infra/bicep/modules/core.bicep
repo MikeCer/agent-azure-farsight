@@ -72,6 +72,15 @@ param adminAuthAllowedAudiences array = []
 @description('Optional Container Apps auth token store SAS URL setting name. Empty disables token store.')
 param adminAuthTokenStoreSasUrlSettingName string = ''
 
+@description('Initial image for the API Container App before azd deploy publishes the service image.')
+param apiPlaceholderImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
+@description('Initial image for the admin web Container App before azd deploy publishes the service image.')
+param adminPlaceholderImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
+@description('Initial image for the agent tools Container App before azd deploy publishes the service image.')
+param toolsPlaceholderImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
 var normalizedPrefix = replace(toLower(namePrefix), '-', '')
 var shortNamePrefix = replace(namePrefix, 'farsight-', 'fs-')
 var regionCode = location == 'italynorth' ? 'itn' : (location == 'swedencentral' ? 'swc' : take(replace(toLower(location), '-', ''), 6))
@@ -88,7 +97,6 @@ var containerAppsEnvironmentName = 'cae-${namePrefix}-${ingressModeCode}-${locat
 var apiAppName = 'ca-${shortNamePrefix}-api-${ingressModeCode}-${regionCode}'
 var adminAppName = 'ca-${shortNamePrefix}-admin-${ingressModeCode}-${regionCode}'
 var toolGatewayAppName = 'ca-${shortNamePrefix}-tools-${ingressModeCode}-${regionCode}'
-var workerAppName = 'ca-${shortNamePrefix}-worker-${ingressModeCode}-${regionCode}'
 var serviceBusNamespaceName = 'sb-${namePrefix}-${take(unique, 4)}'
 var cosmosAccountName = 'cosmos-${namePrefix}-${take(unique, 4)}'
 var managedIdentityName = 'id-${namePrefix}-apps-${location}'
@@ -262,7 +270,7 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'api'
-          image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+          image: apiPlaceholderImage
           env: concat([
             {
               name: 'AZURE_CLIENT_ID'
@@ -400,7 +408,7 @@ resource adminApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'admin-web'
-          image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+          image: adminPlaceholderImage
           env: concat([
             {
               name: 'AZURE_CLIENT_ID'
@@ -509,7 +517,7 @@ resource toolGatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'agent-tools'
-          image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+          image: toolsPlaceholderImage
           env: [
             {
               name: 'AZURE_CLIENT_ID'
@@ -523,49 +531,6 @@ resource toolGatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
-          }
-        }
-      ]
-      scale: {
-        minReplicas: 0
-        maxReplicas: 3
-      }
-    }
-  }
-}
-
-resource workerApp 'Microsoft.App/containerApps@2024-03-01' = {
-  name: workerAppName
-  location: location
-  tags: tags
-  dependsOn: [
-    appIdentityAcrPull
-  ]
-  identity: {
-    type: 'UserAssigned'
-    userAssignedIdentities: {
-      '${appIdentity.id}': {}
-    }
-  }
-  properties: {
-    managedEnvironmentId: environment.id
-    configuration: {
-      activeRevisionsMode: 'Single'
-      registries: [
-        {
-          server: acr.properties.loginServer
-          identity: appIdentity.id
-        }
-      ]
-    }
-    template: {
-      containers: [
-        {
-          name: 'worker'
-          image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
-          resources: {
-            cpu: json('0.25')
-            memory: '0.5Gi'
           }
         }
       ]
@@ -1175,7 +1140,6 @@ resource monitorPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateD
 output apiContainerAppName string = apiApp.name
 output adminContainerAppName string = adminApp.name
 output agentToolGatewayName string = toolGatewayApp.name
-output workerContainerAppName string = workerApp.name
 output storageAccountName string = storage.name
 output cosmosAccountName string = cosmos.name
 output serviceBusNamespaceName string = serviceBus.name

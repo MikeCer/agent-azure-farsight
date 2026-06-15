@@ -36,7 +36,7 @@ param enableSandboxGroup bool = true
 @description('Enable newer workspace tool capabilities on the SRE Agent runtime.')
 param enableWorkspaceTools bool = true
 
-@description('Initial sponsor group ID used to initialize 2026 SRE Agent identity. Falls back to principalId when omitted.')
+@description('Initial sponsor group ID used to initialize 2026 SRE Agent identity on first create. Leave empty for idempotent updates.')
 param initialSponsorGroupId string = ''
 
 @description('Create and attach a Microsoft.App/agentSpaces resource. Requires Agent Spaces to be enabled for the tenant/subscription.')
@@ -156,10 +156,11 @@ module sreAgent 'modules/sre-agent.bicep' = {
     location: location
     agentName: agentName
     agentSpaceId: enableAgentSpace ? agentSpace!.outputs.agentSpaceId : ''
-    initialSponsorGroupId: enableAgentSpace ? (empty(initialSponsorGroupId) ? principalId : initialSponsorGroupId) : ''
+    initialSponsorGroupId: enableAgentSpace ? initialSponsorGroupId : ''
     identityId: identity.outputs.identityId
     appInsightsAppId: monitoring.outputs.appInsightsAppId
     appInsightsId: monitoring.outputs.appInsightsId
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     managedResourceGroupId: resourceGroup().id
     principalId: principalId
     upgradeChannel: upgradeChannel

@@ -1,6 +1,6 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string]$InstallRoot = "$env:ProgramData\Company\SreCollector",
+    [string]$InstallRoot = $(if ($PSScriptRoot) { $PSScriptRoot } else { "$env:ProgramData\Company\SreCollector" }),
     [string]$SourceRoot = (Split-Path -Parent $MyInvocation.MyCommand.Path),
     [string]$TaskName = 'Company FarSight Collector',
     [switch]$RegisterScheduledTask

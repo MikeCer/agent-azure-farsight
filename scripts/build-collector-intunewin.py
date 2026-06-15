@@ -210,8 +210,8 @@ def build_certificate_metadata(config: dict) -> dict:
             "mode": "intune-pki",
             "storeLocation": prompt_choice("Certificate store location for install-time lookup", ["LocalMachine", "CurrentUser"], default="LocalMachine"),
             "storeName": prompt("Certificate store name for install-time lookup", "My"),
-            "subjectContains": prompt("Subject contains (install-time lookup filter)", "FarSight Collector"),
-            "issuerContains": prompt("Issuer contains (optional install-time lookup filter)", ""),
+            "subjectContains": prompt("Subject contains (install-time lookup filter)", ""),
+            "issuerContains": prompt("Issuer contains (optional install-time lookup filter)", "FarSight Collector"),
             "requirePrivateKey": prompt_bool("Require private key during install-time lookup", True),
         }
         config["api"]["certificateThumbprint"] = "__INTUNE_PKI_RESOLVE_AT_INSTALL__"

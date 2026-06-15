@@ -7,7 +7,7 @@ For a production-style private deployment, start with the [greenfield Azure depl
 ## What it deploys
 
 - Italy North collector/control-plane resources:
-  - Azure Container Apps environment and app placeholders for API, admin web, worker, and AGT tool gateway.
+  - Azure Container Apps environment and apps for API, admin web, and AGT tool gateway.
   - Azure Container Registry.
   - Service Bus Standard namespace with session-enabled `jobs` queue.
   - Cosmos DB for NoSQL database and state containers.
@@ -64,11 +64,19 @@ AZD handles application container image build, push, and Container Apps updates 
 
 `azure.yaml` marks these services as `host: containerapp` and enables remote Docker builds. During `azd deploy`, AZD builds each image, pushes it to the provisioned Azure Container Registry, and updates the Container App that carries the matching `azd-service-name` tag.
 
-The Bicep templates keep safe placeholder images so first provisioning can succeed before any service images exist. The `worker` container is also a placeholder until a worker implementation is added to `azure.yaml`.
+The Bicep templates keep configurable placeholder images so first provisioning can succeed before AZD publishes service images. Defaults use `mcr.microsoft.com/azuredocs/containerapps-helloworld:latest`, but set private ACR placeholders when public MCR is throttled or blocked:
+
+```bash
+azd env set FARSIGHT_API_PLACEHOLDER_IMAGE "<acr>.azurecr.io/agent-azure-farsight/api-dev:<known-good-tag>"
+azd env set FARSIGHT_ADMIN_PLACEHOLDER_IMAGE "<acr>.azurecr.io/agent-azure-farsight/admin-web-dev:<known-good-tag>"
+azd env set FARSIGHT_TOOLS_PLACEHOLDER_IMAGE "<acr>.azurecr.io/agent-azure-farsight/agent-tools-dev:<known-good-tag>"
+```
+
+No worker Container App is provisioned until a concrete worker implementation is added to `azure.yaml` and the infrastructure template.
 
 The Bicep deployment outputs `AZURE_CONTAINER_REGISTRY_ENDPOINT` from the provisioned Azure Container Registry. AZD uses this output during publish/deploy to determine where service images must be pushed.
 
-Private ACR deployments keep `FARSIGHT_ENABLE_ACR_TASK_NETWORK_BYPASS=true` by default. This uses selected-networks mode: the ACR public endpoint stays enabled, the firewall default action is `Deny`, ACR trusted-service plus Tasks network bypass are enabled, and the configured regional Azure Container Registry build CIDRs are allowed so AZD remote Docker builds can log in and push images. The observed dev defaults are `FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_ITALY_NORTH=4.232.51.192/26` and `FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_SWEDEN_CENTRAL=172.160.222.128/26`; update them from the current Azure service tag data for other regions or after service tag changes. Set the bypass to `false` only when builds run from a private-network runner or local Docker/Podman environment that can resolve and reach the registry private endpoint.
+Private ACR deployments keep `FARSIGHT_ENABLE_ACR_TASK_NETWORK_BYPASS=true` by default. This uses selected-networks mode: the ACR public endpoint stays enabled, the firewall default action is `Deny`, ACR trusted-service plus Tasks network bypass are enabled, and the configured regional Azure Container Registry build CIDRs are allowed so AZD remote Docker builds can log in and push images. The observed dev defaults are `FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_ITALY_NORTH=4.232.51.192/26` and `FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_SWEDEN_CENTRAL=172.160.222.128/26`; update them from the current Azure service tag data for other regions or after service tag changes. Also set `FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_CLIENT` to the operator workstation or CI runner public IP/CIDR so `azd deploy` can read remote-build result metadata, logs, and image tags from the default-deny registry. Set the bypass to `false` only when builds run from a private-network runner or local Docker/Podman environment that can resolve and reach the registry private endpoint.
 
 Container Apps pull private images from ACR with their user-assigned managed identities. Bicep configures each AZD-managed Container App with a registry entry that references the provisioned ACR login server and assigns `AcrPull` to the app identity before revision updates.
 

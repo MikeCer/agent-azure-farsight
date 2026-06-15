@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$InstallRoot = "$env:ProgramData\Company\SreCollector")
+param([string]$InstallRoot = $(if ($PSScriptRoot) { $PSScriptRoot } else { "$env:ProgramData\Company\SreCollector" }))
 
 Set-StrictMode -Version 2.0
 $required = @(

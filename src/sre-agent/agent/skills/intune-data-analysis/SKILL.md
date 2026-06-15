@@ -32,18 +32,18 @@ Use `intune_diagnostics_tool` when device evidence must be collected:
 ```json
 {
   "device_name": "<deviceName>",
-  {{INTUNE_KEY_VAULT_TOOL_ARGUMENTS}}
+  "auth_mode": "default"
 }
 ```
 
-{{INTUNE_AUTH_MODE_GUIDANCE}}
+The default auth path is managed identity. Use `key-vault` only when you explicitly want Key Vault-backed service-principal credentials.
 
 Supported Python tool parameters:
 
 | Parameter | Required | Default | Purpose |
 | --- | --- | --- | --- |
 | `device_name` | Yes | none | Intune `deviceName` to diagnose. |
-| `auth_mode` | No | `auto` | Authentication mode for Microsoft Graph: `auto`, `default`, or `client-secret`. |
+| `auth_mode` | No | `auto` | Authentication mode for Microsoft Graph: `auto`, `default`, or `client-secret`. The deployment defaults to managed identity. |
 | `tenant_id` | No | none | Optional tenant metadata to include in the output. |
 | `azure_tenant_id` | No | none | Optional service-principal tenant id. Use with `azure_client_id` and `azure_client_secret`. |
 | `azure_client_id` | No | none | Optional service-principal client id. Use with `azure_tenant_id` and `azure_client_secret`. |

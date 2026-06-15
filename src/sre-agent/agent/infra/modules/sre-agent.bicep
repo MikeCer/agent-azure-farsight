@@ -25,6 +25,9 @@ param appInsightsAppId string
 @description('Application Insights resource ID used as hidden-link tag.')
 param appInsightsId string
 
+@description('Application Insights connection string used for SRE Agent internal logging.')
+param appInsightsConnectionString string
+
 @description('Resource group ID registered as the managed resource for agent investigations.')
 param managedResourceGroupId string
 
@@ -92,6 +95,7 @@ resource sreAgent 'Microsoft.App/agents@2026-01-01' = {
     logConfiguration: {
       applicationInsightsConfiguration: {
         appId: appInsightsAppId
+        connectionString: appInsightsConnectionString
         applicationInsightsResourceId: appInsightsId
       }
     }

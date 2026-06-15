@@ -23,6 +23,9 @@
         "${FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_SWEDEN_CENTRAL=172.160.222.128/26}"
       ]
     },
+    "acrClientFirewallAllowedIpRange": {
+      "value": "${FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_CLIENT=}"
+    },
     "vnetAddressPrefix": {
       "value": "${FARSIGHT_VNET_ADDRESS_PREFIX=10.10.0.0/16}"
     },
@@ -112,6 +115,15 @@
     },
     "adminAuthTokenStoreSasUrlSettingName": {
       "value": "${FARSIGHT_ADMIN_AUTH_TOKEN_STORE_SAS_URL_SETTING_NAME=}"
+    },
+    "apiPlaceholderImage": {
+      "value": "${FARSIGHT_API_PLACEHOLDER_IMAGE=mcr.microsoft.com/azuredocs/containerapps-helloworld:latest}"
+    },
+    "adminPlaceholderImage": {
+      "value": "${FARSIGHT_ADMIN_PLACEHOLDER_IMAGE=mcr.microsoft.com/azuredocs/containerapps-helloworld:latest}"
+    },
+    "toolsPlaceholderImage": {
+      "value": "${FARSIGHT_TOOLS_PLACEHOLDER_IMAGE=mcr.microsoft.com/azuredocs/containerapps-helloworld:latest}"
     }
   }
 }

@@ -21,6 +21,9 @@ param acrFirewallAllowedIpRanges array = [
   '172.160.222.128/26'
 ]
 
+@description('Optional operator/client IPv4 CIDR allowed through the ACR firewall so azd can read remote-build result metadata and registry tags from default-deny ACR.')
+param acrClientFirewallAllowedIpRange string = ''
+
 @description('Collector/control-plane virtual network address prefix.')
 param vnetAddressPrefix string = '10.10.0.0/16'
 
@@ -119,12 +122,25 @@ param adminAuthAllowedAudiences array = []
 @description('Optional Container Apps auth token store SAS URL setting name. Leave empty to disable token store.')
 param adminAuthTokenStoreSasUrlSettingName string = ''
 
+@description('Initial image for the API Container App before azd deploy publishes the service image.')
+param apiPlaceholderImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
+@description('Initial image for the admin web Container App before azd deploy publishes the service image.')
+param adminPlaceholderImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
+@description('Initial image for the agent tools Container App before azd deploy publishes the service image.')
+param toolsPlaceholderImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
 var namePrefix = 'farsight-${environmentName}'
 var tags = {
   application: 'agent-azure-farsight'
   environment: environmentName
   managedBy: 'azd-bicep'
 }
+var effectiveAcrFirewallAllowedIpRanges = empty(acrClientFirewallAllowedIpRange) ? acrFirewallAllowedIpRanges : concat(acrFirewallAllowedIpRanges, [
+  acrClientFirewallAllowedIpRange
+])
+
 module core 'modules/core.bicep' = {
   name: 'core-${environmentName}'
   params: {
@@ -137,7 +153,7 @@ module core 'modules/core.bicep' = {
     enablePublicIngress: enablePublicIngress
     enablePrivateEndpoints: enablePrivateEndpoints
     enableAcrTaskNetworkBypass: enableAcrTaskNetworkBypass
-    acrFirewallAllowedIpRanges: acrFirewallAllowedIpRanges
+    acrFirewallAllowedIpRanges: effectiveAcrFirewallAllowedIpRanges
     enableApim: enableApim
     enableDevEnrollmentApi: enableDevEnrollmentApi
     apiTenantId: tenant().tenantId
@@ -163,6 +179,9 @@ module core 'modules/core.bicep' = {
     adminAuthIssuer: adminAuthIssuer
     adminAuthAllowedAudiences: adminAuthAllowedAudiences
     adminAuthTokenStoreSasUrlSettingName: adminAuthTokenStoreSasUrlSettingName
+    apiPlaceholderImage: apiPlaceholderImage
+    adminPlaceholderImage: adminPlaceholderImage
+    toolsPlaceholderImage: toolsPlaceholderImage
   }
 }
 

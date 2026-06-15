@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$InstallRoot = "$env:ProgramData\Company\SreCollector",
+    [string]$InstallRoot = $(if ($PSScriptRoot) { $PSScriptRoot } else { "$env:ProgramData\Company\SreCollector" }),
     [string]$ConfigPath = (Join-Path $InstallRoot 'config\config.json'),
     [string]$ManifestPath = (Join-Path $InstallRoot 'config\module-manifest.json')
 )

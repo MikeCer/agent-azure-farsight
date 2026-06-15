@@ -1,5 +1,5 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
-param([string]$InstallRoot = "$env:ProgramData\Company\SreCollector")
+param([string]$InstallRoot = $(if ($PSScriptRoot) { $PSScriptRoot } else { "$env:ProgramData\Company\SreCollector" }))
 
 Set-StrictMode -Version 2.0
 foreach ($directory in @($InstallRoot, (Join-Path $InstallRoot 'logs'), (Join-Path $InstallRoot 'state'), (Join-Path $InstallRoot 'artifacts'))) {

@@ -43,7 +43,7 @@ param enableSandboxGroup bool = true
 @description('Enable newer workspace tool capabilities on the SRE Agent runtime.')
 param enableWorkspaceTools bool = true
 
-@description('Initial sponsor group ID used to initialize 2026 SRE Agent identity. Falls back to principalId when omitted.')
+@description('Initial sponsor group ID used to initialize 2026 SRE Agent identity on first create. Leave empty for idempotent updates.')
 param initialSponsorGroupId string = ''
 
 @description('Create and attach a Microsoft.App/agentSpaces resource. Requires Agent Spaces to be enabled for the tenant/subscription.')
@@ -73,6 +73,12 @@ param linkExistingPrivateDnsZones bool = true
 @description('Auth mode for the intune_diagnostics_tool. Passed through to the azd postdeploy hook.')
 @allowed(['key-vault', 'managed-identity'])
 param intuneDiagnosticsAuthMode string = 'key-vault'
+
+@description('FarSight API base URL. Passed through to the azd postdeploy hook so FarSight tools know which endpoint to call.')
+param farsightApiBaseUrl string = ''
+
+@description('FarSight API token scope for managed identity auth. Format: api://<farsight-api-app-id>/.default. Passed through to the azd postdeploy hook as FARSIGHT_API_SCOPE.')
+param farsightApiScope string = ''
 
 var tags = {
   'azd-env-name': environmentName
@@ -121,3 +127,5 @@ output INTUNE_DIAGNOSTICS_AUTH_MODE string = intuneDiagnosticsAuthMode
 output INTUNE_DIAGNOSTICS_KEY_VAULT_NAME string = resources.outputs.keyVaultName
 output INTUNE_DIAGNOSTICS_KEY_VAULT_URI string = resources.outputs.keyVaultUri
 output SRE_AGENT_SPACE_ID string = resources.outputs.agentSpaceId
+output FARSIGHT_API_BASE_URL string = farsightApiBaseUrl
+output FARSIGHT_API_SCOPE string = farsightApiScope

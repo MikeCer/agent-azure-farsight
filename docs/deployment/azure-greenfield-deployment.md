@@ -89,6 +89,7 @@ ACR build firewall ranges (required for AZD remote builds when registry is priva
 ```bash
 azd env set FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_ITALY_NORTH 4.232.51.192/26
 azd env set FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_SWEDEN_CENTRAL 172.160.222.128/26
+azd env set FARSIGHT_ACR_FIREWALL_ALLOWED_IP_RANGE_CLIENT "$(curl -s https://api.ipify.org)/32"
 ```
 
 ## 4. Configure private DNS mapping (if linking existing zones)
@@ -129,6 +130,14 @@ Set internal admin mutation shared secret before first `azd up`:
 
 ```bash
 azd env set FARSIGHT_API_INTERNAL_AUTH_SECRET "<strong-random-secret>"
+```
+
+If public MCR placeholder pulls are throttled or blocked during provision, point placeholders to already-pushed private ACR tags from a previous successful deploy:
+
+```bash
+azd env set FARSIGHT_API_PLACEHOLDER_IMAGE "<acr>.azurecr.io/agent-azure-farsight/api-dev:<known-good-tag>"
+azd env set FARSIGHT_ADMIN_PLACEHOLDER_IMAGE "<acr>.azurecr.io/agent-azure-farsight/admin-web-dev:<known-good-tag>"
+azd env set FARSIGHT_TOOLS_PLACEHOLDER_IMAGE "<acr>.azurecr.io/agent-azure-farsight/agent-tools-dev:<known-good-tag>"
 ```
 
 Preview and deploy:
@@ -249,6 +258,13 @@ azd env set AZURE_LOCATION swedencentral
 azd env set AZURE_PRINCIPAL_ID "<entra-object-id-for-sre-admin-role>"
 azd env set INTUNE_DIAGNOSTICS_AUTH_MODE managed-identity   # or key-vault
 
+# FarSight API base URL - copy from the main FarSight azd env output
+azd env set FARSIGHT_API_BASE_URL "<farsight-api-base-url>"
+
+# FarSight API token scope for managed identity auth (avoids invalid_scope error)
+# Use FARSIGHT_API_APP_ID output from scripts/provision-farsight-api-app-registration.py
+azd env set FARSIGHT_API_SCOPE "api://<farsight-api-app-id>/.default"
+
 # Optional but recommended SRE resource defaults
 azd env set SRE_AGENT_UPGRADE_CHANNEL Stable
 azd env set SRE_AGENT_DEFAULT_MODEL_PROVIDER Anthropic
@@ -256,6 +272,9 @@ azd env set SRE_AGENT_DEFAULT_MODEL_NAME Automatic
 azd env set SRE_AGENT_MONTHLY_AGENT_UNIT_LIMIT 10000
 azd env set SRE_AGENT_ENABLE_SANDBOX_GROUP true
 azd env set SRE_AGENT_ENABLE_WORKSPACE_TOOLS true
+
+# Optional: set only for first-time Agent Space identity initialization
+azd env set SRE_AGENT_INITIAL_SPONSOR_GROUP_ID "<entra-group-object-id>"
 ```
 
 If this SRE environment must use private endpoints, also set the SRE-specific networking variables from `src/sre-agent/agent/infra/main.bicepparam` (for example `SRE_AGENT_ENABLE_PRIVATE_ENDPOINTS`, address prefixes, and private DNS zone IDs).
@@ -317,3 +336,39 @@ Do not use temporary public ingress as a shortcut for broad collector rollout.
 - Confirm `FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS` includes SRE MI SP object ID.
 - Confirm SRE MI has the required API app role assignment.
 - Confirm token audience matches `FARSIGHT_API_ALLOWED_AUDIENCES`.
+
+### FarSight tools fail with `(invalid_scope) None, None` / auth error
+
+The FarSight tools default to `{api_base_url}/.default` as the token scope when `FARSIGHT_API_SCOPE` is not set. The Container Apps URL is **not** a valid Entra resource audience.
+
+1. Get the FarSight API app registration client ID:
+   ```bash
+   python3 scripts/provision-farsight-api-app-registration.py  # outputs FARSIGHT_API_APP_ID
+   ```
+2. Set the correct scope in the SRE azd environment:
+   ```bash
+   cd src/sre-agent/agent
+   azd env set FARSIGHT_API_SCOPE "api://<FARSIGHT_API_APP_ID>/.default"
+   ```
+3. Grant the SRE managed identity the `Farsight.Api.Access` app role:
+   ```bash
+   MI_CLIENT_ID="<sre-mi-client-id>" \
+   FARSIGHT_API_APP_ID="<farsight-api-app-id>" \
+   ./src/sre-agent/scripts/grant-farsight-api-access.sh
+   ```
+4. Redeploy tools so the scope default is injected:
+   ```bash
+   cd src/sre-agent/agent
+   python3 deploy.py --skip-kb --skip-skills
+   ```
+
+### `InvalidApplicationInsightsConfiguration: The AppId and ConnectionString fields must be provided together`
+
+- The SRE Agent ARM payload must include both Application Insights `appId` and `connectionString` in `logConfiguration.applicationInsightsConfiguration`.
+- Re-run `azd provision`/`azd up` after pulling the latest infra changes in `src/sre-agent/agent/infra/modules/sre-agent.bicep`.
+
+### `A resource with this name already exists or is in a conflicting state` during SRE Agent provision
+
+- Check whether the agent already exists in the target resource group:
+  `az resource show --resource-group <rg> --resource-type Microsoft.App/agents --name <agent-name>`.
+- If re-running against an existing agent, leave `SRE_AGENT_INITIAL_SPONSOR_GROUP_ID` unset. This value is intended for first-create identity initialization only.
