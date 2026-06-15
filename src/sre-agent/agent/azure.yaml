@@ -15,6 +15,9 @@
 #   SRE_AGENT_UPGRADE_CHANNEL         - Stable by default; use Preview only for early access
 #   SRE_AGENT_DEFAULT_MODEL_PROVIDER  - Anthropic by default
 #   SRE_AGENT_DEFAULT_MODEL_NAME      - Automatic by default
+#   SRE_AGENT_MONTHLY_AGENT_UNIT_LIMIT - 10000 by default
+#   SRE_AGENT_ENABLE_SANDBOX_GROUP    - true by default
+#   SRE_AGENT_ENABLE_WORKSPACE_TOOLS  - true by default
 #   SRE_AGENT_INITIAL_SPONSOR_GROUP_ID - Entra group object ID for 2026 agent identity initialization
 #   SRE_AGENT_ENABLE_AGENT_SPACE      - false by default; requires Agent Spaces enablement
 #   INTUNE_DIAGNOSTICS_AUTH_MODE      - key-vault by default; or managed-identity
@@ -37,7 +40,7 @@ infra:
 hooks:
   postdeploy:
     shell: sh
-    run: python3 deploy.py
+    run: python3 -u deploy.py
     # For PowerShell on Windows, use:
     # shell: pwsh
-    # run: python3 deploy.py
+    # run: python3 -u deploy.py

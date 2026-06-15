@@ -17,6 +17,7 @@ from Bicep outputs.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import shutil
@@ -63,6 +64,42 @@ KEY_VAULT_SECRETS_USER_ROLE = "Key Vault Secrets User"
 INTUNE_AUTH_MODE_ENV = "INTUNE_DIAGNOSTICS_AUTH_MODE"
 INTUNE_AUTH_MODE_KEY_VAULT = "key-vault"
 INTUNE_AUTH_MODE_MANAGED_IDENTITY = "managed-identity"
+DEPLOY_LOG_DIR = SCRIPT_DIR / ".logs"
+_ACTIVE_LOG_HANDLE: Any = None
+
+
+class TeeStream:
+    def __init__(self, primary: Any, secondary: Any):
+        self._primary = primary
+        self._secondary = secondary
+
+    def write(self, data: str) -> int:
+        written = self._primary.write(data)
+        self._secondary.write(data)
+        return written
+
+    def flush(self) -> None:
+        self._primary.flush()
+        self._secondary.flush()
+
+    def isatty(self) -> bool:
+        return bool(getattr(self._primary, "isatty", lambda: False)())
+
+    def fileno(self) -> int:
+        return self._primary.fileno()
+
+
+def enable_persistent_console_log() -> Path:
+    global _ACTIVE_LOG_HANDLE
+
+    DEPLOY_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%SZ")
+    log_path = DEPLOY_LOG_DIR / f"deploy-{timestamp}.log"
+    log_handle = log_path.open("w", encoding="utf-8", buffering=1)
+    _ACTIVE_LOG_HANDLE = log_handle
+    sys.stdout = TeeStream(sys.stdout, log_handle)
+    sys.stderr = TeeStream(sys.stderr, log_handle)
+    return log_path
 
 
 class AzureCliError(RuntimeError):
@@ -732,10 +769,12 @@ def default_resource_group() -> str:
 
 
 def main() -> None:
+    log_path = enable_persistent_console_log()
     args = parse_args()
     agent_name = args.agent_name or os.environ.get("SRE_AGENT_NAME")
     resource_group = args.resource_group or default_resource_group()
     subscription = args.subscription or os.environ.get("AZURE_SUBSCRIPTION_ID")
+    intune_auth_mode = os.environ.get(INTUNE_AUTH_MODE_ENV, INTUNE_AUTH_MODE_KEY_VAULT).strip().lower()
 
     if not agent_name:
         print("ERROR: provide --agent-name or set SRE_AGENT_NAME.")
@@ -752,6 +791,7 @@ def main() -> None:
     print(f"  Skip Tools     : {args.skip_tools}")
     print(f"  Skip Skills    : {args.skip_skills}")
     print(f"  Dry run        : {args.dry_run}")
+    print(f"  Log file       : {log_path}")
 
     if args.dry_run:
         endpoint = "https://DRY-RUN-ENDPOINT"
@@ -764,7 +804,6 @@ def main() -> None:
         print("\nResolving SRE Agent endpoint...")
         endpoint = resolve_endpoint(resource_group, agent_name, subscription)
         print(f"  {endpoint}")
-        intune_auth_mode = os.environ.get(INTUNE_AUTH_MODE_ENV, INTUNE_AUTH_MODE_KEY_VAULT).strip().lower()
         print("\nIntune diagnostics auth mode:")
         print(f"  {intune_auth_mode}")
         if intune_auth_mode == INTUNE_AUTH_MODE_KEY_VAULT:
@@ -822,6 +861,14 @@ def main() -> None:
         "farsight-tool-orchestration skills are attached."
     )
     print("  4. Run a prompt such as: Analyze recent Azure signals for operational risks and recommended actions.")
+    if intune_auth_mode == INTUNE_AUTH_MODE_MANAGED_IDENTITY:
+        print("\nManaged identity reminder:")
+        print(
+            "  Assign Microsoft Graph Intune application permissions with admin consent "
+            "to the SRE Agent identity used at runtime (system-assigned or user-assigned)."
+        )
+        print("  Required permissions are documented in README (for example DeviceManagement*.Read.All and User.Read.All).")
+    print(f"\nSaved deploy output to: {log_path}")
 
 
 if __name__ == "__main__":

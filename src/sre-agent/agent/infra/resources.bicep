@@ -26,6 +26,16 @@ param defaultModelProvider string = 'Anthropic'
 @description('Default model name for the SRE Agent runtime.')
 param defaultModelName string = 'Automatic'
 
+@description('Monthly SRE Agent unit cap for the resource.')
+@minValue(1)
+param monthlyAgentUnitLimit int = 10000
+
+@description('Enable the newer SRE sandbox group feature.')
+param enableSandboxGroup bool = true
+
+@description('Enable newer workspace tool capabilities on the SRE Agent runtime.')
+param enableWorkspaceTools bool = true
+
 @description('Initial sponsor group ID used to initialize 2026 SRE Agent identity. Falls back to principalId when omitted.')
 param initialSponsorGroupId string = ''
 
@@ -149,13 +159,15 @@ module sreAgent 'modules/sre-agent.bicep' = {
     initialSponsorGroupId: enableAgentSpace ? (empty(initialSponsorGroupId) ? principalId : initialSponsorGroupId) : ''
     identityId: identity.outputs.identityId
     appInsightsAppId: monitoring.outputs.appInsightsAppId
-    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     appInsightsId: monitoring.outputs.appInsightsId
     managedResourceGroupId: resourceGroup().id
     principalId: principalId
     upgradeChannel: upgradeChannel
     defaultModelProvider: defaultModelProvider
     defaultModelName: defaultModelName
+    monthlyAgentUnitLimit: monthlyAgentUnitLimit
+    enableSandboxGroup: enableSandboxGroup
+    enableWorkspaceTools: enableWorkspaceTools
     tags: tags
   }
 }

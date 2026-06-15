@@ -87,6 +87,9 @@ azd env set AZURE_PRINCIPAL_ID <your-entra-object-id>
 | `SRE_AGENT_UPGRADE_CHANNEL` | No | Defaults to `Stable` so new deployments use the current non-preview SRE Agent generation. |
 | `SRE_AGENT_DEFAULT_MODEL_PROVIDER` | No | Defaults to `Anthropic`; allowed values are `Anthropic` and `MicrosoftFoundry`. |
 | `SRE_AGENT_DEFAULT_MODEL_NAME` | No | Defaults to `Automatic`. |
+| `SRE_AGENT_MONTHLY_AGENT_UNIT_LIMIT` | No | Defaults to `10000`. Matches current migrated SRE Agent resource unit limit shape. |
+| `SRE_AGENT_ENABLE_SANDBOX_GROUP` | No | Defaults to `true`. Enables the newer SRE sandbox feature on resource creation. |
+| `SRE_AGENT_ENABLE_WORKSPACE_TOOLS` | No | Defaults to `true`. Enables newer workspace tool capabilities on resource creation. |
 | `SRE_AGENT_INITIAL_SPONSOR_GROUP_ID` | Recommended | Entra group object ID used to initialize the 2026 SRE Agent identity. Falls back to `AZURE_PRINCIPAL_ID` when omitted. |
 | `SRE_AGENT_ENABLE_AGENT_SPACE` | No | Defaults to `false`. Set to `true` only when `Microsoft.App/agentSpaces` is enabled for the tenant/subscription. |
 | `INTUNE_DIAGNOSTICS_AUTH_MODE` | No | Defaults to `key-vault`. Use `managed-identity` to make the tool call Microsoft Graph with the SRE Agent assigned identity instead of Key Vault service-principal credentials. |
@@ -102,7 +105,7 @@ azd up
 `azd up` provisions the infrastructure and then runs:
 
 ```bash
-python3 deploy.py
+python3 -u deploy.py
 ```
 
 The post-deploy script uploads these knowledge files:
@@ -190,6 +193,7 @@ The SRE Agent system-assigned identity needs `Key Vault Secrets User` on this Ke
 ```
 
 In this mode the Python tool uses `DefaultAzureCredential`, so the SRE Agent assigned identity must have the required Microsoft Graph application permissions for Intune. Grant and admin-consent the required Graph permissions to the managed identity/service principal before testing this mode.
+At the end of `deploy.py`, a managed-identity-specific reminder is printed to call out this Graph permission prerequisite for the runtime identity (system-assigned or user-assigned).
 
 The SRE Agent collector also supports service-principal authentication through environment variables:
 
@@ -208,6 +212,7 @@ The app registration or managed identity should have the Intune/Microsoft Graph 
 - `DeviceManagementApps.Read.All`
 - `DeviceManagementServiceConfig.Read.All`
 - `User.Read.All` or equivalent read permission when collecting user-scoped Intune troubleshooting events
+- `Directory.Read.All`
 
 Admin consent is required for unattended execution.
 

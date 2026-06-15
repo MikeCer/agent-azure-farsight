@@ -276,6 +276,13 @@ Deployment notes:
 - If `INTUNE_DIAGNOSTICS_AUTH_MODE=key-vault`, add the required Intune secrets to
   the SRE Agent Key Vault after provisioning and verify `Key Vault Secrets User`
   for the SRE Agent identity.
+- If `INTUNE_DIAGNOSTICS_AUTH_MODE=managed-identity`, assign Graph Intune
+  **application permissions** with admin consent to the runtime SRE Agent
+  identity (system-assigned or user-assigned). Use
+  `src/sre-agent/scripts/grant-intune-permissions.sh` from a session with an
+  active Entra admin role (Privileged Role Administrator recommended; Global
+  Administrator also works). If the role is PIM-eligible, activate it before
+  running the script.
 - Use `python3 deploy.py --dry-run` for content-only validation before uploading
   tools, skills, and knowledge files to an existing SRE Agent resource.
 - Verify the deployed SRE Agent tools call the FarSight AGT gateway/API endpoint

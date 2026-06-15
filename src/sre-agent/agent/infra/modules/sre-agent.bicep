@@ -22,10 +22,6 @@ param identityId string
 @description('Application Insights App ID used for SRE Agent internal logging.')
 param appInsightsAppId string
 
-@secure()
-@description('Application Insights connection string used for SRE Agent internal logging.')
-param appInsightsConnectionString string
-
 @description('Application Insights resource ID used as hidden-link tag.')
 param appInsightsId string
 
@@ -45,6 +41,16 @@ param defaultModelProvider string = 'Anthropic'
 
 @description('Default model name for the SRE Agent runtime.')
 param defaultModelName string = 'Automatic'
+
+@description('Monthly SRE Agent unit cap for the resource.')
+@minValue(1)
+param monthlyAgentUnitLimit int = 10000
+
+@description('Enable the newer SRE sandbox group feature.')
+param enableSandboxGroup bool = true
+
+@description('Enable newer workspace tool capabilities on the SRE Agent runtime.')
+param enableWorkspaceTools bool = true
 
 @description('Tags applied to all resources.')
 param tags object = {}
@@ -86,13 +92,18 @@ resource sreAgent 'Microsoft.App/agents@2026-01-01' = {
     logConfiguration: {
       applicationInsightsConfiguration: {
         appId: appInsightsAppId
-        connectionString: appInsightsConnectionString
+        applicationInsightsResourceId: appInsightsId
       }
     }
     upgradeChannel: upgradeChannel
     defaultModel: {
       provider: defaultModelProvider
       name: defaultModelName
+    }
+    monthlyAgentUnitLimit: monthlyAgentUnitLimit
+    experimentalSettings: {
+      EnableSandboxGroup: enableSandboxGroup
+      EnableWorkspaceTools: enableWorkspaceTools
     }
   }, agentSpaceProperties, agentIdentityProperties)
 }

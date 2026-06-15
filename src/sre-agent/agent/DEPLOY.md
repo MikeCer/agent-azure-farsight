@@ -17,6 +17,14 @@ The script does not create Azure resources. Infrastructure is created by the Bic
 
 The script accepts command-line arguments and falls back to environment variables, including values emitted by `azd` from Bicep outputs.
 
+For every run, `deploy.py` persists a full copy of console output under:
+
+```text
+src/sre-agent/agent/.logs/deploy-<UTC timestamp>.log
+```
+
+This is especially useful when `azd` hook terminal output is cleared by the shell/UI after completion.
+
 | Option | Environment fallback | Purpose |
 | --- | --- | --- |
 | `--agent-name` / `-n` | `SRE_AGENT_NAME` | ARM resource name of the Azure SRE Agent. |
@@ -54,6 +62,15 @@ az resource show \
 ```
 
 It accepts either `properties.endpoint` or `properties.agentEndpoint`, then removes any trailing slash.
+
+### SRE Agent resource shape alignment
+
+The Bicep deployment now aligns with the migrated stable SRE Agent resource shape by explicitly setting:
+
+- `logConfiguration.applicationInsightsConfiguration.applicationInsightsResourceId` (instead of sending an App Insights connection string),
+- `monthlyAgentUnitLimit` (default `10000`),
+- `experimentalSettings.EnableSandboxGroup` (default `true`),
+- `experimentalSettings.EnableWorkspaceTools` (default `true`).
 
 ### 3. Resolve Intune diagnostics authentication defaults
 
@@ -107,6 +124,7 @@ In `managed-identity` mode, the injected tool call is:
 ```
 
 No Key Vault URI is injected, and no Key Vault RBAC repair is attempted.
+The script prints a managed-identity reminder at the end of deployment, explicitly calling out that Microsoft Graph Intune application permissions with admin consent must be assigned to the runtime SRE Agent identity (system-assigned or user-assigned).
 
 ### 4. Upload knowledge files
 

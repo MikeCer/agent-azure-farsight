@@ -16,6 +16,7 @@ For end-to-end lab validation, follow [Set up a FarSight test lab in Azure](setu
 - Redact sensitive data before persistence or upload.
 - Keep SRE skill instructions aligned to live tool contracts and naming (`src/sre-agent/intune-collector/` for Intune evidence collection and FarSight tool parameters such as `device_id`, `task_type`, and `job_id`).
 - Preserve the FarSight two-skill boundary: `farsight-system-context` for domain/governance context and `farsight-tool-orchestration` for execution sequencing.
+- For `src/sre-agent/agent` deployments, rely on persisted postdeploy logs in `src/sre-agent/agent/.logs/deploy-*.log` when shell/CLI UI clears hook output after completion.
 
 ## Testing
 

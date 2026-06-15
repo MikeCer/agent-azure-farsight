@@ -45,6 +45,9 @@ Provision and deploy:
 azd up
 ```
 
+The `postdeploy` hook in `azure.yaml` runs `python3 -u deploy.py` so hook logs stream without Python buffering during `azd up`.
+`deploy.py` also writes a persistent copy of hook output to `agent/.logs/deploy-<timestamp>.log`.
+
 Content-only deployment after infrastructure already exists:
 
 ```bash
@@ -73,6 +76,9 @@ Set these with `azd env set <KEY> <VALUE>` before `azd up`:
 | `SRE_AGENT_UPGRADE_CHANNEL` | No | Defaults to `Stable` so new deployments use the current non-preview SRE Agent generation. |
 | `SRE_AGENT_DEFAULT_MODEL_PROVIDER` | No | Defaults to `Anthropic`; allowed values are `Anthropic` and `MicrosoftFoundry`. |
 | `SRE_AGENT_DEFAULT_MODEL_NAME` | No | Defaults to `Automatic`. |
+| `SRE_AGENT_MONTHLY_AGENT_UNIT_LIMIT` | No | Defaults to `10000`. Matches current migrated SRE Agent resource unit-limit shape. |
+| `SRE_AGENT_ENABLE_SANDBOX_GROUP` | No | Defaults to `true`. Enables the newer SRE sandbox feature on resource creation. |
+| `SRE_AGENT_ENABLE_WORKSPACE_TOOLS` | No | Defaults to `true`. Enables newer workspace tool capabilities on resource creation. |
 | `SRE_AGENT_INITIAL_SPONSOR_GROUP_ID` | Recommended | Entra group object ID used to initialize the 2026 SRE Agent identity. Falls back to `AZURE_PRINCIPAL_ID` when omitted. |
 | `SRE_AGENT_ENABLE_AGENT_SPACE` | No | Defaults to `false`. Set to `true` only when `Microsoft.App/agentSpaces` is enabled for the tenant/subscription. |
 

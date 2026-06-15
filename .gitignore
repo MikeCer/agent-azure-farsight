@@ -47,3 +47,5 @@ infra-test/main.json
 *.tsbuildinfo
 
 *.dev.json
+
+.logs
