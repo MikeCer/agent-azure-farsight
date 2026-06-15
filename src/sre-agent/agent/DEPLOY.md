@@ -10,7 +10,7 @@ The script does not create Azure resources. Infrastructure is created by the Bic
 | --- | --- | --- |
 | Knowledge files | `knowledge/agent.md`, `knowledge/intune-data-catalog.md`, and Skill Builder Markdown docs | AgentMemory upload endpoint |
 | Python tools | `tools/*.yaml` + matching `tools/*.py`, including `intune_diagnostics_tool` and the FarSight diagnostic tools | `/api/v2/extendedAgent/tools/{toolName}` |
-| Skills | `skills/intune-data-analysis/skill.yaml`, `skills/farsight-diagnostics/skill.yaml`, and matching `SKILL.md` files | `/api/v2/extendedAgent/skills/{skillName}` |
+| Skills | `skills/intune-data-analysis/skill.yaml`, `skills/farsight-system-context/skill.yaml`, `skills/farsight-tool-orchestration/skill.yaml`, and matching `SKILL.md` files | `/api/v2/extendedAgent/skills/{skillName}` |
 | Custom agent | `agent-azure-farsight-sre.yaml` | `/api/v2/extendedAgent/agents/agent-azure-farsight-sre` |
 
 ## Inputs and defaults
@@ -161,7 +161,8 @@ Important details:
 Every `skills/*/skill.yaml` file is converted to a `Skill` payload. The current user-facing skills are:
 
 - `intune-data-analysis` for collector JSON, Endpoint Analytics, Intune health/compliance, app reliability, restart/shutdown, and timeline evidence.
-- `farsight-diagnostics` for governed FarSight diagnostic jobs, artifacts, job history, follow-up modules, and approval workflows.
+- `farsight-system-context` for FarSight module catalog, investigation strategy, trust boundaries, and policy/approval framing.
+- `farsight-tool-orchestration` for concrete FarSight tool sequencing and parameter mapping.
 
 For example:
 
@@ -206,7 +207,11 @@ PUT /api/v2/extendedAgent/skills/{skillName}
       "request_approval_for_action"
     ],
     "enableSkills": true,
-    "allowedSkills": ["intune-data-analysis", "farsight-diagnostics"],
+    "allowedSkills": [
+      "intune-data-analysis",
+      "farsight-system-context",
+      "farsight-tool-orchestration"
+    ],
     "allowParallelToolCalls": true
   }
 }

@@ -47,10 +47,16 @@ When analyzing collector JSON or Intune/Graph evidence, use the skill:
 intune-data-analysis
 ```
 
-When running or interpreting governed FarSight diagnostics, use the skill:
+When framing FarSight investigation scope, module strategy, and governance constraints, use the skill:
 
 ```text
-farsight-diagnostics
+farsight-system-context
+```
+
+When executing governed FarSight tool workflows, use the skill:
+
+```text
+farsight-tool-orchestration
 ```
 
 ## Operating principles
@@ -60,7 +66,7 @@ farsight-diagnostics
 3. Prioritize user-impacting issues first: startup/sign-in, app crashes/hangs, restarts/shutdowns, disk/memory/CPU bottlenecks, compliance/security blockers.
 4. Do not infer OS-level, Intune, or FarSight facts that are not present in the provided evidence. If additional evidence would be needed, list it under missing data rather than assuming it exists.
 5. Keep recommendations actionable for SRE, Intune, and endpoint admins.
-6. Use FarSight only through the named tool surface, approved modules, scoped parameters, and approval workflow described by `farsight-diagnostics`. Do not run arbitrary commands or bypass approvals.
+6. Use FarSight only through the named tool surface, approved modules, scoped parameters, and approval workflow defined by `farsight-system-context` and `farsight-tool-orchestration`. Do not run arbitrary commands or bypass approvals.
 7. Every analysis must end with concrete actions the user/admin should perform manually or approve through the governed FarSight workflow, prioritized from highest impact/risk to lowest. Base each action on evidence and label actions as confirmed, likely, or investigative when appropriate.
 
 ## Language behavior

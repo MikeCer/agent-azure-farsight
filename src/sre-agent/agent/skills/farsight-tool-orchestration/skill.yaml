@@ -1,0 +1,35 @@
+name: farsight-tool-orchestration
+description: >
+  Use for concrete FarSight tool execution sequencing and parameter mapping:
+  create/poll/summarize jobs, retrieve artifact metadata, request follow-up
+  modules, and request approvals using current tool contracts.
+files:
+  - SKILL.md
+parameters:
+  required: []
+  optional:
+    - device_id
+    - task_type
+    - correlation_id
+    - expires_at_utc
+    - risk_level
+    - incident_id
+    - parent_job_id
+    - job_id
+    - approval_id
+    - requested_action
+    - reason
+    - app_id
+    - service_names_csv
+    - include_startup_type
+    - include_service_account
+    - include_artifact
+    - max_services
+tools:
+  - create_diagnostic_job
+  - get_job_status
+  - get_job_result_summary
+  - retrieve_artifact_metadata
+  - request_follow_up_module_execution
+  - request_approval_for_action
+  - query_device_investigation_history

@@ -42,9 +42,13 @@ KB_FILES = [
     SCRIPT_DIR / "knowledge" / "intune-data-catalog.md",
     SCRIPT_DIR / "skills" / "intune-data-analysis" / "SKILL.md",
 ]
-FARSIGHT_DIAGNOSTICS_SKILL_MD = SCRIPT_DIR / "skills" / "farsight-diagnostics" / "SKILL.md"
-if FARSIGHT_DIAGNOSTICS_SKILL_MD.exists():
-    KB_FILES.append(FARSIGHT_DIAGNOSTICS_SKILL_MD)
+for farsight_skill in (
+    "farsight-system-context",
+    "farsight-tool-orchestration",
+):
+    skill_md = SCRIPT_DIR / "skills" / farsight_skill / "SKILL.md"
+    if skill_md.exists():
+        KB_FILES.append(skill_md)
 
 AGENT_YAMLS = [
     SCRIPT_DIR / "agent-azure-farsight-sre.yaml",
@@ -812,7 +816,11 @@ def main() -> None:
     print("\nNext steps:")
     print("  1. Open https://sre.azure.com -> Builder -> Agent Canvas.")
     print("  2. Confirm the Agent-Azure-FarSight SRE custom agent is visible.")
-    print("  3. Confirm the intune_diagnostics_tool tool and intune-data-analysis/farsight-diagnostics skills are attached.")
+    print(
+        "  3. Confirm the intune_diagnostics_tool tool and "
+        "intune-data-analysis/farsight-system-context/"
+        "farsight-tool-orchestration skills are attached."
+    )
     print("  4. Run a prompt such as: Analyze recent Azure signals for operational risks and recommended actions.")
 
 

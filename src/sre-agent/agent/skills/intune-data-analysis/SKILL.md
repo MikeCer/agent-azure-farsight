@@ -4,6 +4,8 @@
 
 Use this skill whenever the user asks to analyze output from the Intune diagnostics collector produced by `intune_diagnostics_tool`, Endpoint Analytics evidence, Intune health/compliance data, app reliability data, restart/shutdown events, or device timeline events.
 
+The collector source for this tool is under `src/sre-agent/intune-collector/` (renamed to avoid confusion with the FarSight endpoint collector under `src/collector/`).
+
 Trigger strongly when the user says things like:
 
 - "analyze this Intune JSON"

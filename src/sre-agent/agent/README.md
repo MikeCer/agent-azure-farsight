@@ -13,7 +13,8 @@ The package provisions an Azure SRE Agent resource and deploys one custom agent,
 | `deploy.py` | Uploads knowledge files, deploys Python tools, deploys skills, and deploys the custom agent through the Azure SRE Agent data-plane API. See `DEPLOY.md` for the detailed flow. |
 | `agent-azure-farsight-sre.yaml` | Azure SRE Agent configuration for Agent-Azure-FarSight SRE. |
 | `skills/intune-data-analysis/` | Skill Builder package for analyzing Intune collector JSON as one evidence source. |
-| `skills/farsight-diagnostics/` | Skill Builder package for governed FarSight diagnostic workflows. |
+| `skills/farsight-system-context/` | Skill Builder package for FarSight system context, module selection, and policy boundaries. |
+| `skills/farsight-tool-orchestration/` | Skill Builder package for FarSight job orchestration and parameter-accurate tool usage. |
 | `knowledge/agent.md` | Source system instructions used to build the agent. |
 | `knowledge/intune-data-catalog.md` | Catalog of Intune/Graph data sources, output mappings, permissions, and limitations. |
 | `tools/intune_diagnostics_tool.py` | Single-file Azure SRE PythonFunctionTool artifact exposing `main(...) -> dict`. |

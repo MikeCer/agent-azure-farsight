@@ -1,0 +1,19 @@
+name: farsight-system-context
+description: >
+  Use for FarSight domain understanding: module catalog and purpose, policy and
+  approval model, trust boundaries, and evidence strategy before selecting tools.
+files:
+  - SKILL.md
+parameters:
+  required: []
+  optional:
+    - user_symptom
+    - device_name
+    - device_id
+    - incident_id
+    - time_window
+    - language
+defaults:
+  time_window: latest_relevant_window
+  language: match_user_language
+tools: []

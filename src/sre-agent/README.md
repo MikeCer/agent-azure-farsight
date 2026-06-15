@@ -6,7 +6,7 @@ This project packages the Agent-Azure-FarSight SRE deployment template, a govern
 
 | Path | Purpose |
 | --- | --- |
-| `collector/` | Python Intune diagnostics collector source, tests, packaging metadata, generated `dist/`, and build script. |
+| `intune-collector/` | Python Intune diagnostics collector source, tests, packaging metadata, generated `dist/`, and build script. |
 | `agent/` | Azure SRE Agent azd template, agent YAML, Skill Builder packages, knowledge files, Python tool manifests, FarSight tools, and packaged collector tool. |
 | `local-scripts/` | Optional endpoint-side diagnostic scripts kept outside the v1 SRE Agent package. |
 
@@ -15,13 +15,13 @@ This project packages the Agent-Azure-FarSight SRE deployment template, a govern
 Build the collector and refresh the packaged SRE Agent tool with:
 
 ```bash
-cd collector
+cd intune-collector
 python3 scripts/build_single_script.py
 ```
 
 That command updates both:
 
-- `collector/dist/intune_diagnostics_tool.py`
+- `intune-collector/dist/intune_diagnostics_tool.py`
 - `agent/tools/intune_diagnostics_tool.py`
 
 The SRE Agent package uses `agent/tools/intune_diagnostics_tool.py`, so run the build command before deploying whenever collector source changes.
@@ -37,7 +37,8 @@ The deployable Azure SRE Agent package is in `agent/`. It contains:
 | `agent/deploy.py` | Post-deploy script that uploads knowledge files, deploys Python tools, deploys skills, and deploys the custom agent. |
 | `agent/agent-azure-farsight-sre.yaml` | Azure SRE Agent `AgentConfiguration`. |
 | `agent/skills/intune-data-analysis/` | Skill Builder package for analyzing Intune collector JSON as one evidence source. |
-| `agent/skills/farsight-diagnostics/` | Skill Builder package for governed FarSight diagnostic workflows and artifacts. |
+| `agent/skills/farsight-system-context/` | Skill Builder package for FarSight module catalog, governance model, and investigation strategy framing. |
+| `agent/skills/farsight-tool-orchestration/` | Skill Builder package for concrete FarSight tool-call sequencing and parameter mapping. |
 | `agent/tools/intune_diagnostics_tool.py` | Packaged Azure SRE PythonFunctionTool source used by the SRE Agent. |
 | `agent/tools/intune_diagnostics_tool.yaml` | Tool deployment manifest for `intune_diagnostics_tool`. |
 | `agent/tools/create_diagnostic_job.*`, `get_job_status.*`, `get_job_result_summary.*`, `retrieve_artifact_metadata.*`, `query_device_investigation_history.*`, `request_follow_up_module_execution.*`, `request_approval_for_action.*` | FarSight tool surface for governed diagnostic jobs, results, history, artifacts, follow-up modules, and approvals. |
@@ -48,7 +49,7 @@ The deployable Azure SRE Agent package is in `agent/`. It contains:
 - Azure Developer CLI (`azd`) for full infrastructure deployment.
 - Python 3 with `PyYAML` for `agent/deploy.py`.
 - Permission to deploy the SRE Agent infrastructure and assign the SRE Agent Administrator role.
-- A Microsoft Graph application or managed identity with the Intune read permissions documented in `collector/docs/intune-data-catalog.md`.
+- A Microsoft Graph application or managed identity with the Intune read permissions documented in `intune-collector/docs/intune-data-catalog.md`.
 
 Install the deploy script dependency:
 
@@ -109,12 +110,13 @@ The post-deploy script uploads these knowledge files:
 - `knowledge/agent.md`
 - `knowledge/intune-data-catalog.md`
 - `skills/intune-data-analysis/SKILL.md`
-- `skills/farsight-diagnostics/SKILL.md`
+- `skills/farsight-system-context/SKILL.md`
+- `skills/farsight-tool-orchestration/SKILL.md`
 
 It then deploys:
 
 - Tools: `intune_diagnostics_tool` and the FarSight diagnostic tools
-- Skills: `intune-data-analysis`, `farsight-diagnostics`
+- Skills: `intune-data-analysis`, `farsight-system-context`, `farsight-tool-orchestration`
 - Agent: `agent-azure-farsight-sre`
 
 ### Content-only deployment
@@ -214,7 +216,7 @@ Admin consent is required for unattended execution.
 Before deploying, run:
 
 ```bash
-cd collector
+cd intune-collector
 python3 scripts/build_single_script.py
 cmp -s dist/intune_diagnostics_tool.py ../agent/tools/intune_diagnostics_tool.py
 PYTHONPATH=src python3 -m unittest discover -s tests

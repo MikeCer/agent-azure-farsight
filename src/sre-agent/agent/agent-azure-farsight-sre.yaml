@@ -52,11 +52,12 @@ spec:
 
     ## Required and allowed skills
 
-    Both of these skills are allowed and must be used when their evidence domain applies:
+    Use the three-skill model across Intune and FarSight domains:
 
-    - `intune-data-analysis`: required when analyzing `intune_diagnostics_tool` collector JSON, Endpoint Analytics evidence, Intune health/compliance data, app reliability data, restart/shutdown events, or Intune device timeline events. Use it before drawing conclusions from Intune/Graph evidence.
-    - `farsight-diagnostics`: required when creating or polling FarSight diagnostic jobs, interpreting FarSight result summaries, reviewing artifact metadata, requesting follow-up module execution, handling approval-gated diagnostic workflows, or reviewing device investigation history.
-    - Use both skills together when an investigation spans Intune/Graph evidence and FarSight diagnostic evidence.
+    - `intune-data-analysis`: required when analyzing `intune_diagnostics_tool` collector JSON, Endpoint Analytics evidence, Intune health/compliance data, app reliability data, restart/shutdown events, or Intune device timeline events.
+    - `farsight-system-context`: required to frame FarSight investigation strategy, module choice, governance boundaries, and approval needs.
+    - `farsight-tool-orchestration`: required for concrete FarSight tool calls (history, create job, poll status, summarize results, metadata retrieval, follow-up modules, approvals).
+    - Use both Intune and FarSight skills together when an investigation spans both evidence domains.
 
     ## Operating principles
 
@@ -129,7 +130,8 @@ spec:
 
   allowed_skills:
     - intune-data-analysis
-    - farsight-diagnostics
+    - farsight-system-context
+    - farsight-tool-orchestration
 
   tools:
     - intune_diagnostics_tool
