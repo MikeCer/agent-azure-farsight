@@ -94,6 +94,8 @@ Recommended artifacts:
 2. **Certificate profile** for client certificate delivery.
 3. **Remediation package** for drift detection/repair.
 
+For the fastest operator flow, use `scripts/build-collector-intunewin.py`. It first asks for the customer/company name, then stages a package under `.farsight-dist/collector-package/`, interactively collects `config.json`, the final `module-manifest.json`, and certificate metadata, then invokes `scripts/IntuneWinAppUtil.exe` to produce the `.intunewin` output.
+
 ### Package staging structure
 
 ```text
@@ -210,6 +212,8 @@ Preferred order:
 4. Validate cert presence in detection/remediation scripts.
 
 Avoid hardcoding a static thumbprint shared across all devices.
+
+When the package is built for Intune PKI, the helper script writes a `certificate-source.json` sidecar into `.farsight-dist/collector-package/collector/config/`. The generated `install.ps1` uses that metadata to find the issued device certificate and overwrite the placeholder thumbprint in `config.json` during installation.
 
 ### Certificate troubleshooting checklist
 

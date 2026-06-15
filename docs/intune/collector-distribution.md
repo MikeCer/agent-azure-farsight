@@ -16,6 +16,8 @@ Use three Intune artifacts:
 
 Platform scripts can be useful for very early bootstrap testing, but they are not ideal for distributing the full collector file tree.
 
+For operator-led packaging runs, use `scripts/build-collector-intunewin.py`. The helper first prompts for the customer/company name, then stages a complete collector distribution under `.farsight-dist/`, prompts for environment-specific `config.json` values, prompts for the final module selection, records certificate metadata, and then calls `scripts/IntuneWinAppUtil.exe` to generate the Win32 app package.
+
 ## 1. Prepare the package staging folder
 
 Create a local staging folder outside the repo build output, for example:
@@ -289,7 +291,7 @@ Production certificate requirements:
 - rotation before expiry;
 - revocation path for lost/decommissioned devices.
 
-The collector config must reference the certificate thumbprint or a secure lookup strategy implemented by your packaging process.
+The collector config must reference the certificate thumbprint or a secure lookup strategy implemented by your packaging process. The new interactive packaging helper writes `collector/config/certificate-source.json` and resolves the final thumbprint during installation when the certificate is delivered by Intune PKI.
 
 ## 12. Configure Remediations
 
