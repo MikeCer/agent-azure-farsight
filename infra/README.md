@@ -85,6 +85,13 @@ For SRE Agent and AGT gateway machine-to-machine calls, optional Entra workload-
 
 When enabled, the API validates bearer tokens against Entra issuer/JWKS and enforces caller allowlist and/or required app role.
 
+For collector device mTLS certificate validation (check-in and result submission), enable:
+
+- `FARSIGHT_API_ENFORCE_DEVICE_CERT_AUTH=true`
+- `FARSIGHT_API_DEVICE_CERT_TRUSTED_CA_PEM=<base64-encoded PEM of the Cloud PKI root or issuing CA>`
+
+When enabled, the API reads the `X-Forwarded-Client-Cert` header forwarded by the Container Apps ingress, validates the certificate validity period and Client Authentication EKU, and verifies the certificate was signed by the configured trusted CA. The CN is bound to the claimed `device_id` in the request. Requires `clientCertificateMode: accept` on the API Container App ingress. See [collector docs](../docs/collector/README.md#5-certificate-authentication-configuration) for the full Cloud PKI setup.
+
 Prepare the API app registration and application role manually with:
 
 ```bash

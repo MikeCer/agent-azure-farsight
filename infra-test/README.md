@@ -160,7 +160,7 @@ For each VM:
 
 ### 7. Assign the FarSight collector
 
-Follow [Collector distribution with Intune](../docs/intune/collector-distribution.md) to package and assign the collector.
+Follow [Collector packaging + Intune distribution workflow](../docs/collector/README.md#3-packaging-collector-for-intune-win32-app) to package and assign the collector.
 
 For the lab ring:
 
@@ -195,5 +195,5 @@ When testing is complete:
 ## Related docs
 
 - [Development lab setup](../docs/development/setup-lab.md)
-- [Collector distribution with Intune](../docs/intune/collector-distribution.md)
+- [Collector documentation](../docs/collector/README.md)
 - [Greenfield Azure deployment](../docs/deployment/azure-greenfield-deployment.md)

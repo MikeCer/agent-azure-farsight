@@ -29,7 +29,7 @@ Read these before starting:
 | --- | --- |
 | Full Azure greenfield deployment | [Greenfield Azure deployment](../deployment/azure-greenfield-deployment.md) |
 | Test VM infrastructure | [`infra-test/README.md`](../../infra-test/README.md) |
-| Intune collector packaging | [Collector distribution with Intune](../intune/collector-distribution.md) |
+| Intune collector packaging | [Collector documentation](../collector/README.md#3-packaging-collector-for-intune-win32-app) |
 | Collector runtime model | [Collector documentation](../collector/README.md) |
 | Security expectations | [Security](../security/README.md) |
 
@@ -95,7 +95,7 @@ Enroll the VMs using the tenant-approved path:
 
 ### 6. Prepare the collector package
 
-Follow [Collector distribution with Intune](../intune/collector-distribution.md).
+Follow [Collector packaging for Intune](../collector/README.md#3-packaging-collector-for-intune-win32-app).
 
 At minimum, prepare:
 
@@ -123,7 +123,7 @@ Do not move to IT pilot until the lab ring has stable install and check-in behav
 
 ### 8. Add Remediations
 
-Create Intune Remediations for collector health and repair. Use the responsibilities described in [Collector distribution with Intune](../intune/collector-distribution.md):
+Create Intune Remediations for collector health and repair. Use the responsibilities described in [Collector remediation strategy](../collector/README.md#6-remediation-strategy-required):
 
 - detect missing install files;
 - detect missing config or manifest;

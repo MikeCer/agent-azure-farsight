@@ -21,6 +21,24 @@ function Write-FarSightLog {
         message = Protect-FarSightText -Text $Message
         context = Protect-FarSightObject -InputObject $Context
     }
+
+    function Resolve-FarSightLogPath {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory = $true)][string]$LogRoot,
+            [string]$FileName = 'collector.ndjson'
+        )
+
+        if ([string]::IsNullOrWhiteSpace($LogRoot)) {
+            throw 'Log root is required'
+        }
+
+        if ($LogRoot -match '\.ndjson$') {
+            return $LogRoot
+        }
+
+        return (Join-Path $LogRoot $FileName)
+    }
     $json = $entry | ConvertTo-Json -Depth 8 -Compress
     if ([string]::IsNullOrWhiteSpace($LogPath)) {
         Write-Output $json
@@ -193,4 +211,4 @@ function Invoke-FarSightWithTimeout {
     return [pscustomobject]@{ Result = $result; DurationMs = $stopwatch.ElapsedMilliseconds }
 }
 
-Export-ModuleMember -Function Get-FarSightUtcNow, Write-FarSightLog, Protect-FarSightText, Protect-FarSightObject, Read-FarSightJsonFile, Test-FarSightManifest, Test-FarSightModuleParameters, Invoke-FarSightApi, New-FarSightArtifactPackage, Invoke-FarSightWithTimeout
+Export-ModuleMember -Function Get-FarSightUtcNow, Write-FarSightLog, Resolve-FarSightLogPath, Protect-FarSightText, Protect-FarSightObject, Read-FarSightJsonFile, Test-FarSightManifest, Test-FarSightModuleParameters, Invoke-FarSightApi, New-FarSightArtifactPackage, Invoke-FarSightWithTimeout

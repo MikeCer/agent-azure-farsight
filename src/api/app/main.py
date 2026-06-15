@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 
-from .auth import AdminActor, WorkloadCaller, require_admin_actor, require_workload_caller
+from .auth import AdminActor, DeviceCaller, WorkloadCaller, require_admin_actor, require_device_cert, require_workload_caller
 from .dependencies import AzureClients, get_azure_clients
 from .models import (
     AuditEvent,
@@ -67,8 +67,14 @@ def health() -> dict[str, str]:
 
 
 @app.post("/api/v1/devices/checkin", response_model=CheckInResponse)
-def check_in(request: CheckInRequest, _: AzureClients = Depends(get_azure_clients)) -> CheckInResponse:
-    # TODO: Validate device mTLS certificate binding and update Cosmos devices heartbeat.
+def check_in(
+    request: CheckInRequest,
+    device: DeviceCaller = Depends(require_device_cert),
+    _: AzureClients = Depends(get_azure_clients),
+) -> CheckInResponse:
+    # Bind the device certificate CN to the claimed device_id when cert auth is enforced.
+    if device.thumbprint != "device-cert-auth-disabled" and device.subject_cn and device.subject_cn != request.device_id:
+        raise HTTPException(status_code=403, detail="Device certificate subject does not match the claimed device_id.")
     available = next((job for job in jobs.values() if job.device_id == request.device_id and job.status == JobStatus.queued), None)
     lease = None
     if available:
@@ -161,11 +167,21 @@ def get_job_results(jobId: str) -> ResultEnvelope:
 
 
 @app.post("/api/v1/jobs/{jobId}/results", status_code=status.HTTP_202_ACCEPTED)
-def submit_job_result(jobId: str, result: ResultEnvelope, _: AzureClients = Depends(get_azure_clients)) -> dict[str, str]:
+def submit_job_result(
+    jobId: str,
+    result: ResultEnvelope,
+    device: DeviceCaller = Depends(require_device_cert),
+    _: AzureClients = Depends(get_azure_clients),
+) -> dict[str, str]:
     if jobId != result.job_id:
         raise HTTPException(status_code=400, detail="Path jobId must match result jobId")
     if jobId not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
+    # Bind the submitting device to the job owner when cert auth is enforced.
+    if device.thumbprint != "device-cert-auth-disabled" and device.subject_cn:
+        job = jobs[jobId]
+        if job.device_id != device.subject_cn:
+            raise HTTPException(status_code=403, detail="Device certificate subject does not match the job owner device_id.")
     # TODO: Validate lease token, persist result to Cosmos, and ingest normalized summaries into Log Analytics.
     results[jobId] = result
     jobs[jobId].status = result.status

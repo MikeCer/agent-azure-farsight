@@ -1,32 +1,15 @@
 # Intune
 
-Intune is the deployment and compliance channel for the FarSight endpoint collector. The current repository provides collector scripts and sample configuration; exact enterprise package names, assignment group IDs, and certificate profiles are environment-specific.
+Intune is the deployment and compliance plane for the FarSight collector.
 
-## Deployment scripts
+To avoid split guidance, all operational procedures are centralized in [Collector README](../collector/README.md).
 
-Use Intune to deploy the collector, configuration, certificate material, module manifest, and scheduled task. Scripts must be idempotent and avoid embedding secrets.
+## Where to go
 
-Start with [Collector distribution](collector-distribution.md) for the packaging and rollout sequence.
+1. Packaging + Win32 app: [Collector section 3](../collector/README.md#3-packaging-collector-for-intune-win32-app)
+2. Assignment rings + rollout: [Collector section 4](../collector/README.md#4-intune-distribution-workflow-ring-based)
+3. Cloud PKI / PKCS certificate setup: [Collector section 5](../collector/README.md#5-certificate-authentication-configuration)
+4. Remediation design: [Collector section 6](../collector/README.md#6-remediation-strategy-required)
+5. Production checks: [Collector section 7](../collector/README.md#7-operational-checks-after-deployment)
 
-## Assignment rings
-
-1. Lab devices.
-2. IT pilot.
-3. Limited production ring.
-4. Broad production rollout.
-
-## Remediations
-
-Intune Remediations can verify collector installation, scheduled task health, certificate presence, and manifest freshness.
-
-## Certificate deployment
-
-Certificates should be delivered using approved enterprise certificate deployment workflows and rotated before expiry.
-
-## Pilot rollout
-
-Track success rate, job latency, API errors, collector errors, and false-positive redaction findings before expanding rings.
-
-## Known gaps
-
-- Add exact Intune package names, assignment group IDs, certificate profile names, and remediation script IDs when the target tenant rollout is defined.
+Use [collector-distribution.md](collector-distribution.md) only as a compatibility redirect page for existing links.

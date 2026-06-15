@@ -14,7 +14,7 @@
   "runtime": {
     "maxSingleRunSeconds": 300,
     "artifactRoot": "C:\\ProgramData\\Company\\SreCollector\\artifacts",
-    "logPath": "C:\\ProgramData\\Company\\SreCollector\\logs\\collector.ndjson"
+    "logPath": "C:\\ProgramData\\Company\\SreCollector\\logs"
   },
   "redaction": {
     "enabled": true,

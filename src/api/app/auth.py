@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import hmac
 import os
+from datetime import datetime, timezone
 from functools import lru_cache
 from dataclasses import dataclass
 from hashlib import sha256
 from time import time
+from urllib.parse import unquote
 
+import base64
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec, padding as asym_padding
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
+from cryptography.x509.oid import ExtendedKeyUsageOID
 from fastapi import Header, HTTPException
 import jwt
 from jwt import PyJWKClient
@@ -25,6 +35,13 @@ class WorkloadCaller:
     app_id: str | None
     tenant_id: str | None
     roles: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DeviceCaller:
+    thumbprint: str        # SHA-256 hex, uppercase, no spaces
+    subject_cn: str | None
+    not_valid_after: datetime
 
 
 @dataclass(frozen=True)
@@ -146,6 +163,122 @@ def require_workload_caller(authorization: str | None = Header(default=None, ali
         app_id=(claims.get("appid") or claims.get("azp")),
         tenant_id=claims.get("tid"),
         roles=roles,
+    )
+
+
+def _parse_forwarded_client_cert(header_value: str) -> x509.Certificate:
+    """Parse the X-Forwarded-Client-Cert header sent by Azure Container Apps.
+
+    ACA URL-encodes the PEM certificate before placing it in the header.
+    """
+    pem = unquote(header_value).strip()
+    if not pem.startswith("-----BEGIN CERTIFICATE-----"):
+        # Some ACA revisions send the raw base64 DER blob without PEM armour.
+        try:
+            der = __import__("base64").b64decode(pem)
+            return x509.load_der_x509_certificate(der)
+        except Exception as exc:
+            raise HTTPException(status_code=401, detail="Device certificate in X-Forwarded-Client-Cert is not parseable.") from exc
+    try:
+        return x509.load_pem_x509_certificate(pem.encode())
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Device certificate in X-Forwarded-Client-Cert is not parseable.") from exc
+
+
+def _cert_thumbprint(cert: x509.Certificate) -> str:
+    return cert.fingerprint(hashes.SHA256()).hex().upper()
+
+
+def _cert_subject_cn(cert: x509.Certificate) -> str | None:
+    attrs = cert.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)
+    return attrs[0].value if attrs else None
+
+
+def _cert_has_client_auth_eku(cert: x509.Certificate) -> bool:
+    try:
+        eku = cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage)
+        return ExtendedKeyUsageOID.CLIENT_AUTH in eku.value
+    except x509.ExtensionNotFound:
+        return False
+
+
+@lru_cache(maxsize=1)
+def _trusted_device_ca() -> x509.Certificate | None:
+    """Load the trusted root/issuing CA certificate from FARSIGHT_API_DEVICE_CERT_TRUSTED_CA_PEM.
+
+    The env var must contain the base64-encoded PEM certificate (i.e. the PEM file
+    with header/footer, then base64-encoded again so it is safe as a single-line env var).
+    When unset, chain validation is skipped (basic validity + EKU checks still apply).
+    """
+    raw = os.getenv("FARSIGHT_API_DEVICE_CERT_TRUSTED_CA_PEM", "").strip()
+    if not raw:
+        return None
+    try:
+        pem = base64.b64decode(raw)
+        return x509.load_pem_x509_certificate(pem)
+    except Exception:
+        return None
+
+
+def _verify_cert_issued_by(cert: x509.Certificate, ca: x509.Certificate) -> bool:
+    """Check that cert was signed by ca using the CA public key."""
+    if cert.issuer != ca.subject:
+        return False
+    pub = ca.public_key()
+    try:
+        if isinstance(pub, RSAPublicKey):
+            pub.verify(cert.signature, cert.tbs_certificate_bytes, asym_padding.PKCS1v15(), cert.signature_hash_algorithm)  # type: ignore[arg-type]
+        elif isinstance(pub, EllipticCurvePublicKey):
+            pub.verify(cert.signature, cert.tbs_certificate_bytes, ec.ECDSA(cert.signature_hash_algorithm))  # type: ignore[arg-type]
+        else:
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def require_device_cert(
+    x_forwarded_client_cert: str | None = Header(default=None, alias="X-Forwarded-Client-Cert"),
+) -> DeviceCaller:
+    """Validate the device client certificate forwarded by the Container Apps ingress.
+
+    Requires FARSIGHT_API_ENFORCE_DEVICE_CERT_AUTH=true to enforce; passthrough when disabled
+    (allows local dev without a certificate).
+    """
+    enforce = _env_bool("FARSIGHT_API_ENFORCE_DEVICE_CERT_AUTH", False)
+
+    if not enforce:
+        return DeviceCaller(
+            thumbprint="device-cert-auth-disabled",
+            subject_cn=None,
+            not_valid_after=datetime.max.replace(tzinfo=timezone.utc),
+        )
+
+    if not x_forwarded_client_cert:
+        raise HTTPException(status_code=401, detail="Device client certificate is required (X-Forwarded-Client-Cert missing).")
+
+    cert = _parse_forwarded_client_cert(x_forwarded_client_cert)
+
+    now = datetime.now(timezone.utc)
+    not_after = cert.not_valid_after_utc if hasattr(cert, "not_valid_after_utc") else cert.not_valid_after.replace(tzinfo=timezone.utc)
+    if now > not_after:
+        raise HTTPException(status_code=401, detail="Device client certificate has expired.")
+
+    not_before = cert.not_valid_before_utc if hasattr(cert, "not_valid_before_utc") else cert.not_valid_before.replace(tzinfo=timezone.utc)
+    if now < not_before:
+        raise HTTPException(status_code=401, detail="Device client certificate is not yet valid.")
+
+    if not _cert_has_client_auth_eku(cert):
+        raise HTTPException(status_code=401, detail="Device client certificate does not carry the Client Authentication EKU.")
+
+    ca = _trusted_device_ca()
+    if ca is not None and not _verify_cert_issued_by(cert, ca):
+        raise HTTPException(status_code=401, detail="Device client certificate was not issued by the configured trusted CA.")
+
+    return DeviceCaller(
+        thumbprint=_cert_thumbprint(cert),
+        subject_cn=_cert_subject_cn(cert),
+        not_valid_after=not_after,
     )
 
 

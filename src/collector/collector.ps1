@@ -9,14 +9,14 @@ Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Import-Module (Join-Path $scriptRoot 'common.psm1') -Force
-$logPath = Join-Path $InstallRoot 'logs\collector.ndjson'
 $lockPath = Join-Path $InstallRoot 'state\collector.lock'
 $lockStream = $null
 
 try {
+    $config = Read-FarSightJsonFile -Path $ConfigPath
+    $logPath = Resolve-FarSightLogPath -LogRoot $config.runtime.logPath
     $lockStream = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
     Write-FarSightLog -Level Information -Message 'Collector run started' -LogPath $logPath
-    $config = Read-FarSightJsonFile -Path $ConfigPath
     $manifest = Read-FarSightJsonFile -Path $ManifestPath
     $manifestResult = Test-FarSightManifest -Manifest $manifest
     if (-not $manifestResult.IsValid) { throw ('Invalid module manifest: ' + ($manifestResult.Errors -join '; ')) }
