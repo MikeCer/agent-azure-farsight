@@ -16,6 +16,12 @@ param enableApiWorkloadAuth bool = false
 param apiAllowedAudiences string = ''
 param apiAllowedServicePrincipalObjectIds string = ''
 param apiRequiredAppRole string = ''
+param enableAgentToolsWorkloadAuth bool = false
+param agentToolsAllowedAudiences string = ''
+param agentToolsAllowedServicePrincipalObjectIds string = ''
+param agentToolsRequiredAppRole string = ''
+param agentToolsAllowedIssuers string = ''
+param apiAllowedIssuers string = ''
 
 @secure()
 @description('Shared secret used by the admin BFF to sign privileged API calls during the current authorization phase.')
@@ -115,6 +121,8 @@ var cosmosBuiltInDataContributorRoleDefinitionId = resourceId('Microsoft.Documen
 var acrPullRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
 var adminEasyAuthConfigured = enableAdminEasyAuth && !empty(adminAuthClientId) && !empty(adminAuthClientSecret) && !empty(adminAuthEncryptionSecret) && !empty(adminAuthIssuer)
 var apiInternalAuthConfigured = !empty(apiInternalAuthSecret)
+var gatewayApiAudience = empty(apiAllowedAudiences) ? '' : replace(split(apiAllowedAudiences, ',')[0], ' ', '')
+var gatewayApiScope = empty(gatewayApiAudience) ? '' : (endsWith(gatewayApiAudience, '/.default') ? gatewayApiAudience : '${gatewayApiAudience}/.default')
 
 module networking 'networking.bicep' = if (enablePrivateEndpoints) {
   name: 'networking-${namePrefix}-${location}'
@@ -302,6 +310,10 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'FARSIGHT_API_REQUIRED_APP_ROLE'
               value: apiRequiredAppRole
+            }
+            {
+              name: 'FARSIGHT_ENTRA_ALLOWED_ISSUERS'
+              value: apiAllowedIssuers
             }
             {
               name: 'FARSIGHT_ADMIN_GROUP_OBJECT_IDS'
@@ -525,6 +537,42 @@ resource toolGatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'APPINSIGHTS_CONNECTION_STRING'
               value: appInsights.properties.ConnectionString
+            }
+            {
+              name: 'FARSIGHT_API_BASE_URL'
+              value: 'https://${apiApp.properties.configuration.ingress.fqdn}'
+            }
+            {
+              name: 'FARSIGHT_API_SCOPE'
+              value: gatewayApiScope
+            }
+            {
+              name: 'FARSIGHT_POLICY_SOURCE'
+              value: 'api'
+            }
+            {
+              name: 'FARSIGHT_AGENT_TOOLS_ENFORCE_WORKLOAD_AUTH'
+              value: string(enableAgentToolsWorkloadAuth)
+            }
+            {
+              name: 'FARSIGHT_AGENT_TOOLS_ALLOWED_AUDIENCES'
+              value: agentToolsAllowedAudiences
+            }
+            {
+              name: 'FARSIGHT_AGENT_TOOLS_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS'
+              value: agentToolsAllowedServicePrincipalObjectIds
+            }
+            {
+              name: 'FARSIGHT_AGENT_TOOLS_REQUIRED_APP_ROLE'
+              value: agentToolsRequiredAppRole
+            }
+            {
+              name: 'FARSIGHT_AGENT_TOOLS_ALLOWED_ISSUERS'
+              value: agentToolsAllowedIssuers
+            }
+            {
+              name: 'FARSIGHT_ENTRA_TENANT_ID'
+              value: apiTenantId
             }
           ]
           resources: {

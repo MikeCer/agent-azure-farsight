@@ -303,14 +303,29 @@ Azure Container Apps does not perform OS-level CA trust for inbound mTLS. Instea
    }
    ```
 
-4. **The API validates the forwarded certificate on collector-facing endpoints.**
-   Azure Container Apps forwards the client certificate via the `X-Forwarded-Client-Cert` header (URL-encoded PEM). The `require_device_cert` dependency in `src/api/app/auth.py` parses the certificate, checks validity period and Client Authentication EKU, and binds the certificate CN to the claimed `device_id` in the request body.
+4. **The API validates and authorizes the forwarded certificate on collector-facing endpoints.**
+   Azure Container Apps forwards the client certificate via the `X-Forwarded-Client-Cert` header (URL-encoded PEM). The `require_device_cert` dependency in `src/api/app/auth.py` now enforces:
+   - certificate validity period;
+   - Client Authentication EKU;
+   - non-CA certificate (leaf cert only);
+   - digital-signature key usage (if KeyUsage extension exists);
+   - trust-chain verification against `FARSIGHT_API_DEVICE_CERT_TRUSTED_CA_PEM` (PEM bundle);
+   - optional thumbprint and device-ID allow/deny lists.
+
+   The API then binds certificate CN to device scope:
+   - check-in `deviceId`,
+   - device-scoped endpoints (`/api/v1/devices/{deviceId}/...`),
+   - job owner `deviceId` on `/api/v1/jobs/{jobId}` and `/api/v1/jobs/{jobId}/results`.
 
    Enable enforcement by setting the env var:
    ```
    FARSIGHT_API_ENFORCE_DEVICE_CERT_AUTH=true
    ```
-   When unset or `false`, the dependency passes through (safe for local development without a certificate).
+   Keep trusted-CA enforcement fail-closed in production:
+   ```
+   FARSIGHT_API_REQUIRE_DEVICE_CERT_TRUSTED_CA=true
+   ```
+   When `FARSIGHT_API_ENFORCE_DEVICE_CERT_AUTH` is unset or `false`, certificate checks pass through (safe for local development without a certificate).
 
 #### Step 4 — Create a SCEP certificate profile
 

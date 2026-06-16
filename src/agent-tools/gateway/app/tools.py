@@ -1,5 +1,9 @@
 from typing import Any
 
+import httpx
+from fastapi import HTTPException
+
+from .clients import FarSightApiClient
 from .models import (
     ApprovalToolRequest,
     ArtifactMetadataRequest,
@@ -19,9 +23,30 @@ def _blocked(tool_name: str, policy: PolicyDecision) -> ToolResponse:
 
 
 async def _call_api(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    # TODO: Wire to FarSightApiClient once API auth/RBAC contract is provisioned.
-    # return await FarSightApiClient().request(method, path, json=payload)
-    return {"method": method, "path": path, "payload": payload, "status": "placeholder"}
+    try:
+        return await FarSightApiClient().request(method, path, json=payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail={"error": "configuration_error", "message": str(exc)}) from exc
+    except httpx.HTTPStatusError as exc:
+        upstream_detail: Any
+        try:
+            upstream_detail = exc.response.json()
+        except ValueError:
+            upstream_detail = {"text": exc.response.text}
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail={
+                "error": "upstream_api_error",
+                "message": f"FarSight API returned HTTP {exc.response.status_code}.",
+                "response": upstream_detail,
+                "path": path,
+            },
+        ) from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"error": "network_error", "message": "FarSight API request failed.", "path": path, "detail": str(exc)},
+        ) from exc
 
 
 async def create_diagnostic_job(request: DiagnosticJobRequest) -> ToolResponse:

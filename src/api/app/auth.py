@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import re
 from datetime import datetime, timezone
 from functools import lru_cache
 from dataclasses import dataclass
@@ -45,9 +46,20 @@ class DeviceCaller:
 
 
 @dataclass(frozen=True)
+class DeviceAuthConfig:
+    enforce: bool
+    require_trusted_ca: bool
+    allowed_thumbprints: tuple[str, ...]
+    denied_thumbprints: tuple[str, ...]
+    allowed_device_ids: tuple[str, ...]
+    denied_device_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class WorkloadAuthConfig:
     enabled: bool
-    issuer: str
+    tenant_id: str | None
+    allowed_issuers: tuple[str, ...]
     audiences: tuple[str, ...]
     allowed_object_ids: tuple[str, ...]
     required_role: str | None
@@ -72,16 +84,23 @@ def _csv_env(name: str) -> tuple[str, ...]:
 @lru_cache(maxsize=1)
 def _workload_auth_config() -> WorkloadAuthConfig:
     enabled = _env_bool("FARSIGHT_API_ENFORCE_WORKLOAD_AUTH", False)
-    tenant_id = os.getenv("FARSIGHT_ENTRA_TENANT_ID", "").strip()
+    tenant_id = os.getenv("FARSIGHT_ENTRA_TENANT_ID", "").strip() or None
+    configured_issuers = _csv_env("FARSIGHT_ENTRA_ALLOWED_ISSUERS")
     issuer = os.getenv("FARSIGHT_ENTRA_ISSUER", "").strip()
-    if not issuer and tenant_id:
-        issuer = f"https://login.microsoftonline.com/{tenant_id}/v2.0"
+    derived_issuers: list[str] = []
+    if tenant_id:
+        derived_issuers.append(f"https://login.microsoftonline.com/{tenant_id}/v2.0")
+        derived_issuers.append(f"https://sts.windows.net/{tenant_id}/")
+    if issuer:
+        derived_issuers.insert(0, issuer)
+    allowed_issuers = tuple(dict.fromkeys(configured_issuers or tuple(derived_issuers)))
     audiences = _csv_env("FARSIGHT_API_ALLOWED_AUDIENCES")
     allowed_object_ids = _csv_env("FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS")
     required_role = os.getenv("FARSIGHT_API_REQUIRED_APP_ROLE", "").strip() or None
     return WorkloadAuthConfig(
         enabled=enabled,
-        issuer=issuer,
+        tenant_id=tenant_id,
+        allowed_issuers=allowed_issuers,
         audiences=audiences,
         allowed_object_ids=allowed_object_ids,
         required_role=required_role,
@@ -89,16 +108,30 @@ def _workload_auth_config() -> WorkloadAuthConfig:
 
 
 @lru_cache(maxsize=1)
-def _jwk_client(issuer: str) -> PyJWKClient:
-    jwks_uri = os.getenv("FARSIGHT_ENTRA_JWKS_URI", "").strip() or f"{issuer.rstrip('/')}/discovery/v2.0/keys"
+def _jwk_client() -> PyJWKClient:
+    jwks_uri = os.getenv("FARSIGHT_ENTRA_JWKS_URI", "").strip()
+    if not jwks_uri:
+        tenant_id = os.getenv("FARSIGHT_ENTRA_TENANT_ID", "").strip()
+        if not tenant_id:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Workload auth is enabled but FARSIGHT_ENTRA_JWKS_URI is empty and "
+                    "FARSIGHT_ENTRA_TENANT_ID is not configured."
+                ),
+            )
+        jwks_uri = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
     return PyJWKClient(jwks_uri)
 
 
 def _decode_workload_token(token: str, config: WorkloadAuthConfig) -> dict:
-    if not config.issuer:
+    if not config.allowed_issuers:
         raise HTTPException(
             status_code=500,
-            detail="Workload auth is enabled but FARSIGHT_ENTRA_TENANT_ID or FARSIGHT_ENTRA_ISSUER is not configured.",
+            detail=(
+                "Workload auth is enabled but no allowed issuer is configured. Set FARSIGHT_ENTRA_TENANT_ID, "
+                "FARSIGHT_ENTRA_ISSUER, or FARSIGHT_ENTRA_ALLOWED_ISSUERS."
+            ),
         )
     if not config.audiences:
         raise HTTPException(
@@ -106,19 +139,52 @@ def _decode_workload_token(token: str, config: WorkloadAuthConfig) -> dict:
             detail="Workload auth is enabled but FARSIGHT_API_ALLOWED_AUDIENCES is empty.",
         )
     try:
-        signing_key = _jwk_client(config.issuer).get_signing_key_from_jwt(token)
-        return jwt.decode(
+        signing_key = _jwk_client().get_signing_key_from_jwt(token)
+        claims = jwt.decode(
             token,
             signing_key.key,
             algorithms=["RS256"],
             audience=list(config.audiences),
-            issuer=config.issuer,
-            options={"require": ["iss", "aud", "exp"]},
+            options={"require": ["iss", "aud", "exp", "tid"]},
         )
+        issuer = str(claims.get("iss", "")).strip()
+        if issuer not in config.allowed_issuers:
+            raise HTTPException(status_code=401, detail="Workload token issuer is not allowed.")
+        return claims
     except HTTPException:
         raise
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail="Invalid or unverifiable workload token.") from exc
     except Exception as exc:
         raise HTTPException(status_code=401, detail="Invalid or unverifiable workload token.") from exc
+
+
+def _extract_token_roles(claims: dict) -> tuple[str, ...]:
+    raw_roles = claims.get("roles") or []
+    if isinstance(raw_roles, str):
+        return (raw_roles,)
+    if isinstance(raw_roles, list):
+        return tuple(str(item) for item in raw_roles if item)
+    return ()
+
+
+def _enforce_workload_token_claims(claims: dict, config: WorkloadAuthConfig) -> tuple[str, ...]:
+    if config.tenant_id and str(claims.get("tid", "")).strip() != config.tenant_id:
+        raise HTTPException(status_code=403, detail="Workload token tenant is not authorized.")
+
+    scopes = str(claims.get("scp", "")).strip()
+    if scopes:
+        raise HTTPException(status_code=403, detail="Delegated user tokens are not allowed for workload endpoints.")
+
+    token_type = str(claims.get("idtyp", "")).strip().lower()
+    if token_type and token_type != "app":
+        raise HTTPException(status_code=403, detail="Only application workload tokens are allowed.")
+
+    roles = _extract_token_roles(claims)
+    if config.required_role and config.required_role not in roles:
+        raise HTTPException(status_code=403, detail="Caller token is missing the required FarSight API app role.")
+
+    return roles
 
 
 def require_workload_caller(authorization: str | None = Header(default=None, alias="Authorization")) -> WorkloadCaller:
@@ -145,22 +211,18 @@ def require_workload_caller(authorization: str | None = Header(default=None, ali
     object_id = (claims.get("oid") or "").strip()
     if not object_id:
         raise HTTPException(status_code=401, detail="Workload token is missing service principal object id (oid).")
+    app_id = (claims.get("appid") or claims.get("azp") or "").strip()
+    if not app_id:
+        raise HTTPException(status_code=401, detail="Workload token is missing application id (appid/azp).")
+
+    roles = _enforce_workload_token_claims(claims, config)
+
     if config.allowed_object_ids and object_id not in config.allowed_object_ids:
         raise HTTPException(status_code=403, detail="Caller service principal is not authorized for FarSight API workload calls.")
 
-    raw_roles = claims.get("roles") or []
-    if isinstance(raw_roles, str):
-        roles = (raw_roles,)
-    elif isinstance(raw_roles, list):
-        roles = tuple(str(item) for item in raw_roles if item)
-    else:
-        roles = ()
-    if config.required_role and config.required_role not in roles:
-        raise HTTPException(status_code=403, detail="Caller token is missing the required FarSight API app role.")
-
     return WorkloadCaller(
         object_id=object_id,
-        app_id=(claims.get("appid") or claims.get("azp")),
+        app_id=app_id,
         tenant_id=claims.get("tid"),
         roles=roles,
     )
@@ -175,7 +237,7 @@ def _parse_forwarded_client_cert(header_value: str) -> x509.Certificate:
     if not pem.startswith("-----BEGIN CERTIFICATE-----"):
         # Some ACA revisions send the raw base64 DER blob without PEM armour.
         try:
-            der = __import__("base64").b64decode(pem)
+            der = base64.b64decode(pem)
             return x509.load_der_x509_certificate(der)
         except Exception as exc:
             raise HTTPException(status_code=401, detail="Device certificate in X-Forwarded-Client-Cert is not parseable.") from exc
@@ -202,22 +264,71 @@ def _cert_has_client_auth_eku(cert: x509.Certificate) -> bool:
         return False
 
 
-@lru_cache(maxsize=1)
-def _trusted_device_ca() -> x509.Certificate | None:
-    """Load the trusted root/issuing CA certificate from FARSIGHT_API_DEVICE_CERT_TRUSTED_CA_PEM.
+def _cert_is_ca(cert: x509.Certificate) -> bool:
+    try:
+        basic_constraints = cert.extensions.get_extension_for_class(x509.BasicConstraints)
+        return bool(basic_constraints.value.ca)
+    except x509.ExtensionNotFound:
+        return False
 
-    The env var must contain the base64-encoded PEM certificate (i.e. the PEM file
-    with header/footer, then base64-encoded again so it is safe as a single-line env var).
-    When unset, chain validation is skipped (basic validity + EKU checks still apply).
+
+def _cert_allows_digital_signature(cert: x509.Certificate) -> bool:
+    try:
+        key_usage = cert.extensions.get_extension_for_class(x509.KeyUsage)
+        return bool(key_usage.value.digital_signature)
+    except x509.ExtensionNotFound:
+        return True
+
+
+def _normalize_thumbprint(value: str) -> str:
+    return value.replace(" ", "").upper()
+
+
+def _load_pem_certificates(blob: bytes) -> tuple[x509.Certificate, ...]:
+    certs: list[x509.Certificate] = []
+    pattern = re.compile(b"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", re.DOTALL)
+    for match in pattern.findall(blob):
+        certs.append(x509.load_pem_x509_certificate(match))
+    return tuple(certs)
+
+
+@lru_cache(maxsize=1)
+def _device_auth_config() -> DeviceAuthConfig:
+    enforce = _env_bool("FARSIGHT_API_ENFORCE_DEVICE_CERT_AUTH", False)
+    require_trusted_ca = _env_bool("FARSIGHT_API_REQUIRE_DEVICE_CERT_TRUSTED_CA", True)
+    allowed_thumbprints = tuple(_normalize_thumbprint(item) for item in _csv_env("FARSIGHT_API_ALLOWED_DEVICE_CERT_THUMBPRINTS"))
+    denied_thumbprints = tuple(_normalize_thumbprint(item) for item in _csv_env("FARSIGHT_API_DENIED_DEVICE_CERT_THUMBPRINTS"))
+    allowed_device_ids = _csv_env("FARSIGHT_API_ALLOWED_DEVICE_IDS")
+    denied_device_ids = _csv_env("FARSIGHT_API_DENIED_DEVICE_IDS")
+    return DeviceAuthConfig(
+        enforce=enforce,
+        require_trusted_ca=require_trusted_ca,
+        allowed_thumbprints=allowed_thumbprints,
+        denied_thumbprints=denied_thumbprints,
+        allowed_device_ids=allowed_device_ids,
+        denied_device_ids=denied_device_ids,
+    )
+
+
+@lru_cache(maxsize=1)
+def _trusted_device_cas() -> tuple[x509.Certificate, ...]:
+    """Load trusted root/issuing CA certificates from FARSIGHT_API_DEVICE_CERT_TRUSTED_CA_PEM.
+
+    Supports either raw PEM bundle content or base64-encoded PEM bundle content.
     """
     raw = os.getenv("FARSIGHT_API_DEVICE_CERT_TRUSTED_CA_PEM", "").strip()
     if not raw:
-        return None
+        return ()
     try:
-        pem = base64.b64decode(raw)
-        return x509.load_pem_x509_certificate(pem)
+        if "-----BEGIN CERTIFICATE-----" in raw:
+            return _load_pem_certificates(raw.encode())
+        decoded = base64.b64decode(raw)
+        certs = _load_pem_certificates(decoded)
+        if certs:
+            return certs
+        return (x509.load_pem_x509_certificate(decoded),)
     except Exception:
-        return None
+        return ()
 
 
 def _verify_cert_issued_by(cert: x509.Certificate, ca: x509.Certificate) -> bool:
@@ -237,6 +348,46 @@ def _verify_cert_issued_by(cert: x509.Certificate, ca: x509.Certificate) -> bool
         return False
 
 
+def _verify_cert_chained_to_trusted_cas(cert: x509.Certificate, trusted_cas: tuple[x509.Certificate, ...]) -> bool:
+    if not trusted_cas:
+        return False
+    by_subject: dict[str, list[x509.Certificate]] = {}
+    for candidate in trusted_cas:
+        by_subject.setdefault(candidate.subject.rfc4514_string(), []).append(candidate)
+
+    visited: set[str] = set()
+
+    def _walk(current: x509.Certificate, depth: int = 0) -> bool:
+        if depth > 8:
+            return False
+        issuer_key = current.issuer.rfc4514_string()
+        for issuer in by_subject.get(issuer_key, []):
+            issuer_id = _cert_thumbprint(issuer)
+            edge = f"{_cert_thumbprint(current)}->{issuer_id}"
+            if edge in visited:
+                continue
+            visited.add(edge)
+            if not _verify_cert_issued_by(current, issuer):
+                continue
+            if issuer.issuer == issuer.subject and _verify_cert_issued_by(issuer, issuer):
+                return True
+            if _walk(issuer, depth + 1):
+                return True
+        return False
+
+    return _walk(cert)
+
+
+def require_bound_device_id(device: DeviceCaller, claimed_device_id: str) -> None:
+    if device.thumbprint == "device-cert-auth-disabled":
+        return
+    cert_device_id = (device.subject_cn or "").strip()
+    if not cert_device_id:
+        raise HTTPException(status_code=401, detail="Device client certificate must contain a subject CN for device identity binding.")
+    if cert_device_id != claimed_device_id:
+        raise HTTPException(status_code=403, detail="Device certificate subject does not match the claimed device_id.")
+
+
 def require_device_cert(
     x_forwarded_client_cert: str | None = Header(default=None, alias="X-Forwarded-Client-Cert"),
 ) -> DeviceCaller:
@@ -245,9 +396,8 @@ def require_device_cert(
     Requires FARSIGHT_API_ENFORCE_DEVICE_CERT_AUTH=true to enforce; passthrough when disabled
     (allows local dev without a certificate).
     """
-    enforce = _env_bool("FARSIGHT_API_ENFORCE_DEVICE_CERT_AUTH", False)
-
-    if not enforce:
+    config = _device_auth_config()
+    if not config.enforce:
         return DeviceCaller(
             thumbprint="device-cert-auth-disabled",
             subject_cn=None,
@@ -271,13 +421,37 @@ def require_device_cert(
     if not _cert_has_client_auth_eku(cert):
         raise HTTPException(status_code=401, detail="Device client certificate does not carry the Client Authentication EKU.")
 
-    ca = _trusted_device_ca()
-    if ca is not None and not _verify_cert_issued_by(cert, ca):
-        raise HTTPException(status_code=401, detail="Device client certificate was not issued by the configured trusted CA.")
+    if _cert_is_ca(cert):
+        raise HTTPException(status_code=401, detail="Device client certificate cannot be a CA certificate.")
+    if not _cert_allows_digital_signature(cert):
+        raise HTTPException(status_code=401, detail="Device client certificate key usage does not allow digital signature.")
+
+    thumbprint = _cert_thumbprint(cert)
+    if config.denied_thumbprints and thumbprint in config.denied_thumbprints:
+        raise HTTPException(status_code=403, detail="Device certificate thumbprint is denied.")
+    if config.allowed_thumbprints and thumbprint not in config.allowed_thumbprints:
+        raise HTTPException(status_code=403, detail="Device certificate thumbprint is not in the allowed list.")
+
+    subject_cn = (_cert_subject_cn(cert) or "").strip()
+    if not subject_cn:
+        raise HTTPException(status_code=401, detail="Device client certificate must contain a subject CN.")
+    if config.denied_device_ids and subject_cn in config.denied_device_ids:
+        raise HTTPException(status_code=403, detail="Device identity is denied.")
+    if config.allowed_device_ids and subject_cn not in config.allowed_device_ids:
+        raise HTTPException(status_code=403, detail="Device identity is not in the allowed list.")
+
+    trusted_cas = _trusted_device_cas()
+    if config.require_trusted_ca and not trusted_cas:
+        raise HTTPException(
+            status_code=500,
+            detail="Device certificate auth is enabled but trusted CA bundle is not configured in FARSIGHT_API_DEVICE_CERT_TRUSTED_CA_PEM.",
+        )
+    if trusted_cas and not _verify_cert_chained_to_trusted_cas(cert, trusted_cas):
+        raise HTTPException(status_code=401, detail="Device client certificate was not issued by the configured trusted CA chain.")
 
     return DeviceCaller(
-        thumbprint=_cert_thumbprint(cert),
-        subject_cn=_cert_subject_cn(cert),
+        thumbprint=thumbprint,
+        subject_cn=subject_cn,
         not_valid_after=not_after,
     )
 

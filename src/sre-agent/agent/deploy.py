@@ -65,9 +65,9 @@ KEY_VAULT_SECRETS_USER_ROLE = "Key Vault Secrets User"
 INTUNE_AUTH_MODE_ENV = "INTUNE_DIAGNOSTICS_AUTH_MODE"
 INTUNE_AUTH_MODE_KEY_VAULT = "key-vault"
 INTUNE_AUTH_MODE_MANAGED_IDENTITY = "managed-identity"
-FARSIGHT_API_BASE_URL_ENV = "FARSIGHT_API_BASE_URL"
-FARSIGHT_API_SCOPE_ENV = "FARSIGHT_API_SCOPE"
-FARSIGHT_AUTH_MODE_ENV = "FARSIGHT_AUTH_MODE"
+SRE_TOOL_ENDPOINT_URL_ENV = "SRE_AGENT_TOOL_ENDPOINT_URL"
+SRE_TOOL_ENDPOINT_SCOPE_ENV = "SRE_AGENT_TOOL_ENDPOINT_SCOPE"
+SRE_TOOL_AUTH_MODE_ENV = "SRE_AGENT_TOOL_AUTH_MODE"
 DEPLOY_LOG_DIR = SCRIPT_DIR / ".logs"
 _ACTIVE_LOG_HANDLE: Any = None
 
@@ -164,10 +164,10 @@ def load_azd_env_values() -> list[str]:
     return loaded
 
 
-def normalize_farsight_api_scope() -> None:
-    value = os.environ.get(FARSIGHT_API_SCOPE_ENV, "").strip()
+def normalize_tool_endpoint_scope() -> None:
+    value = os.environ.get(SRE_TOOL_ENDPOINT_SCOPE_ENV, "").strip()
     if value.startswith("api://") and not value.endswith("/.default"):
-        os.environ[FARSIGHT_API_SCOPE_ENV] = f"{value.rstrip('/')}/.default"
+        os.environ[SRE_TOOL_ENDPOINT_SCOPE_ENV] = f"{value.rstrip('/')}/.default"
 
 
 def ensure_subscription_access(subscription: str | None) -> None:
@@ -480,12 +480,12 @@ def skill_yaml_to_api_body(skill_yaml_path: Path) -> dict[str, Any]:
 
 
 def inject_runtime_defaults(content: str) -> str:
-    # --- FarSight API base URL ---
-    farsight_api_base_url = os.environ.get(FARSIGHT_API_BASE_URL_ENV, "").strip().rstrip("/")
+    # --- SRE tool endpoint URL ---
+    farsight_api_base_url = os.environ.get(SRE_TOOL_ENDPOINT_URL_ENV, "").strip().rstrip("/")
     content = content.replace("{{FARSIGHT_API_BASE_URL}}", farsight_api_base_url)
 
-    # --- FarSight API scope ---
-    farsight_api_scope = os.environ.get(FARSIGHT_API_SCOPE_ENV, "").strip()
+    # --- SRE tool endpoint scope ---
+    farsight_api_scope = os.environ.get(SRE_TOOL_ENDPOINT_SCOPE_ENV, "").strip()
     content = content.replace("{{FARSIGHT_API_SCOPE}}", farsight_api_scope)
 
     # --- Intune auth mode ---
@@ -563,15 +563,15 @@ def intune_tool_parameter_defaults() -> dict[str, Any]:
 
 
 def farsight_tool_defaults() -> dict[str, Any]:
-    """Returns deployment-time defaults for FarSight API tools."""
+    """Returns deployment-time defaults for SRE gateway tools."""
     defaults: dict[str, Any] = {}
-    api_base_url = os.environ.get(FARSIGHT_API_BASE_URL_ENV, "").strip().rstrip("/")
+    api_base_url = os.environ.get(SRE_TOOL_ENDPOINT_URL_ENV, "").strip().rstrip("/")
     if api_base_url:
         defaults["api_base_url"] = api_base_url
-    api_scope = os.environ.get(FARSIGHT_API_SCOPE_ENV, "").strip()
+    api_scope = os.environ.get(SRE_TOOL_ENDPOINT_SCOPE_ENV, "").strip()
     if api_scope:
         defaults["api_scope"] = api_scope
-    auth_mode = os.environ.get(FARSIGHT_AUTH_MODE_ENV, "").strip().lower().replace("_", "-")
+    auth_mode = os.environ.get(SRE_TOOL_AUTH_MODE_ENV, "").strip().lower().replace("_", "-")
     defaults["farsight_auth_mode"] = auth_mode or "default"
     return defaults
 
@@ -595,9 +595,9 @@ def inject_tool_code_defaults(function_code: str, defaults: dict[str, Any]) -> s
         "__INTUNE_DEFAULT_TENANT_ID_SECRET_NAME__": str(defaults.get("tenant_id_secret_name") or ""),
         "__INTUNE_DEFAULT_CLIENT_ID_SECRET_NAME__": str(defaults.get("client_id_secret_name") or ""),
         "__INTUNE_DEFAULT_CLIENT_SECRET_SECRET_NAME__": str(defaults.get("client_secret_secret_name") or ""),
-        "__FARSIGHT_API_BASE_URL__": str(defaults.get("api_base_url") or ""),
-        "__FARSIGHT_AUTH_MODE__": str(defaults.get("farsight_auth_mode") or ""),
-        "__FARSIGHT_API_SCOPE__": str(defaults.get("api_scope") or ""),
+        "__SRE_AGENT_TOOL_ENDPOINT_URL__": str(defaults.get("api_base_url") or ""),
+        "__SRE_AGENT_TOOL_AUTH_MODE__": str(defaults.get("farsight_auth_mode") or ""),
+        "__SRE_AGENT_TOOL_ENDPOINT_SCOPE__": str(defaults.get("api_scope") or ""),
     }
     for placeholder, value in replacements.items():
         function_code = function_code.replace(placeholder, value)
@@ -843,7 +843,7 @@ def main() -> None:
     log_path = enable_persistent_console_log()
     args = parse_args()
     loaded_azd_env_keys = load_azd_env_values()
-    normalize_farsight_api_scope()
+    normalize_tool_endpoint_scope()
     agent_name = args.agent_name or os.environ.get("SRE_AGENT_NAME")
     resource_group = args.resource_group or default_resource_group()
     subscription = args.subscription or os.environ.get("AZURE_SUBSCRIPTION_ID")
@@ -867,16 +867,16 @@ def main() -> None:
     print(f"  Log file       : {log_path}")
     if loaded_azd_env_keys:
         print(f"  AZD env loaded : {len(loaded_azd_env_keys)} value(s)")
-    farsight_api_base_url = os.environ.get(FARSIGHT_API_BASE_URL_ENV, "").strip()
+    farsight_api_base_url = os.environ.get(SRE_TOOL_ENDPOINT_URL_ENV, "").strip()
     if farsight_api_base_url:
-        print(f"  FarSight API   : {farsight_api_base_url}")
+        print(f"  Tool Endpoint  : {farsight_api_base_url}")
     else:
-        print(f"  FarSight API   : (not set — tools will require api_base_url per call)")
-    farsight_api_scope = os.environ.get(FARSIGHT_API_SCOPE_ENV, "").strip()
+        print(f"  Tool Endpoint  : (not set — tools will require api_base_url per call)")
+    farsight_api_scope = os.environ.get(SRE_TOOL_ENDPOINT_SCOPE_ENV, "").strip()
     if farsight_api_scope:
-        print(f"  FarSight Scope : {farsight_api_scope}")
+        print(f"  Tool Scope     : {farsight_api_scope}")
     else:
-        print(f"  FarSight Scope : (not set — tools will fall back to {{api_base_url}}/.default)")
+        print(f"  Tool Scope     : (not set — tools will fall back to {{api_base_url}}/.default)")
 
     if args.dry_run:
         endpoint = "https://DRY-RUN-ENDPOINT"

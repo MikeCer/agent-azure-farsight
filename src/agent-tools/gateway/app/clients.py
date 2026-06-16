@@ -5,9 +5,18 @@ import httpx
 from azure.identity import DefaultAzureCredential
 
 
+def normalize_api_scope(scope: str, fallback_base_url: str) -> str:
+    value = scope.strip()
+    if value.startswith("api://") and not value.endswith("/.default"):
+        return f"{value.rstrip('/')}/.default"
+    if value:
+        return value
+    return f"{fallback_base_url}/.default"
+
+
 @dataclass(frozen=True)
 class ManagedIdentityAuth:
-    """Placeholder for Azure SRE Agent managed identity authentication."""
+    """Managed identity authentication for FarSight API calls."""
 
     credential: DefaultAzureCredential
     scope: str
@@ -20,16 +29,20 @@ class ManagedIdentityAuth:
 
 class FarSightApiClient:
     def __init__(self) -> None:
-        self.base_url = os.environ.get("FARSIGHT_API_BASE_URL", "https://farsight-api.example.invalid")
+        self.base_url = os.environ.get("FARSIGHT_API_BASE_URL", "").strip().rstrip("/")
+        if not self.base_url:
+            raise ValueError("FARSIGHT_API_BASE_URL is required for gateway API forwarding.")
+        scope = normalize_api_scope(os.environ.get("FARSIGHT_API_SCOPE", ""), self.base_url)
         self.auth = ManagedIdentityAuth(
             credential=DefaultAzureCredential(),
-            scope=os.environ.get("FARSIGHT_API_SCOPE", "api://farsight/.default"),
+            scope=scope,
         )
 
     async def request(self, method: str, path: str, json: dict | None = None) -> dict:
-        # TODO: Enable retries, timeouts, correlation headers, and AGT audit propagation.
         headers = {"Authorization": f"Bearer {self.auth.bearer_token()}"}
         async with httpx.AsyncClient(base_url=self.base_url, timeout=10.0) as client:
             response = await client.request(method, path, json=json, headers=headers)
             response.raise_for_status()
+            if not response.content:
+                return {}
             return response.json()

@@ -2,7 +2,7 @@ name: create_diagnostic_job
 type: PythonFunctionTool
 description: Create a typed, allowlisted FarSight diagnostic job through the control-plane
   API. The wrapper validates approved module names and explicit module parameters
-  before calling POST /api/v1/jobs.
+  before calling POST /tools/create_diagnostic_job on the AGT gateway.
 code_file: create_diagnostic_job.py
 parameters:
 - name: device_id
@@ -184,16 +184,16 @@ parameters:
 - name: api_base_url
   type: string
   required: false
-  description: Optional FarSight API base URL. Defaults to FARSIGHT_API_BASE_URL.
+  description: Optional AGT gateway base URL. Defaults to SRE_AGENT_TOOL_ENDPOINT_URL.
 - name: auth_mode
   type: string
   required: false
-  description: 'Authentication mode for FarSight API: default, managed-identity, access-token,
-    or auto. Defaults to FARSIGHT_AUTH_MODE or default.'
+  description: 'Authentication mode for the AGT gateway: default, managed-identity, access-token,
+    or auto. Defaults to SRE_AGENT_TOOL_AUTH_MODE or default.'
 - name: api_scope
   type: string
   required: false
-  description: Optional token scope for FarSight API. Defaults to FARSIGHT_API_SCOPE
+  description: Optional token scope for the AGT gateway. Defaults to SRE_AGENT_TOOL_ENDPOINT_SCOPE
     or <api_base_url>/.default.
 - name: timeout_seconds
   type: int

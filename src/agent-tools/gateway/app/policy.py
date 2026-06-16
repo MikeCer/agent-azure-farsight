@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from azure.identity import DefaultAzureCredential
+
+from .clients import normalize_api_scope
 import yaml
 
 from .models import PolicyDecision, PolicyOutcome, ToolRisk
@@ -200,7 +202,8 @@ def _agt_probe_tool(**kwargs: Any) -> dict[str, Any]:
 
 
 def _api_bearer_token() -> str:
-    scope = os.getenv("FARSIGHT_API_SCOPE", "api://farsight/.default")
+    base_url = os.getenv("FARSIGHT_API_BASE_URL", "").rstrip("/")
+    scope = normalize_api_scope(os.getenv("FARSIGHT_API_SCOPE", ""), base_url or "api://farsight")
     return DefaultAzureCredential().get_token(scope).token
 
 

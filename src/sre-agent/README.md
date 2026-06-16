@@ -195,10 +195,10 @@ The SRE Agent system-assigned identity needs `Key Vault Secrets User` on this Ke
 In this mode the Python tool uses `DefaultAzureCredential`, so the SRE Agent assigned identity must have the required Microsoft Graph application permissions for Intune. Grant and admin-consent the required Graph permissions to the managed identity/service principal before testing this mode.
 At the end of `deploy.py`, a managed-identity-specific reminder is printed to call out this Graph permission prerequisite for the runtime identity (system-assigned or user-assigned).
 
-For FarSight API machine-to-machine authorization, assign the FarSight API app role to the same managed identity service principal when API workload auth is enabled. Use:
+For FarSight API machine-to-machine authorization, assign the FarSight API app role to SRE and AGT managed identity service principals when API workload auth is enabled. Use:
 
 ```bash
-MI_CLIENT_ID="<sre-mi-client-id>" \
+MI_CLIENT_IDS="<sre-mi-client-id>,<agt-gateway-mi-client-id>" \
 FARSIGHT_API_APP_ID="<farsight-api-app-client-id>" \
 FARSIGHT_API_ROLE_VALUE="Farsight.Api.Access" \
 ./scripts/grant-farsight-api-access.sh
@@ -210,6 +210,7 @@ and configure the control-plane deployment with:
 - `FARSIGHT_API_ALLOWED_AUDIENCES=<csv api app audiences>`
 - `FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS=<csv allowed caller SP object IDs>`
 - optional `FARSIGHT_API_REQUIRED_APP_ROLE=Farsight.Api.Access`
+- optional `FARSIGHT_ENTRA_ALLOWED_ISSUERS=<csv allowed issuers>`
 
 The SRE Agent collector also supports service-principal authentication through environment variables:
 

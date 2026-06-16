@@ -76,6 +76,24 @@ param apiAllowedServicePrincipalObjectIds string = ''
 @description('Required FarSight API app role value in caller token when workload auth is enabled. Leave empty to skip role enforcement.')
 param apiRequiredAppRole string = ''
 
+@description('Allowed Entra token issuers for FarSight API workload auth as CSV. Leave empty to use tenant-derived defaults.')
+param apiAllowedIssuers string = ''
+
+@description('Enable Entra workload-token enforcement for Agent Tools gateway inbound endpoints.')
+param enableAgentToolsWorkloadAuth bool = false
+
+@description('Allowed token audiences for Agent Tools gateway inbound workload auth as CSV.')
+param agentToolsAllowedAudiences string = ''
+
+@description('Allowed caller service principal object IDs for Agent Tools gateway inbound workload auth as CSV.')
+param agentToolsAllowedServicePrincipalObjectIds string = ''
+
+@description('Required Agent Tools app role value in caller token when gateway workload auth is enabled. Leave empty to skip role enforcement.')
+param agentToolsRequiredAppRole string = ''
+
+@description('Allowed Entra token issuers for Agent Tools gateway workload auth as CSV. Leave empty to use tenant-derived defaults.')
+param agentToolsAllowedIssuers string = ''
+
 @description('Cosmos DB job retention in days.')
 param cosmosJobRetentionDays int = 30
 
@@ -161,6 +179,12 @@ module core 'modules/core.bicep' = {
     apiAllowedAudiences: apiAllowedAudiences
     apiAllowedServicePrincipalObjectIds: apiAllowedServicePrincipalObjectIds
     apiRequiredAppRole: apiRequiredAppRole
+    apiAllowedIssuers: apiAllowedIssuers
+    enableAgentToolsWorkloadAuth: enableAgentToolsWorkloadAuth
+    agentToolsAllowedAudiences: agentToolsAllowedAudiences
+    agentToolsAllowedServicePrincipalObjectIds: agentToolsAllowedServicePrincipalObjectIds
+    agentToolsRequiredAppRole: agentToolsRequiredAppRole
+    agentToolsAllowedIssuers: agentToolsAllowedIssuers
     adminGroupObjectIds: adminGroupObjectIds
     apiInternalAuthSecret: apiInternalAuthSecret
     enableApiDeviceCertAuth: enableApiDeviceCertAuth

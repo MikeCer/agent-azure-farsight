@@ -33,13 +33,13 @@ ALLOWED_APPROVAL_ACTIONS = ALLOWED_TASK_TYPES | {
 _COMMAND_TOKENS = (";", "|", "`", "$(", "\n", "\r", "&&", "||")
 _MAX_TIMEOUT_SECONDS = 120
 _DEFAULT_TIMEOUT_SECONDS = 30
-_DEPLOYED_FARSIGHT_API_BASE_URL = "__FARSIGHT_API_BASE_URL__"
-_DEPLOYED_FARSIGHT_AUTH_MODE = "__FARSIGHT_AUTH_MODE__"
-_DEPLOYED_FARSIGHT_API_SCOPE = "__FARSIGHT_API_SCOPE__"
+_DEPLOYED_SRE_TOOL_ENDPOINT_URL = "__SRE_AGENT_TOOL_ENDPOINT_URL__"
+_DEPLOYED_SRE_TOOL_AUTH_MODE = "__SRE_AGENT_TOOL_AUTH_MODE__"
+_DEPLOYED_SRE_TOOL_ENDPOINT_SCOPE = "__SRE_AGENT_TOOL_ENDPOINT_SCOPE__"
 
 
 def _deployment_default(value: str) -> str | None:
-    if not value or value.startswith("__FARSIGHT_"):
+    if not value or value.startswith("__SRE_AGENT_TOOL_"):
         return None
     return value
 
@@ -169,12 +169,12 @@ def _validate_url_list(action: str, field: str, value: str | None) -> list[str] 
 def _resolve_api_base_url(action: str, api_base_url: str | None) -> str | dict:
     base_url = (
         api_base_url
-        or _deployment_default(_DEPLOYED_FARSIGHT_API_BASE_URL)
-        or os.environ.get("FARSIGHT_API_BASE_URL")
+        or _deployment_default(_DEPLOYED_SRE_TOOL_ENDPOINT_URL)
+        or os.environ.get("SRE_AGENT_TOOL_ENDPOINT_URL")
         or ""
     ).strip().rstrip("/")
     if not base_url:
-        return _error(action, "configuration_error", "FarSight API base URL is required via api_base_url or FARSIGHT_API_BASE_URL.")
+        return _error(action, "configuration_error", "Tool endpoint URL is required via api_base_url or SRE_AGENT_TOOL_ENDPOINT_URL.")
     parsed = urllib.parse.urlparse(base_url)
     if parsed.scheme not in {"https", "http"} or not parsed.netloc:
         return _error(action, "configuration_error", "FarSight API base URL must be an absolute HTTP(S) URL.")
@@ -184,7 +184,7 @@ def _resolve_api_base_url(action: str, api_base_url: str | None) -> str | dict:
 
 
 def _credential_scope(api_base_url: str, api_scope: str | None) -> str:
-    configured = api_scope or _deployment_default(_DEPLOYED_FARSIGHT_API_SCOPE) or os.environ.get("FARSIGHT_API_SCOPE")
+    configured = api_scope or _deployment_default(_DEPLOYED_SRE_TOOL_ENDPOINT_SCOPE) or os.environ.get("SRE_AGENT_TOOL_ENDPOINT_SCOPE")
     if configured:
         return configured
     return f"{api_base_url}/.default"
@@ -193,8 +193,8 @@ def _credential_scope(api_base_url: str, api_scope: str | None) -> str:
 def _auth_headers(action: str, api_base_url: str, auth_mode: str | None, api_scope: str | None) -> dict[str, str] | dict:
     mode = (
         auth_mode
-        or _deployment_default(_DEPLOYED_FARSIGHT_AUTH_MODE)
-        or os.environ.get("FARSIGHT_AUTH_MODE")
+        or _deployment_default(_DEPLOYED_SRE_TOOL_AUTH_MODE)
+        or os.environ.get("SRE_AGENT_TOOL_AUTH_MODE")
         or "default"
     ).strip().lower().replace("_", "-")
     if mode == "auto":
@@ -276,6 +276,8 @@ def _http_call(
         return _error(action, "network_error", "FarSight API request failed or timed out.", {"path": path, "detail": str(exc)})
     except Exception as exc:
         return _error(action, "unexpected_error", "Unexpected error calling FarSight API.", str(exc))
+    if isinstance(response_body, dict) and isinstance(response_body.get("data"), dict) and response_body.get("toolName") == action:
+        response_body = response_body["data"]
     return _success(action, response_body, status_code, {"method": method, "path": path})
 
 
@@ -731,6 +733,5 @@ def main(
     api_url = _resolve_api_base_url(TOOL_ACTION, api_base_url)
     if isinstance(api_url, dict):
         return api_url
-    encoded_parent = urllib.parse.quote(parent_job_id, safe="")
     idem = idempotency_key or _default_idempotency_key(TOOL_ACTION, device_id, task_type, correlation_id)
-    return _http_call(TOOL_ACTION, "POST", api_url, f"/api/v1/jobs/{encoded_parent}/followups", payload, auth_mode, api_scope, timeout_seconds, idem)
+    return _http_call(TOOL_ACTION, "POST", api_url, "/tools/request_follow_up_module_execution", payload, auth_mode, api_scope, timeout_seconds, idem)

@@ -64,6 +64,7 @@ Deployment model:
 
 - The Entra app registration is created or updated manually with `scripts/provision-admin-app-registration.py` after the admin URL or custom domain is known.
 - FarSight API app registration and API app role for workload-token enforcement are created or updated manually with `scripts/provision-farsight-api-app-registration.py`.
+- Optional dedicated Agent Tools audience registration can be created/updated with `scripts/provision-farsight-agent-tools-app-registration.py` and used for `SRE_AGENT_TOOL_ENDPOINT_SCOPE`.
 - The resulting `FARSIGHT_ADMIN_AUTH_*` values are stored in the AZD environment.
 - Bicep enables Easy Auth only when the enable flag, client ID, client secret, auth encryption secret, and issuer are all populated.
 - The Easy Auth Entra client secret is stored on the admin web Container App as `microsoft-provider-authentication-secret`.
@@ -86,6 +87,7 @@ Azure SRE Agent integration must not bypass FarSight controls. The SRE Agent sho
 The tool gateway security model is:
 
 - Authenticate the SRE Agent or calling workload with managed identity / Entra workload identity.
+- FarSight API workload auth validates Entra signature/audience/issuer/tenant and rejects delegated user tokens (`scp`) for machine-only routes.
 - Convert each tool call into a structured action context.
 - Evaluate the action with Microsoft Agent Governance Toolkit before calling the control API.
 - Return `allow`, `deny`, or `require_approval` outcomes.
@@ -178,7 +180,7 @@ The admin console Tool-call monitoring view is an observability surface over the
 
 ## Known implementation gaps
 
-- Complete API-side mTLS enforcement and device certificate-to-device record binding.
+- Add certificate revocation-status validation (CRL/OCSP) and persistent device-record checks to complement current API-side mTLS identity binding.
 - Complete Entra/managed-identity authorization for API write paths.
 - Replace the current shared-secret BFF-to-API policy mutation signature with Entra service-token validation and FarSight Admin role checks.
 - Back tool-call monitoring with real AGT/tool gateway audit events.

@@ -24,6 +24,35 @@ The FarSight control API is an early FastAPI implementation. Contracts below des
 - Admin policy mutations require signed BFF-to-API admin context derived from Easy Auth. The shared signing secret is `FARSIGHT_API_INTERNAL_AUTH_SECRET` and is stored as a Container Apps secret.
 - Policy version metadata (`updatedBy`) stores the propagated admin display name when available (falling back to actor ID).
 
+### Collector mTLS enforcement and authorization
+
+Collector-facing endpoints now enforce certificate identity binding when `FARSIGHT_API_ENFORCE_DEVICE_CERT_AUTH=true`:
+
+- `POST /api/v1/devices/checkin`: certificate subject CN must match request `deviceId`.
+- `GET /api/v1/devices/{deviceId}/jobs`: certificate subject CN must match path `deviceId`.
+- `GET /api/v1/devices/{deviceId}/policy`: certificate subject CN must match path `deviceId`.
+- `GET /api/v1/jobs/{jobId}`: certificate subject CN must match the job owner `deviceId`.
+- `POST /api/v1/jobs/{jobId}/results`: certificate subject CN must match both the job owner `deviceId` and result body `deviceId`.
+
+Certificate validation on these paths includes:
+
+- validity period (`notBefore`/`notAfter`);
+- Client Authentication EKU;
+- certificate must not be a CA certificate;
+- key usage must allow digital signature (when key usage extension exists);
+- thumbprint allow/deny checks and device ID allow/deny checks;
+- trust-chain check against configured trusted CA bundle.
+
+Device mTLS settings:
+
+- `FARSIGHT_API_ENFORCE_DEVICE_CERT_AUTH` (`true`/`false`)
+- `FARSIGHT_API_DEVICE_CERT_TRUSTED_CA_PEM` (raw PEM bundle or base64-encoded PEM bundle)
+- `FARSIGHT_API_REQUIRE_DEVICE_CERT_TRUSTED_CA` (default `true`; fail-closed if trusted CA bundle is missing while mTLS is enforced)
+- `FARSIGHT_API_ALLOWED_DEVICE_CERT_THUMBPRINTS` (CSV allowlist; optional)
+- `FARSIGHT_API_DENIED_DEVICE_CERT_THUMBPRINTS` (CSV denylist; optional)
+- `FARSIGHT_API_ALLOWED_DEVICE_IDS` (CSV allowlist for certificate CN; optional)
+- `FARSIGHT_API_DENIED_DEVICE_IDS` (CSV denylist for certificate CN; optional)
+
 ### Workload token enforcement for SRE/gateway machine calls
 
 FarSight API machine-to-machine endpoints now support Entra workload-token validation when enabled.
@@ -31,14 +60,16 @@ FarSight API machine-to-machine endpoints now support Entra workload-token valid
 Environment settings:
 
 - `FARSIGHT_API_ENFORCE_WORKLOAD_AUTH=true`
-- `FARSIGHT_ENTRA_TENANT_ID=<tenant-guid>` (or explicit `FARSIGHT_ENTRA_ISSUER`)
+- `FARSIGHT_ENTRA_TENANT_ID=<tenant-guid>` (used for tenant and default issuer/JWKS validation)
+- optional `FARSIGHT_ENTRA_ISSUER=<single issuer override>`
+- optional `FARSIGHT_ENTRA_ALLOWED_ISSUERS=<csv issuer allowlist>` for explicit issuer control
 - `FARSIGHT_API_ALLOWED_AUDIENCES=<csv of accepted audiences>`
 - `FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS=<csv of allowed SP object IDs>` and/or
 - `FARSIGHT_API_REQUIRED_APP_ROLE=<app role value expected in token roles claim>`
 
-Use `scripts/provision-farsight-api-app-registration.py` to create/update the FarSight API app registration and application app role, then grant that role to the SRE managed identity with `src/sre-agent/scripts/grant-farsight-api-access.sh`.
+Use `scripts/provision-farsight-api-app-registration.py` to create/update the FarSight API app registration and application app role, then grant that role to SRE/AGT managed identities with `src/sre-agent/scripts/grant-farsight-api-access.sh`.
 
-When enforcement is enabled, the API validates JWT signature/issuer/audience using Entra JWKS and then enforces caller allowlist and/or required app role.
+When enforcement is enabled, the API validates JWT signature/audience/issuer/tenant using Entra JWKS, requires application workload token claims (`oid`, `appid`/`azp`), blocks delegated `scp` tokens, and then enforces caller allowlist and/or required app role.
 
 ## Idempotency
 

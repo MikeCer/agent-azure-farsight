@@ -180,7 +180,7 @@ Important details:
 - Python source must be sent as `functionCode`, not `code`.
 - The deployed Python source must expose a top-level typed `main(...) -> dict`.
 - The deployed Python source must not include a top-level CLI execution block, because Azure SRE Agent loads tools in an IPython kernel context.
-- The SRE Agent PythonFunctionTool runtime does not automatically inherit `azd env` or operator shell variables. `deploy.py` therefore embeds FarSight API defaults (`FARSIGHT_API_BASE_URL`, `FARSIGHT_AUTH_MODE`, and `FARSIGHT_API_SCOPE`) into the deployed FarSight tool source and also sets matching parameter defaults. Runtime `os.environ` lookup remains only as a fallback for custom execution environments.
+- The SRE Agent PythonFunctionTool runtime does not automatically inherit `azd env` or operator shell variables. `deploy.py` therefore embeds SRE gateway endpoint defaults (`SRE_AGENT_TOOL_ENDPOINT_URL`, `SRE_AGENT_TOOL_AUTH_MODE`, and `SRE_AGENT_TOOL_ENDPOINT_SCOPE`) into the deployed FarSight tool source and also sets matching parameter defaults. Runtime `os.environ` lookup remains only as a fallback for custom execution environments.
 
 ### 6. Deploy Skill Builder skills
 

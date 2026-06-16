@@ -78,6 +78,24 @@
     "apiRequiredAppRole": {
       "value": "${FARSIGHT_API_REQUIRED_APP_ROLE=}"
     },
+    "apiAllowedIssuers": {
+      "value": "${FARSIGHT_ENTRA_ALLOWED_ISSUERS=}"
+    },
+    "enableAgentToolsWorkloadAuth": {
+      "value": "${FARSIGHT_ENABLE_AGENT_TOOLS_WORKLOAD_AUTH=false}"
+    },
+    "agentToolsAllowedAudiences": {
+      "value": "${FARSIGHT_AGENT_TOOLS_ALLOWED_AUDIENCES=}"
+    },
+    "agentToolsAllowedServicePrincipalObjectIds": {
+      "value": "${FARSIGHT_AGENT_TOOLS_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS=}"
+    },
+    "agentToolsRequiredAppRole": {
+      "value": "${FARSIGHT_AGENT_TOOLS_REQUIRED_APP_ROLE=}"
+    },
+    "agentToolsAllowedIssuers": {
+      "value": "${FARSIGHT_AGENT_TOOLS_ALLOWED_ISSUERS=}"
+    },
     "cosmosJobRetentionDays": {
       "value": "${FARSIGHT_COSMOS_JOB_RETENTION_DAYS=30}"
     },

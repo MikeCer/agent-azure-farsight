@@ -186,21 +186,41 @@ Set emitted values in AZD env:
 azd env set FARSIGHT_ENABLE_API_WORKLOAD_AUTH true
 azd env set FARSIGHT_API_ALLOWED_AUDIENCES "<csv-from-script>"
 azd env set FARSIGHT_API_REQUIRED_APP_ROLE "<value-from-script>"
+azd env set FARSIGHT_ENTRA_ALLOWED_ISSUERS "<csv-from-script>"
+```
+
+Optional: create/update a dedicated Agent Tools app registration when you want SRE-to-gateway tokens to use an audience distinct from the FarSight API app:
+
+```bash
+python3 scripts/provision-farsight-agent-tools-app-registration.py
+# emits SRE_AGENT_TOOL_ENDPOINT_SCOPE
+```
+
+Optional: enforce workload JWT auth at AGT gateway FastAPI level:
+
+```bash
+azd env set FARSIGHT_ENABLE_AGENT_TOOLS_WORKLOAD_AUTH true
+azd env set FARSIGHT_AGENT_TOOLS_ALLOWED_AUDIENCES "<csv-from-agent-tools-script>"
+# optional additional tightening
+azd env set FARSIGHT_AGENT_TOOLS_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS "<sre-mi-sp-object-id>"
+azd env set FARSIGHT_AGENT_TOOLS_REQUIRED_APP_ROLE "<value-from-agent-tools-script>"
+azd env set FARSIGHT_AGENT_TOOLS_ALLOWED_ISSUERS "<csv-issuer-allowlist>"
 ```
 
 At this stage you also need allowed caller SP object IDs:
 
 ```bash
 az ad sp show --id "<sre-managed-identity-client-id>" --query id -o tsv
-azd env set FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS "<sre-mi-sp-object-id>"
+az ad sp show --id "<agt-gateway-managed-identity-client-id>" --query id -o tsv
+azd env set FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS "<sre-mi-sp-object-id>,<agt-gateway-mi-sp-object-id>"
 ```
 
-## 8. Grant FarSight API app role to SRE managed identity
+## 8. Grant FarSight API app role to SRE + AGT managed identities
 
 Use the dedicated grant helper:
 
 ```bash
-MI_CLIENT_ID="<sre-mi-client-id>" \
+MI_CLIENT_IDS="<sre-mi-client-id>,<agt-gateway-mi-client-id>" \
 FARSIGHT_API_APP_ID="<farsight-api-app-id>" \
 FARSIGHT_API_ROLE_VALUE="Farsight.Api.Access" \
 ./src/sre-agent/scripts/grant-farsight-api-access.sh
@@ -256,12 +276,15 @@ azd env set AZURE_LOCATION swedencentral
 azd env set AZURE_PRINCIPAL_ID "<entra-object-id-for-sre-admin-role>"
 azd env set INTUNE_DIAGNOSTICS_AUTH_MODE managed-identity   # or key-vault
 
-# FarSight API base URL - copy from the main FarSight azd env output
-azd env set FARSIGHT_API_BASE_URL "<farsight-api-base-url>"
+# SRE tool endpoint URL - use the AGT gateway (agent-tools) Container App URL
+azd env set SRE_AGENT_TOOL_ENDPOINT_URL "<agt-gateway-base-url>"
 
-# FarSight API token scope for managed identity auth (avoids invalid_scope error)
-# Use FARSIGHT_API_APP_ID output from scripts/provision-farsight-api-app-registration.py
-azd env set FARSIGHT_API_SCOPE "api://<farsight-api-app-id>/.default"
+# SRE tool endpoint token scope for managed identity auth (avoids invalid_scope error)
+# Use the FarSight API app ID URI (or a dedicated Agent Tools app scope from scripts/provision-farsight-agent-tools-app-registration.py)
+azd env set SRE_AGENT_TOOL_ENDPOINT_SCOPE "api://<farsight-api-app-id>/.default"
+
+# Optional auth mode override for gateway calls from SRE tools
+azd env set SRE_AGENT_TOOL_AUTH_MODE default
 
 # Optional but recommended SRE resource defaults
 azd env set SRE_AGENT_UPGRADE_CHANNEL Stable
@@ -333,13 +356,15 @@ Do not use temporary public ingress as a shortcut for broad collector rollout.
 
 ### Workload auth denies SRE caller
 
-- Confirm `FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS` includes SRE MI SP object ID.
+- Confirm `FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS` includes AGT gateway MI SP object ID (and SRE MI SP object ID if direct API calls are used).
 - Confirm SRE MI has the required API app role assignment.
 - Confirm token audience matches `FARSIGHT_API_ALLOWED_AUDIENCES`.
+- Confirm token issuer matches `FARSIGHT_ENTRA_ALLOWED_ISSUERS` (or tenant-derived defaults).
+- Confirm caller token is application workload token (no delegated `scp` claim).
 
 ### FarSight tools fail with `(invalid_scope) None, None` / auth error
 
-The FarSight tools default to `{api_base_url}/.default` as the token scope when `FARSIGHT_API_SCOPE` is not set. The Container Apps URL is **not** a valid Entra resource audience.
+The SRE FarSight tools default to `{api_base_url}/.default` as the token scope when `SRE_AGENT_TOOL_ENDPOINT_SCOPE` is not set. The Container Apps URL is **not** a valid Entra resource audience.
 
 1. Get the FarSight API app registration client ID:
    ```bash
@@ -348,11 +373,11 @@ The FarSight tools default to `{api_base_url}/.default` as the token scope when 
 2. Set the correct scope in the SRE azd environment:
    ```bash
    cd src/sre-agent/agent
-   azd env set FARSIGHT_API_SCOPE "api://<FARSIGHT_API_APP_ID>/.default"
+   azd env set SRE_AGENT_TOOL_ENDPOINT_SCOPE "api://<farsight-api-app-id>/.default"
    ```
-3. Grant the SRE managed identity the `Farsight.Api.Access` app role:
+3. Grant the SRE and AGT managed identities the `Farsight.Api.Access` app role:
    ```bash
-   MI_CLIENT_ID="<sre-mi-client-id>" \
+   MI_CLIENT_IDS="<sre-mi-client-id>,<agt-gateway-mi-client-id>" \
    FARSIGHT_API_APP_ID="<farsight-api-app-id>" \
    ./src/sre-agent/scripts/grant-farsight-api-access.sh
    ```
@@ -418,5 +443,3 @@ There are two independent causes for this 403; check both:
      az network private-dns zone delete -g "$RG" --name "$Z" --yes
    done
    ```
-
-

@@ -4,7 +4,15 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 
-from .auth import AdminActor, DeviceCaller, WorkloadCaller, require_admin_actor, require_device_cert, require_workload_caller
+from .auth import (
+    AdminActor,
+    DeviceCaller,
+    WorkloadCaller,
+    require_admin_actor,
+    require_bound_device_id,
+    require_device_cert,
+    require_workload_caller,
+)
 from .dependencies import AzureClients, get_azure_clients
 from .models import (
     AuditEvent,
@@ -72,9 +80,7 @@ def check_in(
     device: DeviceCaller = Depends(require_device_cert),
     _: AzureClients = Depends(get_azure_clients),
 ) -> CheckInResponse:
-    # Bind the device certificate CN to the claimed device_id when cert auth is enforced.
-    if device.thumbprint != "device-cert-auth-disabled" and device.subject_cn and device.subject_cn != request.device_id:
-        raise HTTPException(status_code=403, detail="Device certificate subject does not match the claimed device_id.")
+    require_bound_device_id(device, request.device_id)
     available = next((job for job in jobs.values() if job.device_id == request.device_id and job.status == JobStatus.queued), None)
     lease = None
     if available:
@@ -94,13 +100,14 @@ def check_in(
 
 
 @app.get("/api/v1/devices/{deviceId}/jobs")
-def get_device_jobs(deviceId: str) -> list[JobDocument]:
-    # TODO: Authorize collector to read only jobs for its own device identity.
+def get_device_jobs(deviceId: str, device: DeviceCaller = Depends(require_device_cert)) -> list[JobDocument]:
+    require_bound_device_id(device, deviceId)
     return [job for job in jobs.values() if job.device_id == deviceId]
 
 
 @app.get("/api/v1/devices/{deviceId}/policy")
-def get_device_policy(deviceId: str) -> dict[str, object]:
+def get_device_policy(deviceId: str, device: DeviceCaller = Depends(require_device_cert)) -> dict[str, object]:
+    require_bound_device_id(device, deviceId)
     # TODO: Retrieve endpoint policy snapshot from Cosmos/App Configuration.
     return {"deviceId": deviceId, "policyVersion": POLICY_VERSION, "allowedModules": []}
 
@@ -143,10 +150,11 @@ def create_job(
 
 
 @app.get("/api/v1/jobs/{jobId}", response_model=JobDocument)
-def get_job(jobId: str, _: WorkloadCaller = Depends(require_workload_caller)) -> JobDocument:
+def get_job(jobId: str, device: DeviceCaller = Depends(require_device_cert)) -> JobDocument:
     job = jobs.get(jobId)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
+    require_bound_device_id(device, job.device_id)
     return job
 
 
@@ -177,11 +185,9 @@ def submit_job_result(
         raise HTTPException(status_code=400, detail="Path jobId must match result jobId")
     if jobId not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
-    # Bind the submitting device to the job owner when cert auth is enforced.
-    if device.thumbprint != "device-cert-auth-disabled" and device.subject_cn:
-        job = jobs[jobId]
-        if job.device_id != device.subject_cn:
-            raise HTTPException(status_code=403, detail="Device certificate subject does not match the job owner device_id.")
+    job = jobs[jobId]
+    require_bound_device_id(device, job.device_id)
+    require_bound_device_id(device, result.device_id)
     # TODO: Validate lease token, persist result to Cosmos, and ingest normalized summaries into Log Analytics.
     results[jobId] = result
     jobs[jobId].status = result.status

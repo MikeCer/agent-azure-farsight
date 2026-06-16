@@ -6,6 +6,14 @@ FarSight integrates with Azure SRE Agent through governed tools, not a generic c
 
 Agent tools should expose specific diagnostic actions, not generic job runners. Each tool maps typed inputs to an approved FarSight API request.
 
+SRE deployments should route FarSight tool calls through the AGT gateway, not directly to FarSight API. For SRE package configuration use:
+
+- `SRE_AGENT_TOOL_ENDPOINT_URL` (gateway URL)
+- `SRE_AGENT_TOOL_ENDPOINT_SCOPE` (token scope used by SRE tools; typically the FarSight API app ID URI, or a dedicated Agent Tools scope emitted by `scripts/provision-farsight-agent-tools-app-registration.py`)
+- `SRE_AGENT_TOOL_AUTH_MODE` (default/managed-identity/access-token/auto)
+
+Gateway inbound authorization can also enforce workload JWT validation at FastAPI level on `/tools/*` when `FARSIGHT_AGENT_TOOLS_ENFORCE_WORKLOAD_AUTH=true`. Configure gateway audiences/issuers/caller allowlist with `FARSIGHT_AGENT_TOOLS_ALLOWED_AUDIENCES`, `FARSIGHT_AGENT_TOOLS_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS`, and related `FARSIGHT_AGENT_TOOLS_*` variables.
+
 ## Tool contracts
 
 - Validate input against the tool schema before API calls.

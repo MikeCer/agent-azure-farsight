@@ -70,10 +70,10 @@ param linkExistingPrivateDnsZones bool = true
 @allowed(['key-vault', 'managed-identity'])
 param intuneDiagnosticsAuthMode string = 'managed-identity'
 
-@description('FarSight API base URL. Passed through to the azd postdeploy hook so FarSight tools know which endpoint to call.')
+@description('SRE tool endpoint URL. Passed through to the azd postdeploy hook so FarSight tools know which endpoint to call.')
 param farsightApiBaseUrl string = ''
 
-@description('FarSight API token scope for managed identity auth. Format: api://<farsight-api-app-id>/.default. Passed through to the azd postdeploy hook as FARSIGHT_API_SCOPE.')
+@description('SRE tool endpoint token scope for managed identity auth. Format: api://<app-id>/.default. Passed through to the azd postdeploy hook as SRE_AGENT_TOOL_ENDPOINT_SCOPE.')
 param farsightApiScope string = ''
 
 var tags = {
@@ -123,5 +123,5 @@ output INTUNE_DIAGNOSTICS_AUTH_MODE string = intuneDiagnosticsAuthMode
 output INTUNE_DIAGNOSTICS_KEY_VAULT_NAME string = resources.outputs.keyVaultName
 output INTUNE_DIAGNOSTICS_KEY_VAULT_URI string = resources.outputs.keyVaultUri
 output SRE_AGENT_SPACE_ID string = resources.outputs.agentSpaceId
-output FARSIGHT_API_BASE_URL string = farsightApiBaseUrl
-output FARSIGHT_API_SCOPE string = farsightApiScope
+output SRE_AGENT_TOOL_ENDPOINT_URL string = farsightApiBaseUrl
+output SRE_AGENT_TOOL_ENDPOINT_SCOPE string = farsightApiScope

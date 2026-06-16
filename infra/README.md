@@ -82,7 +82,7 @@ Private ACR deployments keep `FARSIGHT_ENABLE_ACR_TASK_NETWORK_BYPASS=true` by d
 
 Container Apps pull private images from ACR with their user-assigned managed identities. Bicep configures each AZD-managed Container App with a registry entry that references the provisioned ACR login server and assigns `AcrPull` to the app identity before revision updates.
 
-Bicep sets `AZURE_CLIENT_ID` for Container Apps that use Azure SDKs so `DefaultAzureCredential` selects the user-assigned identity. The admin BFF gets `FARSIGHT_CONTROL_API_BASE_URL` set to the API Container App endpoint for policy proxy calls.
+Bicep sets `AZURE_CLIENT_ID` for Container Apps that use Azure SDKs so `DefaultAzureCredential` selects the user-assigned identity. The admin BFF gets `FARSIGHT_CONTROL_API_BASE_URL` set to the API Container App endpoint for policy proxy calls. The AGT tool gateway gets `FARSIGHT_API_BASE_URL` (API endpoint), `FARSIGHT_API_SCOPE` (first configured API allowed audience normalized to `/.default`), and `FARSIGHT_POLICY_SOURCE=api` so policy loading and forwarded tool execution use the live API-backed policy repository.
 
 Set `FARSIGHT_API_INTERNAL_AUTH_SECRET` to a strong random value before enabling admin policy mutations. Bicep stores it as a Container Apps secret for both API and admin web. The BFF uses it to sign Easy Auth admin context for policy save, activate, and delete requests.
 
@@ -92,8 +92,19 @@ For SRE Agent and AGT gateway machine-to-machine calls, optional Entra workload-
 - `FARSIGHT_API_ALLOWED_AUDIENCES=<csv api app audiences>`
 - `FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS=<csv caller service principal object IDs>`
 - optional `FARSIGHT_API_REQUIRED_APP_ROLE=<role value>` for app-role claim enforcement
+- optional `FARSIGHT_ENTRA_ALLOWED_ISSUERS=<csv issuer allowlist>`
 
-When enabled, the API validates bearer tokens against Entra issuer/JWKS and enforces caller allowlist and/or required app role.
+When enabled, the API validates bearer tokens against Entra JWKS, enforces audience + issuer + tenant, blocks delegated `scp` tokens, and then enforces caller allowlist and/or required app role.
+
+For inbound workload-token enforcement on AGT gateway `/tools/*` endpoints, optionally enable:
+
+- `FARSIGHT_ENABLE_AGENT_TOOLS_WORKLOAD_AUTH=true`
+- `FARSIGHT_AGENT_TOOLS_ALLOWED_AUDIENCES=<csv gateway app audiences>`
+- optional `FARSIGHT_AGENT_TOOLS_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS=<csv caller service principal object IDs>`
+- optional `FARSIGHT_AGENT_TOOLS_REQUIRED_APP_ROLE=<role value>`
+- optional `FARSIGHT_AGENT_TOOLS_ALLOWED_ISSUERS=<csv issuer allowlist>`
+
+When enabled, the gateway validates bearer tokens against Entra JWKS, enforces audience + issuer + tenant, blocks delegated `scp` tokens, and then enforces caller allowlist and/or required app role.
 
 For collector device mTLS certificate validation (check-in and result submission), enable:
 

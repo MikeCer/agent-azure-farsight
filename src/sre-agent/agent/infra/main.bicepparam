@@ -23,12 +23,11 @@ param linkExistingPrivateDnsZones = bool(readEnvironmentVariable('SRE_AGENT_LINK
 // Supported values: managed-identity, key-vault.
 param intuneDiagnosticsAuthMode = readEnvironmentVariable('INTUNE_DIAGNOSTICS_AUTH_MODE', 'managed-identity')
 
-// FarSight control-plane API base URL consumed by FarSight tools at runtime.
-// Set this to the azd output FARSIGHT_API_BASE_URL from the main FarSight azd environment.
-param farsightApiBaseUrl = readEnvironmentVariable('FARSIGHT_API_BASE_URL', '')
+// SRE tool endpoint URL consumed by FarSight tools at runtime.
+// Set this to the AGT gateway URL from the main FarSight deployment.
+param farsightApiBaseUrl = readEnvironmentVariable('SRE_AGENT_TOOL_ENDPOINT_URL', '')
 
-// FarSight API token scope for managed identity authentication.
+// SRE tool endpoint token scope for managed identity authentication.
 // Format: api://<farsight-api-app-id>/.default
-// Use the FARSIGHT_API_APP_ID output from provision-farsight-api-app-registration.py.
-// Example: azd env set FARSIGHT_API_SCOPE "api://<farsight-api-app-id>/.default"
-param farsightApiScope = readEnvironmentVariable('FARSIGHT_API_SCOPE', '')
+// Example: azd env set SRE_AGENT_TOOL_ENDPOINT_SCOPE "api://<farsight-api-app-id>/.default"
+param farsightApiScope = readEnvironmentVariable('SRE_AGENT_TOOL_ENDPOINT_SCOPE', '')

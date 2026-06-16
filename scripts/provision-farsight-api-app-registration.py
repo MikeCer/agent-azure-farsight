@@ -144,12 +144,17 @@ def main() -> int:
         "created": created,
         "tenantId": tenant_id,
         "applicationObjectId": app["id"],
+        "FARSIGHT_API_SERVICE_PRINCIPAL_OBJECT_ID": service_principal["id"],
         "servicePrincipalObjectId": service_principal["id"],
         "appRoleId": role_id,
         "FARSIGHT_API_APP_ID": app["appId"],
         "FARSIGHT_API_IDENTIFIER_URI": selected_identifier_uri,
         "FARSIGHT_API_REQUIRED_APP_ROLE": args.role_value,
         "FARSIGHT_API_ALLOWED_AUDIENCES": f"{selected_identifier_uri},{app['appId']}",
+        "FARSIGHT_ENTRA_ALLOWED_ISSUERS": (
+            f"https://login.microsoftonline.com/{tenant_id}/v2.0,"
+            f"https://sts.windows.net/{tenant_id}/"
+        ),
     }
 
     if args.output == "json":
@@ -160,6 +165,8 @@ def main() -> int:
             "FARSIGHT_API_IDENTIFIER_URI",
             "FARSIGHT_API_REQUIRED_APP_ROLE",
             "FARSIGHT_API_ALLOWED_AUDIENCES",
+            "FARSIGHT_ENTRA_ALLOWED_ISSUERS",
+            "FARSIGHT_API_SERVICE_PRINCIPAL_OBJECT_ID",
         ):
             print(f"{key}=\"{values[key]}\"")
         print("")
@@ -168,9 +175,9 @@ def main() -> int:
         print(f"# servicePrincipalObjectId={values['servicePrincipalObjectId']}")
         print(f"# appRoleId={values['appRoleId']}")
         print("")
-        print("# Next step: grant this app role to the SRE managed identity")
+        print("# Next step: grant this app role to the SRE and AGT managed identities")
         print(
-            f"# MI_CLIENT_ID=\"<sre-mi-client-id>\" FARSIGHT_API_APP_ID=\"{app['appId']}\" "
+            f"# MI_CLIENT_IDS=\"<sre-mi-client-id>,<agt-gateway-mi-client-id>\" FARSIGHT_API_APP_ID=\"{app['appId']}\" "
             f"FARSIGHT_API_ROLE_VALUE=\"{args.role_value}\" ./src/sre-agent/scripts/grant-farsight-api-access.sh"
         )
     return 0
