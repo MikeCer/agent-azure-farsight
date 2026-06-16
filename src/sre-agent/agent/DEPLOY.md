@@ -72,6 +72,13 @@ The Bicep deployment now aligns with the migrated stable SRE Agent resource shap
 - `experimentalSettings.EnableSandboxGroup` (default `true`),
 - `experimentalSettings.EnableWorkspaceTools` (default `true`).
 
+### Trace viewer access (Monitoring Reader)
+
+The Agent portal trace viewer loads execution traces from the linked Application Insights (workspace-based). Reading that telemetry is a **data-plane** operation, so the control-plane `Reader` role is not sufficient and the viewer returns `Failed to load trace data: Request failed with status code 403`.
+
+`infra/modules/monitoring-access.bicep` grants the SRE Agent system-assigned and user-assigned identities the **Monitoring Reader** role (`43d0d8ad-25c7-4714-9337-8ba259a9fe05`) on both the Application Insights component and the Log Analytics workspace. Role assignment propagation can take a few minutes after `azd provision`; refresh the trace view afterward.
+
+
 ### 3. Resolve Intune diagnostics authentication defaults
 
 The script reads `INTUNE_DIAGNOSTICS_AUTH_MODE` to decide which tool call shape to inject into the deployed agent and skill instructions.
@@ -173,6 +180,7 @@ Important details:
 - Python source must be sent as `functionCode`, not `code`.
 - The deployed Python source must expose a top-level typed `main(...) -> dict`.
 - The deployed Python source must not include a top-level CLI execution block, because Azure SRE Agent loads tools in an IPython kernel context.
+- The SRE Agent PythonFunctionTool runtime does not automatically inherit `azd env` or operator shell variables. `deploy.py` therefore embeds FarSight API defaults (`FARSIGHT_API_BASE_URL`, `FARSIGHT_AUTH_MODE`, and `FARSIGHT_API_SCOPE`) into the deployed FarSight tool source and also sets matching parameter defaults. Runtime `os.environ` lookup remains only as a fallback for custom execution environments.
 
 ### 6. Deploy Skill Builder skills
 

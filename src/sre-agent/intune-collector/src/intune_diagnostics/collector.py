@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Protocol
+from urllib.parse import quote
 
 from .config import DiagnosticConfig
 from .graph_client import GraphError
@@ -58,12 +59,13 @@ def collect_device_diagnostics(
     )
     document = DiagnosticDocument(target=target, started_at=started_at, tenant_id=tenant_id)
 
-    device_id = managed_device["id"]
+    device_id = str(managed_device["id"])
+    encoded_device_id = _path_segment(device_id)
     device_detail = _get_optional(
         graph,
         "managed_device",
         "v1.0",
-        f"/deviceManagement/managedDevices/{device_id}",
+        f"/deviceManagement/managedDevices/{encoded_device_id}",
     )
     device_health_detail = _collect_device_health_detail(graph, device_id)
     document.collection_report.append(device_detail.result)
@@ -74,21 +76,21 @@ def collect_device_diagnostics(
         graph,
         "device_compliance_policy_states",
         "v1.0",
-        f"/deviceManagement/managedDevices/{device_id}/deviceCompliancePolicyStates",
+        f"/deviceManagement/managedDevices/{encoded_device_id}/deviceCompliancePolicyStates",
         max_pages=config.max_optional_pages,
     )
     configuration = _get_all_optional(
         graph,
         "device_configuration_states",
         "v1.0",
-        f"/deviceManagement/managedDevices/{device_id}/deviceConfigurationStates",
+        f"/deviceManagement/managedDevices/{encoded_device_id}/deviceConfigurationStates",
         max_pages=config.max_optional_pages,
     )
     compliance_setting_states, compliance_setting_reports = _collect_nested_setting_states(
         graph,
         "device_compliance_policy_setting_states",
         "v1.0",
-        f"/deviceManagement/managedDevices/{device_id}/deviceCompliancePolicyStates",
+        f"/deviceManagement/managedDevices/{encoded_device_id}/deviceCompliancePolicyStates",
         compliance.items,
         config,
     )
@@ -96,7 +98,7 @@ def collect_device_diagnostics(
         graph,
         "device_configuration_setting_states",
         "v1.0",
-        f"/deviceManagement/managedDevices/{device_id}/deviceConfigurationStates",
+        f"/deviceManagement/managedDevices/{encoded_device_id}/deviceConfigurationStates",
         configuration.items,
         config,
     )
@@ -117,7 +119,7 @@ def collect_device_diagnostics(
         graph,
         "windows_protection_state",
         "v1.0",
-        f"/deviceManagement/managedDevices/{device_id}/windowsProtectionState",
+        f"/deviceManagement/managedDevices/{encoded_device_id}/windowsProtectionState",
     )
     windows_update_status = _collect_filtered_collection(
         graph,
@@ -204,6 +206,7 @@ def collect_device_diagnostics(
 
 
 def _collect_device_health_detail(graph: GraphCollectorClient, device_id: str) -> Collection:
+    encoded_device_id = _path_segment(device_id)
     select = ",".join(
         [
             "id",
@@ -225,7 +228,7 @@ def _collect_device_health_detail(graph: GraphCollectorClient, device_id: str) -
         graph,
         "device_health_detail",
         "beta",
-        f"/deviceManagement/managedDevices/{device_id}",
+        f"/deviceManagement/managedDevices/{encoded_device_id}",
         params={"$select": select},
         beta=True,
     )
@@ -315,7 +318,7 @@ def _collect_installed_apps(graph: GraphCollectorClient, device_id: str, config:
         graph,
         "installed_apps",
         "beta",
-        f"/deviceManagement/managedDevices/{device_id}/detectedApps",
+        f"/deviceManagement/managedDevices/{_path_segment(device_id)}/detectedApps",
         params={"$top": str(config.max_installed_apps)},
         beta=True,
     )
@@ -357,7 +360,7 @@ def _collect_nested_setting_states(
             graph,
             name,
             api_version,
-            f"{base_path}/{parent_id}/settingStates",
+            f"{base_path}/{_path_segment(parent_id)}/settingStates",
             max_pages=config.max_optional_pages,
         )
         for item in collection.items:
@@ -563,7 +566,7 @@ def _collect_policy_object_device_states(
             graph,
             name,
             api_version,
-            f"{objects_path}/{object_id}/{states_navigation}",
+            f"{objects_path}/{_path_segment(object_id)}/{states_navigation}",
             device,
             config,
             beta=beta,
@@ -673,7 +676,7 @@ def _collect_troubleshooting_events(
         graph,
         "device_management_troubleshooting_events",
         "v1.0",
-        f"/users/{user_id}/deviceManagementTroubleshootingEvents",
+        f"/users/{_path_segment(user_id)}/deviceManagementTroubleshootingEvents",
         max_pages=config.max_optional_pages,
     )
     identifiers = [device.get("id"), _azure_ad_device_id(device), device.get("deviceName")]
@@ -802,6 +805,10 @@ def _device_filters(device: dict[str, Any]) -> list[str]:
             ]
         )
     return filters
+
+
+def _path_segment(value: object) -> str:
+    return quote(str(value), safe="")
 
 
 def _report_items(response: dict[str, Any]) -> list[dict[str, Any]]:

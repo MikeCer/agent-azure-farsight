@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from intune_diagnostics.collector import collect_device_diagnostics
+from intune_diagnostics.collector import _collect_troubleshooting_events, _path_segment, collect_device_diagnostics
 from intune_diagnostics.config import DiagnosticConfig
 from intune_diagnostics.graph_client import GraphError
 
@@ -148,6 +148,30 @@ class CollectorTests(unittest.TestCase):
         )
         self.assertNotIn("collection_report", payload)
         self.assertNotIn("signals", payload)
+
+    def test_encodes_dynamic_graph_path_segments(self):
+        self.assertEqual(_path_segment("user/name#EXT#@contoso.com"), "user%2Fname%23EXT%23%40contoso.com")
+        self.assertEqual(_path_segment("policy id/with spaces?"), "policy%20id%2Fwith%20spaces%3F")
+
+    def test_troubleshooting_events_encodes_user_id_path_segment(self):
+        graph = FakeGraph()
+        device = {
+            "id": "device-1",
+            "deviceName": "WIN-01",
+            "azureADDeviceId": "aad-1",
+            "userId": "user/name#EXT#@contoso.com",
+        }
+
+        _collect_troubleshooting_events(graph, device, DiagnosticConfig())
+
+        troubleshooting_calls = [
+            call for call in graph.calls if call[2].endswith("/deviceManagementTroubleshootingEvents")
+        ]
+        self.assertEqual(len(troubleshooting_calls), 1)
+        self.assertEqual(
+            troubleshooting_calls[0][2],
+            "/users/user%2Fname%23EXT%23%40contoso.com/deviceManagementTroubleshootingEvents",
+        )
 
 
 if __name__ == "__main__":

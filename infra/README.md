@@ -46,6 +46,8 @@ azd provision --preview
 - `FARSIGHT_ENABLE_PUBLIC_INGRESS=true` exposes the FarSight API, admin web, and AGT tool gateway over public Container Apps ingress.
 - `FARSIGHT_ENABLE_PUBLIC_INGRESS=false` makes the Container Apps environment internal-only for hybrid/private access paths.
 
+> **Application Insights and Log Analytics are an exception: they always use public ingestion/query and are never placed behind Azure Monitor Private Link (AMPLS) or a monitor private endpoint**, even when `FARSIGHT_ENABLE_PRIVATE_ENDPOINTS=true`. This keeps the workspace queryable by Azure portal monitoring experiences (and avoids `PrivateOnly` query 403s). All other dependencies (Storage, Key Vault, ACR, Cosmos DB, Service Bus, App Configuration) still honor the private-endpoint flag.
+
 Container Apps environment network mode is treated as creation-time behavior. Bicep includes `pub` or `int` in the Container Apps environment and app names so changing public ingress creates a compatible replacement set instead of mutating an internal environment. The final topology uses one Container Apps delegated subnet; when switching modes, delete the old Container Apps environment and wait for Azure to release the subnet before reprovisioning.
 
 ## Deploy

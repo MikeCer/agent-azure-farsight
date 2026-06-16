@@ -33,6 +33,15 @@ ALLOWED_APPROVAL_ACTIONS = ALLOWED_TASK_TYPES | {
 _COMMAND_TOKENS = (";", "|", "`", "$(", "\n", "\r", "&&", "||")
 _MAX_TIMEOUT_SECONDS = 120
 _DEFAULT_TIMEOUT_SECONDS = 30
+_DEPLOYED_FARSIGHT_API_BASE_URL = "__FARSIGHT_API_BASE_URL__"
+_DEPLOYED_FARSIGHT_AUTH_MODE = "__FARSIGHT_AUTH_MODE__"
+_DEPLOYED_FARSIGHT_API_SCOPE = "__FARSIGHT_API_SCOPE__"
+
+
+def _deployment_default(value: str) -> str | None:
+    if not value or value.startswith("__FARSIGHT_"):
+        return None
+    return value
 
 
 def _error(action: str, code: str, message: str, details: Any | None = None) -> dict:
@@ -158,7 +167,12 @@ def _validate_url_list(action: str, field: str, value: str | None) -> list[str] 
 
 
 def _resolve_api_base_url(action: str, api_base_url: str | None) -> str | dict:
-    base_url = (api_base_url or os.environ.get("FARSIGHT_API_BASE_URL") or "").strip().rstrip("/")
+    base_url = (
+        api_base_url
+        or _deployment_default(_DEPLOYED_FARSIGHT_API_BASE_URL)
+        or os.environ.get("FARSIGHT_API_BASE_URL")
+        or ""
+    ).strip().rstrip("/")
     if not base_url:
         return _error(action, "configuration_error", "FarSight API base URL is required via api_base_url or FARSIGHT_API_BASE_URL.")
     parsed = urllib.parse.urlparse(base_url)
@@ -170,14 +184,19 @@ def _resolve_api_base_url(action: str, api_base_url: str | None) -> str | dict:
 
 
 def _credential_scope(api_base_url: str, api_scope: str | None) -> str:
-    configured = api_scope or os.environ.get("FARSIGHT_API_SCOPE")
+    configured = api_scope or _deployment_default(_DEPLOYED_FARSIGHT_API_SCOPE) or os.environ.get("FARSIGHT_API_SCOPE")
     if configured:
         return configured
     return f"{api_base_url}/.default"
 
 
 def _auth_headers(action: str, api_base_url: str, auth_mode: str | None, api_scope: str | None) -> dict[str, str] | dict:
-    mode = (auth_mode or os.environ.get("FARSIGHT_AUTH_MODE") or "default").strip().lower().replace("_", "-")
+    mode = (
+        auth_mode
+        or _deployment_default(_DEPLOYED_FARSIGHT_AUTH_MODE)
+        or os.environ.get("FARSIGHT_AUTH_MODE")
+        or "default"
+    ).strip().lower().replace("_", "-")
     if mode == "auto":
         mode = "access-token" if os.environ.get("FARSIGHT_ACCESS_TOKEN") else "default"
     if mode in {"access-token", "bearer-token-env"}:

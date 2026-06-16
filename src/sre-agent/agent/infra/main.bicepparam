@@ -16,10 +16,6 @@ param vnetAddressPrefix = readEnvironmentVariable('SRE_AGENT_VNET_ADDRESS_PREFIX
 param privateEndpointSubnetPrefix = readEnvironmentVariable('SRE_AGENT_PRIVATE_ENDPOINT_SUBNET_PREFIX', '10.42.1.0/24')
 param privateDnsZoneResourceIds = {
   keyVault: readEnvironmentVariable('SRE_AGENT_PRIVATE_DNS_ZONE_ID_KEY_VAULT', '')
-  azureMonitor: readEnvironmentVariable('SRE_AGENT_PRIVATE_DNS_ZONE_ID_AZURE_MONITOR', '')
-  logAnalyticsOms: readEnvironmentVariable('SRE_AGENT_PRIVATE_DNS_ZONE_ID_LOG_ANALYTICS_OMS', '')
-  logAnalyticsOds: readEnvironmentVariable('SRE_AGENT_PRIVATE_DNS_ZONE_ID_LOG_ANALYTICS_ODS', '')
-  azureMonitorAgentSvc: readEnvironmentVariable('SRE_AGENT_PRIVATE_DNS_ZONE_ID_AZURE_MONITOR_AGENT_SVC', '')
 }
 param linkExistingPrivateDnsZones = bool(readEnvironmentVariable('SRE_AGENT_LINK_EXISTING_PRIVATE_DNS_ZONES', 'true'))
 

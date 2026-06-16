@@ -58,13 +58,9 @@ param vnetAddressPrefix string = '10.42.0.0/16'
 @description('Address prefix reserved for the SRE Agent private endpoint subnet.')
 param privateEndpointSubnetPrefix string = '10.42.1.0/24'
 
-@description('Existing Private DNS zone resource IDs keyed by service: keyVault, azureMonitor, logAnalyticsOms, logAnalyticsOds, azureMonitorAgentSvc. Empty values let child modules create zones when implemented.')
+@description('Existing Private DNS zone resource IDs keyed by service: keyVault. Empty value lets the networking module create the zone.')
 param privateDnsZoneResourceIds object = {
   keyVault: ''
-  azureMonitor: ''
-  logAnalyticsOms: ''
-  logAnalyticsOds: ''
-  azureMonitorAgentSvc: ''
 }
 
 @description('Link the SRE Agent VNet to existing Private DNS zones when privateDnsZoneResourceIds are provided.')
@@ -72,7 +68,7 @@ param linkExistingPrivateDnsZones bool = true
 
 @description('Auth mode for the intune_diagnostics_tool. Passed through to the azd postdeploy hook.')
 @allowed(['key-vault', 'managed-identity'])
-param intuneDiagnosticsAuthMode string = 'key-vault'
+param intuneDiagnosticsAuthMode string = 'managed-identity'
 
 @description('FarSight API base URL. Passed through to the azd postdeploy hook so FarSight tools know which endpoint to call.')
 param farsightApiBaseUrl string = ''

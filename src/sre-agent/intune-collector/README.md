@@ -82,6 +82,8 @@ Admin consent is required for unattended service-principal or managed-identity e
 
 When Microsoft Graph returns an error, the collector logs the non-sensitive identity context from the access token to stderr, including tenant id, object id, app id, user name when present, and identity type. This helps troubleshoot production permission issues without logging tokens or secrets.
 
+Dynamic Microsoft Graph path segments are percent-encoded before requests are sent. This is required for user-scoped and nested Intune endpoints where identifiers can contain characters such as `/`, `#`, `@`, spaces, or `?`; query options and OData filters are still passed through `requests` parameters so `$filter`, `$select`, and pagination links are not double-encoded.
+
 ## Data Sources
 
 The collector uses `v1.0` Intune endpoints for device inventory, compliance/configuration state, user-scoped troubleshooting events, app install status reports, Windows protection state, Windows update status, Entra device identity, and Autopilot identity where available. It also uses Microsoft Graph `beta` Endpoint Analytics endpoints that support per-device lookups for startup performance, resource performance, and app reliability.

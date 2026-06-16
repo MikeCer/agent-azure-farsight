@@ -104,12 +104,10 @@ azd env set FARSIGHT_PRIVATE_DNS_ZONE_CONTAINER_REGISTRY_RESOURCE_ID "<resource-
 azd env set FARSIGHT_PRIVATE_DNS_ZONE_COSMOS_SQL_RESOURCE_ID "<resource-id>"
 azd env set FARSIGHT_PRIVATE_DNS_ZONE_SERVICE_BUS_RESOURCE_ID "<resource-id>"
 azd env set FARSIGHT_PRIVATE_DNS_ZONE_APP_CONFIGURATION_RESOURCE_ID "<resource-id>"
-azd env set FARSIGHT_PRIVATE_DNS_ZONE_AZURE_MONITOR_RESOURCE_ID "<resource-id>"
-azd env set FARSIGHT_PRIVATE_DNS_ZONE_LOG_ANALYTICS_OMS_RESOURCE_ID "<resource-id>"
-azd env set FARSIGHT_PRIVATE_DNS_ZONE_LOG_ANALYTICS_ODS_RESOURCE_ID "<resource-id>"
-azd env set FARSIGHT_PRIVATE_DNS_ZONE_AZURE_MONITOR_AGENT_SVC_RESOURCE_ID "<resource-id>"
 azd env set FARSIGHT_PRIVATE_DNS_ZONE_CONTAINER_APPS_ENVIRONMENT_RESOURCE_ID "<resource-id>"
 ```
+
+> The Azure Monitor private DNS zone variables (`FARSIGHT_PRIVATE_DNS_ZONE_AZURE_MONITOR_RESOURCE_ID`, `..._LOG_ANALYTICS_OMS_...`, `..._LOG_ANALYTICS_ODS_...`, `..._AZURE_MONITOR_AGENT_SVC_...`) are no longer consumed. Application Insights and Log Analytics use public ingestion/query and are not placed behind a monitor private endpoint, so no Azure Monitor private DNS zones are created or linked.
 
 If APIM private networking is enabled, also set:
 
@@ -277,7 +275,9 @@ azd env set SRE_AGENT_ENABLE_WORKSPACE_TOOLS true
 azd env set SRE_AGENT_INITIAL_SPONSOR_GROUP_ID "<entra-group-object-id>"
 ```
 
-If this SRE environment must use private endpoints, also set the SRE-specific networking variables from `src/sre-agent/agent/infra/main.bicepparam` (for example `SRE_AGENT_ENABLE_PRIVATE_ENDPOINTS`, address prefixes, and private DNS zone IDs).
+If this SRE environment must use private endpoints, also set the SRE-specific networking variables from `src/sre-agent/agent/infra/main.bicepparam` (for example `SRE_AGENT_ENABLE_PRIVATE_ENDPOINTS`, address prefixes, and the Key Vault private DNS zone ID).
+
+> **Application Insights and Log Analytics use public ingestion/query and are not placed behind private endpoints.** The Agent portal trace viewer queries telemetry over the public endpoint, so Azure Monitor private link (AMPLS) would break trace loading (`PrivateOnly` query mode returns 403). When `SRE_AGENT_ENABLE_PRIVATE_ENDPOINTS=true`, only the Key Vault dependency gets a private endpoint; the monitoring module always provisions Application Insights and the Log Analytics workspace with `publicNetworkAccessForIngestion`/`publicNetworkAccessForQuery` set to `Enabled`.
 
 Deploy SRE infrastructure + content:
 
@@ -372,3 +372,51 @@ The FarSight tools default to `{api_base_url}/.default` as the token scope when 
 - Check whether the agent already exists in the target resource group:
   `az resource show --resource-group <rg> --resource-type Microsoft.App/agents --name <agent-name>`.
 - If re-running against an existing agent, leave `SRE_AGENT_INITIAL_SPONSOR_GROUP_ID` unset. This value is intended for first-create identity initialization only.
+
+### SRE Agent portal: `Failed to load trace data: Request failed with status code 403`
+
+The trace viewer reads execution traces from the linked Application Insights (workspace-based), which is a data-plane operation. The control-plane `Reader` role is not enough.
+
+- `infra/modules/monitoring-access.bicep` grants the SRE Agent system-assigned and user-assigned identities **Monitoring Reader** on both Application Insights and the Log Analytics workspace. Re-run `azd provision` after pulling the latest infra.
+- To fix an existing deployment immediately, grant Monitoring Reader to both agent identities:
+
+  ```bash
+  RG=<sre-resource-group>
+  AGENT=<sre-agent-name>
+  SUB=<subscription-id>
+  APPI_ID=$(az resource show -g "$RG" --resource-type Microsoft.Insights/components --name "appi-$AGENT" --query id -o tsv)
+  LAW_ID=$(az resource show -g "$RG" --resource-type Microsoft.OperationalInsights/workspaces --name "law-$AGENT" --query id -o tsv)
+  SYS_MI=$(az resource show -g "$RG" --resource-type Microsoft.App/agents --name "$AGENT" --query identity.principalId -o tsv)
+  for SCOPE in "$APPI_ID" "$LAW_ID"; do
+    az role assignment create --assignee-object-id "$SYS_MI" --assignee-principal-type ServicePrincipal \
+      --role "43d0d8ad-25c7-4714-9337-8ba259a9fe05" --scope "$SCOPE"
+  done
+  ```
+
+- RBAC propagation can take a few minutes; refresh the trace view afterward.
+
+There are two independent causes for this 403; check both:
+
+1. **Missing telemetry-read role** (handled by the Monitoring Reader grant above).
+2. **Azure Monitor private link / restricted public query.** If the Log Analytics workspace has `publicNetworkAccessForQuery=Disabled`, or it is scoped into an Azure Monitor Private Link Scope (AMPLS) with `queryAccessMode=PrivateOnly`, the portal's public query is blocked. The current infra provisions Application Insights and Log Analytics with public ingestion/query and no AMPLS. To remediate an older deployment that still has these:
+
+   ```bash
+   RG=<sre-resource-group>
+   AGENT=<sre-agent-name>
+   # Re-enable public query/ingestion on the workspace
+   az monitor log-analytics workspace update -g "$RG" --workspace-name "law-$AGENT" \
+     --ingestion-access Enabled --query-access Enabled
+   # Remove the Azure Monitor private endpoint and AMPLS if present
+   az network private-endpoint delete -g "$RG" --name "pe-ampls-<suffix>"
+   az resource delete -g "$RG" --resource-type Microsoft.Insights/privateLinkScopes --name "ampls-<suffix>"
+   # Delete the now-orphaned monitor private DNS zones (remove vnet links first)
+   for Z in privatelink.monitor.azure.com privatelink.oms.opinsights.azure.com \
+            privatelink.ods.opinsights.azure.com privatelink.agentsvc.azure-automation.net; do
+     for L in $(az network private-dns link vnet list -g "$RG" --zone-name "$Z" --query "[].name" -o tsv); do
+       az network private-dns link vnet delete -g "$RG" --zone-name "$Z" --name "$L" --yes
+     done
+     az network private-dns zone delete -g "$RG" --name "$Z" --yes
+   done
+   ```
+
+

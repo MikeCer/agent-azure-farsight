@@ -20,6 +20,7 @@ import argparse
 import datetime
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -66,6 +67,7 @@ INTUNE_AUTH_MODE_KEY_VAULT = "key-vault"
 INTUNE_AUTH_MODE_MANAGED_IDENTITY = "managed-identity"
 FARSIGHT_API_BASE_URL_ENV = "FARSIGHT_API_BASE_URL"
 FARSIGHT_API_SCOPE_ENV = "FARSIGHT_API_SCOPE"
+FARSIGHT_AUTH_MODE_ENV = "FARSIGHT_AUTH_MODE"
 DEPLOY_LOG_DIR = SCRIPT_DIR / ".logs"
 _ACTIVE_LOG_HANDLE: Any = None
 
@@ -125,6 +127,47 @@ def az(*args: str) -> str:
     if result.returncode != 0:
         raise AzureCliError(f"az {' '.join(args[:3])} ... failed:\n{result.stderr.strip()}")
     return result.stdout.strip()
+
+
+def load_azd_env_values() -> list[str]:
+    """Load missing values from `azd env get-values` for direct script runs."""
+    executable = shutil.which("azd") or shutil.which("azd.cmd")
+    if not executable:
+        return []
+    try:
+        result = subprocess.run(
+            [executable, "env", "get-values"],
+            cwd=SCRIPT_DIR,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        return []
+    if result.returncode != 0:
+        return []
+
+    loaded: list[str] = []
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, raw_value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        try:
+            value = shlex.split(raw_value, posix=True)[0] if raw_value.strip() else ""
+        except ValueError:
+            value = raw_value.strip().strip('"')
+        os.environ[key] = value
+        loaded.append(key)
+    return loaded
+
+
+def normalize_farsight_api_scope() -> None:
+    value = os.environ.get(FARSIGHT_API_SCOPE_ENV, "").strip()
+    if value.startswith("api://") and not value.endswith("/.default"):
+        os.environ[FARSIGHT_API_SCOPE_ENV] = f"{value.rstrip('/')}/.default"
 
 
 def ensure_subscription_access(subscription: str | None) -> None:
@@ -520,7 +563,7 @@ def intune_tool_parameter_defaults() -> dict[str, Any]:
 
 
 def farsight_tool_defaults() -> dict[str, Any]:
-    """Returns deployment-time defaults for FarSight API tools (api_base_url, api_scope)."""
+    """Returns deployment-time defaults for FarSight API tools."""
     defaults: dict[str, Any] = {}
     api_base_url = os.environ.get(FARSIGHT_API_BASE_URL_ENV, "").strip().rstrip("/")
     if api_base_url:
@@ -528,6 +571,8 @@ def farsight_tool_defaults() -> dict[str, Any]:
     api_scope = os.environ.get(FARSIGHT_API_SCOPE_ENV, "").strip()
     if api_scope:
         defaults["api_scope"] = api_scope
+    auth_mode = os.environ.get(FARSIGHT_AUTH_MODE_ENV, "").strip().lower().replace("_", "-")
+    defaults["farsight_auth_mode"] = auth_mode or "default"
     return defaults
 
 
@@ -551,6 +596,7 @@ def inject_tool_code_defaults(function_code: str, defaults: dict[str, Any]) -> s
         "__INTUNE_DEFAULT_CLIENT_ID_SECRET_NAME__": str(defaults.get("client_id_secret_name") or ""),
         "__INTUNE_DEFAULT_CLIENT_SECRET_SECRET_NAME__": str(defaults.get("client_secret_secret_name") or ""),
         "__FARSIGHT_API_BASE_URL__": str(defaults.get("api_base_url") or ""),
+        "__FARSIGHT_AUTH_MODE__": str(defaults.get("farsight_auth_mode") or ""),
         "__FARSIGHT_API_SCOPE__": str(defaults.get("api_scope") or ""),
     }
     for placeholder, value in replacements.items():
@@ -796,10 +842,12 @@ def default_resource_group() -> str:
 def main() -> None:
     log_path = enable_persistent_console_log()
     args = parse_args()
+    loaded_azd_env_keys = load_azd_env_values()
+    normalize_farsight_api_scope()
     agent_name = args.agent_name or os.environ.get("SRE_AGENT_NAME")
     resource_group = args.resource_group or default_resource_group()
     subscription = args.subscription or os.environ.get("AZURE_SUBSCRIPTION_ID")
-    intune_auth_mode = os.environ.get(INTUNE_AUTH_MODE_ENV, INTUNE_AUTH_MODE_KEY_VAULT).strip().lower()
+    intune_auth_mode = os.environ.get(INTUNE_AUTH_MODE_ENV, INTUNE_AUTH_MODE_MANAGED_IDENTITY).strip().lower()
 
     if not agent_name:
         print("ERROR: provide --agent-name or set SRE_AGENT_NAME.")
@@ -817,6 +865,8 @@ def main() -> None:
     print(f"  Skip Skills    : {args.skip_skills}")
     print(f"  Dry run        : {args.dry_run}")
     print(f"  Log file       : {log_path}")
+    if loaded_azd_env_keys:
+        print(f"  AZD env loaded : {len(loaded_azd_env_keys)} value(s)")
     farsight_api_base_url = os.environ.get(FARSIGHT_API_BASE_URL_ENV, "").strip()
     if farsight_api_base_url:
         print(f"  FarSight API   : {farsight_api_base_url}")

@@ -102,7 +102,6 @@ var cosmosAccountName = 'cosmos-${namePrefix}-${take(unique, 4)}'
 var managedIdentityName = 'id-${namePrefix}-apps-${location}'
 var artifactsContainerName = 'artifacts'
 var privateEndpointNamePrefix = 'pe-${take(normalizedPrefix, 24)}-${take(unique, 6)}'
-var monitorPrivateLinkScopeName = 'ampls-${namePrefix}-${take(unique, 4)}'
 var publicNetworkAccess = enablePrivateEndpoints ? 'Disabled' : 'Enabled'
 var acrPublicNetworkAccess = enablePrivateEndpoints && enableAcrTaskNetworkBypass ? 'Enabled' : publicNetworkAccess
 var effectiveAcrFirewallAllowedIpRanges = enablePrivateEndpoints && enableAcrTaskNetworkBypass ? acrFirewallAllowedIpRanges : []
@@ -147,8 +146,8 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2025-02-01' = {
   tags: tags
   properties: {
     retentionInDays: logAnalyticsRetentionDays
-    publicNetworkAccessForIngestion: publicNetworkAccess
-    publicNetworkAccessForQuery: publicNetworkAccess
+    publicNetworkAccessForIngestion: 'Enabled'
+    publicNetworkAccessForQuery: 'Enabled'
     sku: {
       name: 'PerGB2018'
     }
@@ -163,8 +162,8 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   properties: {
     Application_Type: 'web'
     WorkspaceResourceId: workspace.id
-    publicNetworkAccessForIngestion: publicNetworkAccess
-    publicNetworkAccessForQuery: publicNetworkAccess
+    publicNetworkAccessForIngestion: 'Enabled'
+    publicNetworkAccessForQuery: 'Enabled'
   }
 }
 
@@ -792,34 +791,6 @@ resource optionalApim 'Microsoft.ApiManagement/service@2024-05-01' = if (enableA
   }
 }
 
-resource monitorPrivateLinkScope 'Microsoft.Insights/privateLinkScopes@2021-07-01-preview' = if (enablePrivateEndpoints) {
-  name: monitorPrivateLinkScopeName
-  location: 'global'
-  tags: tags
-  properties: {
-    accessModeSettings: {
-      ingestionAccessMode: 'PrivateOnly'
-      queryAccessMode: 'PrivateOnly'
-    }
-  }
-}
-
-resource workspaceScopedResource 'Microsoft.Insights/privateLinkScopes/scopedResources@2021-07-01-preview' = if (enablePrivateEndpoints) {
-  parent: monitorPrivateLinkScope
-  name: 'law-${take(unique, 4)}'
-  properties: {
-    linkedResourceId: workspace.id
-  }
-}
-
-resource appInsightsScopedResource 'Microsoft.Insights/privateLinkScopes/scopedResources@2021-07-01-preview' = if (enablePrivateEndpoints) {
-  parent: monitorPrivateLinkScope
-  name: 'appi-${take(unique, 4)}'
-  properties: {
-    linkedResourceId: appInsights.id
-  }
-}
-
 resource acrPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = if (enablePrivateEndpoints) {
   name: '${privateEndpointNamePrefix}-acr'
   location: location
@@ -1079,61 +1050,6 @@ resource apimPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZ
   }
 }
 
-resource monitorPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = if (enablePrivateEndpoints) {
-  name: '${privateEndpointNamePrefix}-ampls'
-  location: location
-  tags: tags
-  properties: {
-    subnet: {
-      id: networking!.outputs.privateEndpointsSubnetId
-    }
-    privateLinkServiceConnections: [
-      {
-        name: 'azure-monitor'
-        properties: {
-          privateLinkServiceId: monitorPrivateLinkScope.id
-          groupIds: [
-            'azuremonitor'
-          ]
-        }
-      }
-    ]
-  }
-}
-
-resource monitorPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-07-01' = if (enablePrivateEndpoints) {
-  parent: monitorPrivateEndpoint
-  name: 'default'
-  properties: {
-    privateDnsZoneConfigs: [
-      {
-        name: 'azureMonitor'
-        properties: {
-          privateDnsZoneId: networking!.outputs.privateDnsZoneIds.azureMonitor
-        }
-      }
-      {
-        name: 'logAnalyticsOms'
-        properties: {
-          privateDnsZoneId: networking!.outputs.privateDnsZoneIds.logAnalyticsOms
-        }
-      }
-      {
-        name: 'logAnalyticsOds'
-        properties: {
-          privateDnsZoneId: networking!.outputs.privateDnsZoneIds.logAnalyticsOds
-        }
-      }
-      {
-        name: 'azureMonitorAgentSvc'
-        properties: {
-          privateDnsZoneId: networking!.outputs.privateDnsZoneIds.azureMonitorAgentSvc
-        }
-      }
-    ]
-  }
-}
-
 // Container Apps internal environments expose an environment-specific default domain after provisioning.
 // Create/link the private DNS zone with networking.bicep once that DNS suffix is known by the deployment workflow.
 
@@ -1151,4 +1067,3 @@ output vnetId string = enablePrivateEndpoints ? networking!.outputs.vnetId : ''
 output subnetIds object = enablePrivateEndpoints ? networking!.outputs.subnetIds : {}
 output privateDnsZoneIds object = enablePrivateEndpoints ? networking!.outputs.privateDnsZoneIds : {}
 output natGatewayId string = enablePrivateEndpoints && enableNatGateway ? networking!.outputs.natGatewayId : ''
-output monitorPrivateLinkScopeName string = enablePrivateEndpoints ? monitorPrivateLinkScope.name : ''

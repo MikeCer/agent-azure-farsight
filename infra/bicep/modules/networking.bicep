@@ -53,10 +53,6 @@ var cosmosSqlPrivateDnsZoneName = 'privatelink.documents.azure.com'
 var serviceBusPrivateDnsZoneName = 'privatelink.servicebus.windows.net'
 var appConfigurationPrivateDnsZoneName = 'privatelink.azconfig.io'
 var apiManagementPrivateDnsZoneName = 'privatelink.azure-api.net'
-var azureMonitorPrivateDnsZoneName = 'privatelink.monitor.azure.com'
-var logAnalyticsOmsPrivateDnsZoneName = 'privatelink.oms.opinsights.azure.com'
-var logAnalyticsOdsPrivateDnsZoneName = 'privatelink.ods.opinsights.azure.com'
-var azureMonitorAgentSvcPrivateDnsZoneName = 'privatelink.agentsvc.azure-automation.net'
 
 var storageBlobPrivateDnsZoneId = contains(existingPrivateDnsZoneResourceIds, 'storageBlob') ? string(existingPrivateDnsZoneResourceIds.storageBlob) : ''
 var keyVaultPrivateDnsZoneId = contains(existingPrivateDnsZoneResourceIds, 'keyVault') ? string(existingPrivateDnsZoneResourceIds.keyVault) : ''
@@ -65,10 +61,6 @@ var cosmosSqlPrivateDnsZoneId = contains(existingPrivateDnsZoneResourceIds, 'cos
 var serviceBusPrivateDnsZoneId = contains(existingPrivateDnsZoneResourceIds, 'serviceBus') ? string(existingPrivateDnsZoneResourceIds.serviceBus) : ''
 var appConfigurationPrivateDnsZoneId = contains(existingPrivateDnsZoneResourceIds, 'appConfiguration') ? string(existingPrivateDnsZoneResourceIds.appConfiguration) : ''
 var apiManagementPrivateDnsZoneId = contains(existingPrivateDnsZoneResourceIds, 'apiManagement') ? string(existingPrivateDnsZoneResourceIds.apiManagement) : ''
-var azureMonitorPrivateDnsZoneId = contains(existingPrivateDnsZoneResourceIds, 'azureMonitor') ? string(existingPrivateDnsZoneResourceIds.azureMonitor) : ''
-var logAnalyticsOmsPrivateDnsZoneId = contains(existingPrivateDnsZoneResourceIds, 'logAnalyticsOms') ? string(existingPrivateDnsZoneResourceIds.logAnalyticsOms) : ''
-var logAnalyticsOdsPrivateDnsZoneId = contains(existingPrivateDnsZoneResourceIds, 'logAnalyticsOds') ? string(existingPrivateDnsZoneResourceIds.logAnalyticsOds) : ''
-var azureMonitorAgentSvcPrivateDnsZoneId = contains(existingPrivateDnsZoneResourceIds, 'azureMonitorAgentSvc') ? string(existingPrivateDnsZoneResourceIds.azureMonitorAgentSvc) : ''
 var containerAppsEnvironmentPrivateDnsZoneId = contains(existingPrivateDnsZoneResourceIds, 'containerAppsEnvironment') ? string(existingPrivateDnsZoneResourceIds.containerAppsEnvironment) : ''
 
 // Existing private DNS zones must be supplied as full ARM resource IDs. Bicep can then parse
@@ -125,34 +117,6 @@ var privateDnsZones = [
     existingId: apiManagementPrivateDnsZoneId
     subscriptionId: split(!empty(apiManagementPrivateDnsZoneId) ? apiManagementPrivateDnsZoneId : fallbackPrivateDnsZoneId, '/')[2]
     resourceGroupName: split(!empty(apiManagementPrivateDnsZoneId) ? apiManagementPrivateDnsZoneId : fallbackPrivateDnsZoneId, '/')[4]
-  }
-  {
-    key: 'azureMonitor'
-    name: !empty(azureMonitorPrivateDnsZoneId) ? last(split(azureMonitorPrivateDnsZoneId, '/')) : azureMonitorPrivateDnsZoneName
-    existingId: azureMonitorPrivateDnsZoneId
-    subscriptionId: split(!empty(azureMonitorPrivateDnsZoneId) ? azureMonitorPrivateDnsZoneId : fallbackPrivateDnsZoneId, '/')[2]
-    resourceGroupName: split(!empty(azureMonitorPrivateDnsZoneId) ? azureMonitorPrivateDnsZoneId : fallbackPrivateDnsZoneId, '/')[4]
-  }
-  {
-    key: 'logAnalyticsOms'
-    name: !empty(logAnalyticsOmsPrivateDnsZoneId) ? last(split(logAnalyticsOmsPrivateDnsZoneId, '/')) : logAnalyticsOmsPrivateDnsZoneName
-    existingId: logAnalyticsOmsPrivateDnsZoneId
-    subscriptionId: split(!empty(logAnalyticsOmsPrivateDnsZoneId) ? logAnalyticsOmsPrivateDnsZoneId : fallbackPrivateDnsZoneId, '/')[2]
-    resourceGroupName: split(!empty(logAnalyticsOmsPrivateDnsZoneId) ? logAnalyticsOmsPrivateDnsZoneId : fallbackPrivateDnsZoneId, '/')[4]
-  }
-  {
-    key: 'logAnalyticsOds'
-    name: !empty(logAnalyticsOdsPrivateDnsZoneId) ? last(split(logAnalyticsOdsPrivateDnsZoneId, '/')) : logAnalyticsOdsPrivateDnsZoneName
-    existingId: logAnalyticsOdsPrivateDnsZoneId
-    subscriptionId: split(!empty(logAnalyticsOdsPrivateDnsZoneId) ? logAnalyticsOdsPrivateDnsZoneId : fallbackPrivateDnsZoneId, '/')[2]
-    resourceGroupName: split(!empty(logAnalyticsOdsPrivateDnsZoneId) ? logAnalyticsOdsPrivateDnsZoneId : fallbackPrivateDnsZoneId, '/')[4]
-  }
-  {
-    key: 'azureMonitorAgentSvc'
-    name: !empty(azureMonitorAgentSvcPrivateDnsZoneId) ? last(split(azureMonitorAgentSvcPrivateDnsZoneId, '/')) : azureMonitorAgentSvcPrivateDnsZoneName
-    existingId: azureMonitorAgentSvcPrivateDnsZoneId
-    subscriptionId: split(!empty(azureMonitorAgentSvcPrivateDnsZoneId) ? azureMonitorAgentSvcPrivateDnsZoneId : fallbackPrivateDnsZoneId, '/')[2]
-    resourceGroupName: split(!empty(azureMonitorAgentSvcPrivateDnsZoneId) ? azureMonitorAgentSvcPrivateDnsZoneId : fallbackPrivateDnsZoneId, '/')[4]
   }
   {
     key: 'containerAppsEnvironment'
@@ -304,10 +268,6 @@ output privateDnsZoneIds object = {
   serviceBus: !empty(serviceBusPrivateDnsZoneId) ? serviceBusPrivateDnsZoneId : resourceId('Microsoft.Network/privateDnsZones', serviceBusPrivateDnsZoneName)
   appConfiguration: !empty(appConfigurationPrivateDnsZoneId) ? appConfigurationPrivateDnsZoneId : resourceId('Microsoft.Network/privateDnsZones', appConfigurationPrivateDnsZoneName)
   apiManagement: !empty(apiManagementPrivateDnsZoneId) ? apiManagementPrivateDnsZoneId : resourceId('Microsoft.Network/privateDnsZones', apiManagementPrivateDnsZoneName)
-  azureMonitor: !empty(azureMonitorPrivateDnsZoneId) ? azureMonitorPrivateDnsZoneId : resourceId('Microsoft.Network/privateDnsZones', azureMonitorPrivateDnsZoneName)
-  logAnalyticsOms: !empty(logAnalyticsOmsPrivateDnsZoneId) ? logAnalyticsOmsPrivateDnsZoneId : resourceId('Microsoft.Network/privateDnsZones', logAnalyticsOmsPrivateDnsZoneName)
-  logAnalyticsOds: !empty(logAnalyticsOdsPrivateDnsZoneId) ? logAnalyticsOdsPrivateDnsZoneId : resourceId('Microsoft.Network/privateDnsZones', logAnalyticsOdsPrivateDnsZoneName)
-  azureMonitorAgentSvc: !empty(azureMonitorAgentSvcPrivateDnsZoneId) ? azureMonitorAgentSvcPrivateDnsZoneId : resourceId('Microsoft.Network/privateDnsZones', azureMonitorAgentSvcPrivateDnsZoneName)
   containerAppsEnvironment: !empty(containerAppsEnvironmentPrivateDnsZoneId) ? containerAppsEnvironmentPrivateDnsZoneId : (!empty(containerAppsEnvironmentPrivateDnsZoneName) ? resourceId('Microsoft.Network/privateDnsZones', containerAppsEnvironmentPrivateDnsZoneName) : '')
 }
 output privateDnsZoneNames object = {
@@ -318,9 +278,5 @@ output privateDnsZoneNames object = {
   serviceBus: !empty(serviceBusPrivateDnsZoneId) ? last(split(serviceBusPrivateDnsZoneId, '/')) : serviceBusPrivateDnsZoneName
   appConfiguration: !empty(appConfigurationPrivateDnsZoneId) ? last(split(appConfigurationPrivateDnsZoneId, '/')) : appConfigurationPrivateDnsZoneName
   apiManagement: !empty(apiManagementPrivateDnsZoneId) ? last(split(apiManagementPrivateDnsZoneId, '/')) : apiManagementPrivateDnsZoneName
-  azureMonitor: !empty(azureMonitorPrivateDnsZoneId) ? last(split(azureMonitorPrivateDnsZoneId, '/')) : azureMonitorPrivateDnsZoneName
-  logAnalyticsOms: !empty(logAnalyticsOmsPrivateDnsZoneId) ? last(split(logAnalyticsOmsPrivateDnsZoneId, '/')) : logAnalyticsOmsPrivateDnsZoneName
-  logAnalyticsOds: !empty(logAnalyticsOdsPrivateDnsZoneId) ? last(split(logAnalyticsOdsPrivateDnsZoneId, '/')) : logAnalyticsOdsPrivateDnsZoneName
-  azureMonitorAgentSvc: !empty(azureMonitorAgentSvcPrivateDnsZoneId) ? last(split(azureMonitorAgentSvcPrivateDnsZoneId, '/')) : azureMonitorAgentSvcPrivateDnsZoneName
   containerAppsEnvironment: !empty(containerAppsEnvironmentPrivateDnsZoneId) ? last(split(containerAppsEnvironmentPrivateDnsZoneId, '/')) : containerAppsEnvironmentPrivateDnsZoneName
 }

@@ -51,13 +51,9 @@ param vnetAddressPrefix string = '10.42.0.0/16'
 @description('Address prefix reserved for the SRE Agent private endpoint subnet.')
 param privateEndpointSubnetPrefix string = '10.42.1.0/24'
 
-@description('Existing Private DNS zone resource IDs keyed by service: keyVault, azureMonitor, logAnalyticsOms, logAnalyticsOds, azureMonitorAgentSvc. Empty values let child modules create zones when implemented.')
+@description('Existing Private DNS zone resource IDs keyed by service: keyVault. Empty value lets the networking module create the zone.')
 param privateDnsZoneResourceIds object = {
   keyVault: ''
-  azureMonitor: ''
-  logAnalyticsOms: ''
-  logAnalyticsOds: ''
-  azureMonitorAgentSvc: ''
 }
 
 @description('Link the SRE Agent VNet to existing Private DNS zones when privateDnsZoneResourceIds are provided.')
@@ -73,10 +69,6 @@ var keyVaultName = 'kv-sre-farsight-${uniqueSuffix}'
 var vnetName = 'vnet-sre-farsight-${uniqueSuffix}'
 var normalizedPrivateDnsZoneResourceIds = union({
   keyVault: ''
-  azureMonitor: ''
-  logAnalyticsOms: ''
-  logAnalyticsOds: ''
-  azureMonitorAgentSvc: ''
 }, privateDnsZoneResourceIds)
 var privateNetworking = {
   enablePrivateEndpoints: enablePrivateEndpoints
@@ -106,12 +98,6 @@ module monitoring 'modules/monitoring.bicep' = {
     logAnalyticsName: logAnalyticsName
     appInsightsName: appInsightsName
     tags: tags
-    enablePrivateEndpoints: enablePrivateEndpoints
-    privateEndpointSubnetId: enablePrivateEndpoints ? networking!.outputs.privateEndpointSubnetId : ''
-    azureMonitorPrivateDnsZoneId: enablePrivateEndpoints ? networking!.outputs.privateDnsZoneResourceIds.azureMonitor : ''
-    logAnalyticsOmsPrivateDnsZoneId: enablePrivateEndpoints ? networking!.outputs.privateDnsZoneResourceIds.logAnalyticsOms : ''
-    logAnalyticsOdsPrivateDnsZoneId: enablePrivateEndpoints ? networking!.outputs.privateDnsZoneResourceIds.logAnalyticsOds : ''
-    azureMonitorAgentSvcPrivateDnsZoneId: enablePrivateEndpoints ? networking!.outputs.privateDnsZoneResourceIds.azureMonitorAgentSvc : ''
   }
 }
 
@@ -173,6 +159,20 @@ module sreAgent 'modules/sre-agent.bicep' = {
   }
 }
 
+// Grant the SRE Agent identities Monitoring Reader on App Insights and the
+// Log Analytics workspace so the Agent portal trace viewer can load traces.
+module monitoringAccess 'modules/monitoring-access.bicep' = {
+  name: 'monitoring-access'
+  params: {
+    appInsightsId: monitoring.outputs.appInsightsId
+    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
+    principalIds: [
+      sreAgent.outputs.agentPrincipalId
+      identity.outputs.identityPrincipalId
+    ]
+  }
+}
+
 output agentName string = sreAgent.outputs.agentName
 output agentEndpoint string = sreAgent.outputs.agentEndpoint
 output agentPortalUrl string = sreAgent.outputs.agentPortalUrl
@@ -187,5 +187,3 @@ output privateEndpointVnetId string = enablePrivateEndpoints ? networking!.outpu
 output privateEndpointSubnetId string = enablePrivateEndpoints ? networking!.outputs.privateEndpointSubnetId : ''
 output privateDnsZoneResourceIds object = enablePrivateEndpoints ? networking!.outputs.privateDnsZoneResourceIds : normalizedPrivateDnsZoneResourceIds
 output keyVaultPrivateEndpointId string = keyVault.outputs.keyVaultPrivateEndpointId
-output azureMonitorPrivateLinkScopeId string = monitoring.outputs.azureMonitorPrivateLinkScopeId
-output azureMonitorPrivateEndpointId string = monitoring.outputs.azureMonitorPrivateEndpointId
