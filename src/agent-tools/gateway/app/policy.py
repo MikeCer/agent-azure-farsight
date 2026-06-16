@@ -55,14 +55,39 @@ _POLICY_CACHE: dict[str, Any] = {"expires_at": 0.0, "path": None, "version": Non
 
 def _load_agt_govern() -> Any:
     try:
-        from agentmesh.governance import govern  # type: ignore
+        from agentmesh.governance.policy import Policy  # noqa: F401
     except Exception as exc:
         raise PolicyConfigurationError(
-            "Microsoft Agent Governance Toolkit is required for FarSight policy enforcement. "
-            "Install agent-governance-toolkit[full], or set FARSIGHT_ALLOW_POLICY_FALLBACK=true "
-            "for local development only."
+            "agent-governance-toolkit-core is required for FarSight policy enforcement. "
+            "Install it with: pip install agent-governance-toolkit-core"
         ) from exc
-    return govern
+
+
+def _agt_evaluate_policy(policy_path: Path, context: dict[str, Any]) -> tuple[str, str | None]:
+    """Evaluate context against an AGT Policy file. Returns (action, rule_name)."""
+    try:
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            from agentmesh.governance.policy import Policy
+    except ImportError as exc:
+        raise PolicyConfigurationError(
+            "agent-governance-toolkit-core is required for FarSight policy enforcement. "
+            "Install it with: pip install agent-governance-toolkit-core"
+        ) from exc
+
+    content = policy_path.read_text(encoding="utf-8")
+    policy = Policy.from_yaml(content)
+
+    # Evaluate rules in priority order; first match wins
+    rules = sorted(policy.rules, key=lambda r: r.priority)
+    for rule in rules:
+        if not rule.enabled:
+            continue
+        if rule.evaluate(context):
+            return rule.action, rule.name
+
+    return policy.default_action, None
 
 
 def _policy_path() -> Path:
@@ -70,7 +95,7 @@ def _policy_path() -> Path:
 
 
 def _policy_source() -> str:
-    return os.getenv("FARSIGHT_POLICY_SOURCE", "file").strip().lower()
+    return os.getenv("FARSIGHT_POLICY_SOURCE", "api").strip().lower()
 
 
 def _allow_fallback() -> bool:
@@ -197,10 +222,6 @@ def _evaluate_with_fallback(context: dict[str, Any]) -> PolicyDecision:
     )
 
 
-def _agt_probe_tool(**kwargs: Any) -> dict[str, Any]:
-    return {"policyContext": kwargs}
-
-
 def _api_bearer_token() -> str:
     base_url = os.getenv("FARSIGHT_API_BASE_URL", "").rstrip("/")
     scope = normalize_api_scope(os.getenv("FARSIGHT_API_SCOPE", ""), base_url or "api://farsight")
@@ -256,39 +277,41 @@ def _resolve_policy_material() -> tuple[Path, str | None, str | None]:
 
 
 def _evaluate_with_agt(context: dict[str, Any]) -> PolicyDecision:
-    govern = _load_agt_govern()
     policy_path, policy_version, policy_hash = _resolve_policy_material()
     if not policy_path.exists():
         raise PolicyConfigurationError(f"AGT policy file not found: {policy_path}")
 
-    governed_tool = govern(_agt_probe_tool, policy=str(policy_path))
-    try:
-        governed_tool(**context)
-    except Exception as exc:
-        name = exc.__class__.__name__.lower()
-        message = str(exc)
-        if "approval" in name or "approval" in message.lower() or "require_approval" in message:
-            return PolicyDecision(
-                outcome=PolicyOutcome.require_approval,
-                reason=message or "AGT policy requires approval.",
-                policyVersion=str(policy_version or POLICY_VERSION),
-                policyName=policy_path.stem,
-                evidence={"tool_name": context["tool_name"], "content_hash": policy_hash},
-            )
-        return PolicyDecision(
-            outcome=PolicyOutcome.deny,
-            reason=message or "AGT policy denied the action.",
-            policyVersion=str(policy_version or POLICY_VERSION),
-            policyName=policy_path.stem,
-            evidence={"tool_name": context["tool_name"], "content_hash": policy_hash},
-        )
+    action, rule_name = _agt_evaluate_policy(policy_path, context)
 
     policy_doc = yaml.safe_load(policy_path.read_text(encoding="utf-8")) or {}
+    effective_version = str(policy_version or policy_doc.get("version") or POLICY_VERSION)
+    effective_name = str(policy_doc.get("name") or policy_path.stem)
+
+    if action == "allow":
+        return PolicyDecision(
+            outcome=PolicyOutcome.allow,
+            reason=f"Allowed by AGT policy rule '{rule_name}'." if rule_name else "Allowed by AGT policy default.",
+            policyVersion=effective_version,
+            policyName=effective_name,
+            ruleName=rule_name,
+            evidence={"tool_name": context["tool_name"], "content_hash": policy_hash},
+        )
+    if action == "require_approval":
+        return PolicyDecision(
+            outcome=PolicyOutcome.require_approval,
+            reason=f"AGT policy rule '{rule_name}' requires approval.",
+            policyVersion=effective_version,
+            policyName=effective_name,
+            ruleName=rule_name,
+            evidence={"tool_name": context["tool_name"], "content_hash": policy_hash},
+        )
+    # deny (default)
     return PolicyDecision(
-        outcome=PolicyOutcome.allow,
-        reason="Allowed by Microsoft Agent Governance Toolkit policy.",
-        policyVersion=str(policy_version or policy_doc.get("version") or POLICY_VERSION),
-        policyName=str(policy_doc.get("name") or policy_path.stem),
+        outcome=PolicyOutcome.deny,
+        reason=f"Denied by AGT policy rule '{rule_name}'." if rule_name else "Denied by AGT policy default (no matching allow rule).",
+        policyVersion=effective_version,
+        policyName=effective_name,
+        ruleName=rule_name,
         evidence={"tool_name": context["tool_name"], "content_hash": policy_hash},
     )
 

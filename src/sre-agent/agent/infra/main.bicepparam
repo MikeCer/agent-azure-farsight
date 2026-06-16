@@ -9,6 +9,7 @@ param defaultModelName = readEnvironmentVariable('SRE_AGENT_DEFAULT_MODEL_NAME',
 param monthlyAgentUnitLimit = int(readEnvironmentVariable('SRE_AGENT_MONTHLY_AGENT_UNIT_LIMIT', '10000'))
 param enableSandboxGroup = bool(readEnvironmentVariable('SRE_AGENT_ENABLE_SANDBOX_GROUP', 'true'))
 param enableWorkspaceTools = bool(readEnvironmentVariable('SRE_AGENT_ENABLE_WORKSPACE_TOOLS', 'true'))
+param enableMonitoringReaderRoleAssignments = bool(readEnvironmentVariable('SRE_AGENT_ENABLE_MONITORING_ROLE_ASSIGNMENTS', 'false'))
 param initialSponsorGroupId = readEnvironmentVariable('SRE_AGENT_INITIAL_SPONSOR_GROUP_ID', '')
 param enableAgentSpace = bool(readEnvironmentVariable('SRE_AGENT_ENABLE_AGENT_SPACE', 'false'))
 param enablePrivateEndpoints = bool(readEnvironmentVariable('SRE_AGENT_ENABLE_PRIVATE_ENDPOINTS', 'true'))

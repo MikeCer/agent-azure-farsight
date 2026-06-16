@@ -15,11 +15,38 @@ from .models import (
     PolicyOutcome,
     ToolResponse,
 )
-from .policy import evaluate_policy
+from .policy import PolicyConfigurationError, evaluate_policy
 
 
 def _blocked(tool_name: str, policy: PolicyDecision) -> ToolResponse:
     return ToolResponse(toolName=tool_name, policy=policy, data={"status": "blocked"})
+
+
+def _policy_error(tool_name: str, message: str) -> ToolResponse:
+    """Return a structured error response when policy evaluation fails to configure."""
+    from .models import ToolRisk
+    return ToolResponse(
+        toolName=tool_name,
+        policy=PolicyDecision(
+            outcome=PolicyOutcome.deny,
+            reason=f"Policy configuration error: {message}",
+            policyVersion="unknown",
+            policyName="error",
+            evidence={"tool_name": tool_name},
+        ),
+        data={"status": "policy_error", "message": message},
+    )
+
+
+def _eval_policy(tool_name: str, risk_level=None, payload=None) -> PolicyDecision | ToolResponse:
+    """Evaluate policy and return either PolicyDecision or a ToolResponse on configuration error."""
+    try:
+        from .models import ToolRisk
+        if risk_level is None:
+            return evaluate_policy(tool_name, payload=payload)
+        return evaluate_policy(tool_name, risk_level, payload=payload)
+    except PolicyConfigurationError as exc:
+        return _policy_error(tool_name, str(exc))
 
 
 async def _call_api(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -52,7 +79,9 @@ async def _call_api(method: str, path: str, payload: dict[str, Any] | None = Non
 async def create_diagnostic_job(request: DiagnosticJobRequest) -> ToolResponse:
     tool_name = "create_diagnostic_job"
     payload = request.model_dump(by_alias=True)
-    policy = evaluate_policy(tool_name, request.risk_level, payload)
+    policy = _eval_policy(tool_name, request.risk_level, payload)
+    if isinstance(policy, ToolResponse):
+        return policy
     if policy.outcome == PolicyOutcome.deny:
         return _blocked(tool_name, policy)
     if policy.outcome == PolicyOutcome.require_approval:
@@ -63,7 +92,9 @@ async def create_diagnostic_job(request: DiagnosticJobRequest) -> ToolResponse:
 
 async def get_job_status(request: JobLookupRequest) -> ToolResponse:
     tool_name = "get_job_status"
-    policy = evaluate_policy(tool_name, payload=request.model_dump(by_alias=True))
+    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True))
+    if isinstance(policy, ToolResponse):
+        return policy
     if policy.outcome != PolicyOutcome.allow:
         return _blocked(tool_name, policy)
     data = await _call_api("GET", f"/api/v1/jobs/{request.job_id}")
@@ -72,7 +103,9 @@ async def get_job_status(request: JobLookupRequest) -> ToolResponse:
 
 async def get_job_result_summary(request: JobLookupRequest) -> ToolResponse:
     tool_name = "get_job_result_summary"
-    policy = evaluate_policy(tool_name, payload=request.model_dump(by_alias=True))
+    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True))
+    if isinstance(policy, ToolResponse):
+        return policy
     if policy.outcome != PolicyOutcome.allow:
         return _blocked(tool_name, policy)
     data = await _call_api("GET", f"/api/v1/jobs/{request.job_id}/summary")
@@ -81,7 +114,9 @@ async def get_job_result_summary(request: JobLookupRequest) -> ToolResponse:
 
 async def retrieve_artifact_metadata(request: ArtifactMetadataRequest) -> ToolResponse:
     tool_name = "retrieve_artifact_metadata"
-    policy = evaluate_policy(tool_name, payload=request.model_dump(by_alias=True))
+    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True))
+    if isinstance(policy, ToolResponse):
+        return policy
     if policy.outcome != PolicyOutcome.allow:
         return _blocked(tool_name, policy)
     data = await _call_api("GET", f"/api/v1/jobs/{request.job_id}/artifacts")
@@ -91,7 +126,9 @@ async def retrieve_artifact_metadata(request: ArtifactMetadataRequest) -> ToolRe
 async def request_follow_up_module_execution(request: FollowUpRequest) -> ToolResponse:
     tool_name = "request_follow_up_module_execution"
     payload = request.model_dump(by_alias=True)
-    policy = evaluate_policy(tool_name, request.risk_level, payload)
+    policy = _eval_policy(tool_name, request.risk_level, payload)
+    if isinstance(policy, ToolResponse):
+        return policy
     if policy.outcome != PolicyOutcome.allow:
         return _blocked(tool_name, policy)
     parent_job_id = payload.pop("parentJobId")
@@ -102,7 +139,9 @@ async def request_follow_up_module_execution(request: FollowUpRequest) -> ToolRe
 async def request_approval_for_action(request: ApprovalToolRequest) -> ToolResponse:
     tool_name = "request_approval_for_action"
     payload = request.model_dump(by_alias=True) | {"requestedBy": "azure-sre-agent"}
-    policy = evaluate_policy(tool_name, request.risk_level, payload)
+    policy = _eval_policy(tool_name, request.risk_level, payload)
+    if isinstance(policy, ToolResponse):
+        return policy
     if policy.outcome == PolicyOutcome.deny:
         return _blocked(tool_name, policy)
     data = await _call_api("POST", "/api/v1/approvals", payload)
@@ -111,7 +150,9 @@ async def request_approval_for_action(request: ApprovalToolRequest) -> ToolRespo
 
 async def query_device_investigation_history(request: InvestigationHistoryRequest) -> ToolResponse:
     tool_name = "query_device_investigation_history"
-    policy = evaluate_policy(tool_name, payload=request.model_dump(by_alias=True))
+    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True))
+    if isinstance(policy, ToolResponse):
+        return policy
     if policy.outcome != PolicyOutcome.allow:
         return _blocked(tool_name, policy)
     data = await _call_api("GET", f"/api/v1/devices/{request.device_id}/investigations")

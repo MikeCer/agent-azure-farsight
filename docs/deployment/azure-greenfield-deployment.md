@@ -207,6 +207,15 @@ azd env set FARSIGHT_AGENT_TOOLS_REQUIRED_APP_ROLE "<value-from-agent-tools-scri
 azd env set FARSIGHT_AGENT_TOOLS_ALLOWED_ISSUERS "<csv-issuer-allowlist>"
 ```
 
+When gateway workload auth is enabled, grant the Agent Tools app role to the caller identity (for example SRE managed identity):
+
+```bash
+MI_CLIENT_ID="<sre-mi-client-id>" \
+FARSIGHT_AGENT_TOOLS_APP_ID="<agent-tools-app-id>" \
+FARSIGHT_AGENT_TOOLS_ROLE_VALUE="Farsight.AgentTools.Access" \
+./scripts/grant-farsight-agent-tools-access.sh
+```
+
 At this stage you also need allowed caller SP object IDs:
 
 ```bash
@@ -224,6 +233,15 @@ MI_CLIENT_IDS="<sre-mi-client-id>,<agt-gateway-mi-client-id>" \
 FARSIGHT_API_APP_ID="<farsight-api-app-id>" \
 FARSIGHT_API_ROLE_VALUE="Farsight.Api.Access" \
 ./src/sre-agent/scripts/grant-farsight-api-access.sh
+```
+
+Or grant AGT gateway only with the root helper:
+
+```bash
+AGENT_TOOLS_MI_CLIENT_ID="<agt-gateway-mi-client-id>" \
+FARSIGHT_API_APP_ID="<farsight-api-app-id>" \
+FARSIGHT_API_ROLE_VALUE="Farsight.Api.Access" \
+./scripts/grant-farsight-agent-tools-api-access.sh
 ```
 
 ## 9. Second pass apply (activate Easy Auth + workload auth in runtime)
@@ -293,6 +311,7 @@ azd env set SRE_AGENT_DEFAULT_MODEL_NAME Automatic
 azd env set SRE_AGENT_MONTHLY_AGENT_UNIT_LIMIT 10000
 azd env set SRE_AGENT_ENABLE_SANDBOX_GROUP true
 azd env set SRE_AGENT_ENABLE_WORKSPACE_TOOLS true
+azd env set SRE_AGENT_ENABLE_MONITORING_ROLE_ASSIGNMENTS false
 
 # Optional: set only for first-time Agent Space identity initialization
 azd env set SRE_AGENT_INITIAL_SPONSOR_GROUP_ID "<entra-group-object-id>"
@@ -381,6 +400,12 @@ The SRE FarSight tools default to `{api_base_url}/.default` as the token scope w
    FARSIGHT_API_APP_ID="<farsight-api-app-id>" \
    ./src/sre-agent/scripts/grant-farsight-api-access.sh
    ```
+   Or AGT-only:
+   ```bash
+   AGENT_TOOLS_MI_CLIENT_ID="<agt-gateway-mi-client-id>" \
+   FARSIGHT_API_APP_ID="<farsight-api-app-id>" \
+   ./scripts/grant-farsight-agent-tools-api-access.sh
+   ```
 4. Redeploy tools so the scope default is injected:
    ```bash
    cd src/sre-agent/agent
@@ -398,11 +423,23 @@ The SRE FarSight tools default to `{api_base_url}/.default` as the token scope w
   `az resource show --resource-group <rg> --resource-type Microsoft.App/agents --name <agent-name>`.
 - If re-running against an existing agent, leave `SRE_AGENT_INITIAL_SPONSOR_GROUP_ID` unset. This value is intended for first-create identity initialization only.
 
+### `RoleAssignmentExists: The role assignment already exists` during SRE `azd up`
+
+If provisioning fails with duplicate Monitoring Reader role assignments on Application Insights / Log Analytics, disable infra-managed monitoring assignments for this environment and rerun:
+
+```bash
+cd src/sre-agent/agent
+azd env set SRE_AGENT_ENABLE_MONITORING_ROLE_ASSIGNMENTS false
+azd up
+```
+
+Use `true` only when you explicitly need Bicep to create these assignments and no equivalent assignments already exist.
+
 ### SRE Agent portal: `Failed to load trace data: Request failed with status code 403`
 
 The trace viewer reads execution traces from the linked Application Insights (workspace-based), which is a data-plane operation. The control-plane `Reader` role is not enough.
 
-- `infra/modules/monitoring-access.bicep` grants the SRE Agent system-assigned and user-assigned identities **Monitoring Reader** on both Application Insights and the Log Analytics workspace. Re-run `azd provision` after pulling the latest infra.
+- `infra/modules/monitoring-access.bicep` can grant the SRE Agent system-assigned and user-assigned identities **Monitoring Reader** on both Application Insights and the Log Analytics workspace when `SRE_AGENT_ENABLE_MONITORING_ROLE_ASSIGNMENTS=true`.
 - To fix an existing deployment immediately, grant Monitoring Reader to both agent identities:
 
   ```bash

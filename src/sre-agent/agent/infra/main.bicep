@@ -43,6 +43,9 @@ param enableSandboxGroup bool = true
 @description('Enable newer workspace tool capabilities on the SRE Agent runtime.')
 param enableWorkspaceTools bool = true
 
+@description('Grant Monitoring Reader role assignments on App Insights and Log Analytics for SRE identities. Disable when assignments are already managed externally.')
+param enableMonitoringReaderRoleAssignments bool = false
+
 @description('Initial sponsor group ID used to initialize 2026 SRE Agent identity on first create. Leave empty for idempotent updates.')
 param initialSponsorGroupId string = ''
 
@@ -102,6 +105,7 @@ module resources 'resources.bicep' = {
     monthlyAgentUnitLimit: monthlyAgentUnitLimit
     enableSandboxGroup: enableSandboxGroup
     enableWorkspaceTools: enableWorkspaceTools
+    enableMonitoringReaderRoleAssignments: enableMonitoringReaderRoleAssignments
     initialSponsorGroupId: initialSponsorGroupId
     enableAgentSpace: enableAgentSpace
     enablePrivateEndpoints: enablePrivateEndpoints

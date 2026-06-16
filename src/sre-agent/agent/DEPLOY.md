@@ -76,7 +76,7 @@ The Bicep deployment now aligns with the migrated stable SRE Agent resource shap
 
 The Agent portal trace viewer loads execution traces from the linked Application Insights (workspace-based). Reading that telemetry is a **data-plane** operation, so the control-plane `Reader` role is not sufficient and the viewer returns `Failed to load trace data: Request failed with status code 403`.
 
-`infra/modules/monitoring-access.bicep` grants the SRE Agent system-assigned and user-assigned identities the **Monitoring Reader** role (`43d0d8ad-25c7-4714-9337-8ba259a9fe05`) on both the Application Insights component and the Log Analytics workspace. Role assignment propagation can take a few minutes after `azd provision`; refresh the trace view afterward.
+`infra/modules/monitoring-access.bicep` can grant the SRE Agent system-assigned and user-assigned identities the **Monitoring Reader** role (`43d0d8ad-25c7-4714-9337-8ba259a9fe05`) on both the Application Insights component and the Log Analytics workspace. This is controlled by `SRE_AGENT_ENABLE_MONITORING_ROLE_ASSIGNMENTS` (default `false`) to avoid `RoleAssignmentExists` failures when assignments are already present. If you enable it, role assignment propagation can take a few minutes after `azd provision`; refresh the trace view afterward.
 
 
 ### 3. Resolve Intune diagnostics authentication defaults
@@ -163,7 +163,7 @@ For `intune_diagnostics_tool.yaml`, the deployment body includes:
     "dependencies": [],
     "authEnabled": true,
     "authScopes": ["https://vault.azure.net/.default"],
-    "timeoutSeconds": 120,
+    "timeoutSeconds": 300,
     "toolMode": "Auto"
   }
 }
@@ -178,6 +178,7 @@ PUT /api/v2/extendedAgent/tools/{toolName}
 Important details:
 
 - Python source must be sent as `functionCode`, not `code`.
+- The Intune tool timeout is configured at `300` seconds to reduce playground 504 timeouts on slower Graph calls.
 - The deployed Python source must expose a top-level typed `main(...) -> dict`.
 - The deployed Python source must not include a top-level CLI execution block, because Azure SRE Agent loads tools in an IPython kernel context.
 - The SRE Agent PythonFunctionTool runtime does not automatically inherit `azd env` or operator shell variables. `deploy.py` therefore embeds SRE gateway endpoint defaults (`SRE_AGENT_TOOL_ENDPOINT_URL`, `SRE_AGENT_TOOL_AUTH_MODE`, and `SRE_AGENT_TOOL_ENDPOINT_SCOPE`) into the deployed FarSight tool source and also sets matching parameter defaults. Runtime `os.environ` lookup remains only as a fallback for custom execution environments.

@@ -1,6 +1,6 @@
 # FarSight AGT policies
 
-`farsight-tool-policy.yaml` is the default policy loaded by the FarSight tool gateway.
+`farsight-tool-policy.yaml` is the local policy file used when `FARSIGHT_POLICY_SOURCE=file` (explicit local/offline mode). API-backed policy loading is the default.
 
 The gateway evaluates each tool call before it reaches the FarSight API. The policy is intentionally conservative:
 

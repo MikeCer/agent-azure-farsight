@@ -67,7 +67,7 @@ Environment settings:
 - `FARSIGHT_API_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS=<csv of allowed SP object IDs>` and/or
 - `FARSIGHT_API_REQUIRED_APP_ROLE=<app role value expected in token roles claim>`
 
-Use `scripts/provision-farsight-api-app-registration.py` to create/update the FarSight API app registration and application app role, then grant that role to SRE/AGT managed identities with `src/sre-agent/scripts/grant-farsight-api-access.sh`.
+Use `scripts/provision-farsight-api-app-registration.py` to create/update the FarSight API app registration and application app role. Grant that role to SRE/AGT managed identities with `src/sre-agent/scripts/grant-farsight-api-access.sh`, or grant AGT-only with `scripts/grant-farsight-agent-tools-api-access.sh`.
 
 When enforcement is enabled, the API validates JWT signature/audience/issuer/tenant using Entra JWKS, requires application workload token claims (`oid`, `appid`/`azp`), blocks delegated `scp` tokens, and then enforces caller allowlist and/or required app role.
 

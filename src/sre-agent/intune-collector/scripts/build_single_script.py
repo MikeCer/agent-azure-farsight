@@ -101,9 +101,9 @@ def main(
     azure_ad_device_id: str | None = None,
     serial_number: str | None = None,
     include_pii: bool = False,
-    include_beta_endpoint_analytics: bool = True,
-    max_resolution_pages: int = 20,
-    max_optional_pages: int = 5,
+    include_beta_endpoint_analytics: bool = False,
+    max_resolution_pages: int = 5,
+    max_optional_pages: int = 2,
 ) -> dict:
     """Collect read-only Intune diagnostics for one Windows client device."""
     default_auth_mode = _default_value(_DEFAULT_AUTH_MODE)

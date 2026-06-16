@@ -79,6 +79,7 @@ Set these with `azd env set <KEY> <VALUE>` before `azd up`:
 | `SRE_AGENT_MONTHLY_AGENT_UNIT_LIMIT` | No | Defaults to `10000`. Matches current migrated SRE Agent resource unit-limit shape. |
 | `SRE_AGENT_ENABLE_SANDBOX_GROUP` | No | Defaults to `true`. Enables the newer SRE sandbox feature on resource creation. |
 | `SRE_AGENT_ENABLE_WORKSPACE_TOOLS` | No | Defaults to `true`. Enables newer workspace tool capabilities on resource creation. |
+| `SRE_AGENT_ENABLE_MONITORING_ROLE_ASSIGNMENTS` | No | Defaults to `false`. Set to `true` only when you want infra-managed Monitoring Reader role assignments for SRE identities. |
 | `SRE_AGENT_INITIAL_SPONSOR_GROUP_ID` | Optional | Entra group object ID used to initialize the 2026 SRE Agent identity on first create. Leave empty for repeatable updates. |
 | `SRE_AGENT_ENABLE_AGENT_SPACE` | No | Defaults to `false`. Set to `true` only when `Microsoft.App/agentSpaces` is enabled for the tenant/subscription. |
 | `SRE_AGENT_TOOL_ENDPOINT_URL` | Recommended | AGT gateway base URL consumed by SRE FarSight tools. Injected as the default `api_base_url` for all FarSight tools (`create_diagnostic_job`, `get_job_status`, `get_job_result_summary`, `retrieve_artifact_metadata`, `query_device_investigation_history`, `request_follow_up_module_execution`, `request_approval_for_action`). Set this to the `agent-tools` Container App URL (gateway), not the FarSight API URL. |
@@ -102,6 +103,8 @@ The default deployment mode is **managed identity**. After `azd up`, call `intun
   "auth_mode": "default"
 }
 ```
+
+The deployed tool defaults are tuned for playground reliability (`include_beta_endpoint_analytics=false`, `max_resolution_pages=5`, `max_optional_pages=2`). For deeper investigations, override these per-call.
 
 If you explicitly opt into `key-vault` mode, use the Key Vault output and secret names below:
 

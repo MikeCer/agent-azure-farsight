@@ -18,6 +18,7 @@
 #   SRE_AGENT_MONTHLY_AGENT_UNIT_LIMIT - 10000 by default
 #   SRE_AGENT_ENABLE_SANDBOX_GROUP    - true by default
 #   SRE_AGENT_ENABLE_WORKSPACE_TOOLS  - true by default
+#   SRE_AGENT_ENABLE_MONITORING_ROLE_ASSIGNMENTS - false by default; set true only if you need infra-managed Monitoring Reader grants
 #   SRE_AGENT_INITIAL_SPONSOR_GROUP_ID - Entra group object ID for 2026 agent identity initialization
 #   SRE_AGENT_ENABLE_AGENT_SPACE      - false by default; requires Agent Spaces enablement
 #   INTUNE_DIAGNOSTICS_AUTH_MODE      - managed-identity by default; or key-vault

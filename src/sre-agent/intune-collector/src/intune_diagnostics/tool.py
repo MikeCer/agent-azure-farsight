@@ -72,7 +72,11 @@ def main(
         service_principal_env = _service_principal_env(resolved_tenant_id, resolved_client_id, resolved_client_secret)
         with _temporary_env(service_principal_env):
             token_provider, _ = build_token_provider(auth_mode)
-            graph = GraphClient(token_provider)
+            graph = GraphClient(
+                token_provider,
+                timeout_seconds=config.graph_timeout_seconds,
+                max_retries=config.graph_max_retries,
+            )
             disambiguation = DeviceDisambiguation(managed_device_id, azure_ad_device_id, serial_number)
             device = resolve_device_by_name(graph, device_name, config, disambiguation=disambiguation)
             document = collect_device_diagnostics(
@@ -106,6 +110,8 @@ def main(
                 "identity": exc.identity_context,
             }
         return _error_document(device_name, "collection_error", str(exc), details=details).to_sre_dict()
+    except Exception as exc:  # noqa: BLE001
+        return _error_document(device_name, "collection_error", f"Unexpected error: {exc}").to_sre_dict()
 
 
 def _error_document(

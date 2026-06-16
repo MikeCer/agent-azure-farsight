@@ -11,6 +11,7 @@ import json as json_module
 import sys
 
 import requests
+import requests.exceptions
 
 
 class GraphError(RuntimeError):
@@ -38,8 +39,8 @@ class GraphClient:
         token_provider: Callable[[], str],
         *,
         base_url: str = "https://graph.microsoft.com",
-        timeout_seconds: int = 30,
-        max_retries: int = 3,
+        timeout_seconds: int = 15,
+        max_retries: int = 2,
         session: requests.Session | None = None,
     ) -> None:
         self._token_provider = token_provider
@@ -72,14 +73,30 @@ class GraphClient:
         url = self._url(api_version, path_or_url)
         for attempt in range(self._max_retries + 1):
             token = self._token_provider()
-            response = self._session.request(
-                method,
-                url,
-                params=params,
-                json=json,
-                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-                timeout=self._timeout_seconds,
-            )
+            try:
+                response = self._session.request(
+                    method,
+                    url,
+                    params=params,
+                    json=json,
+                    headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                    timeout=self._timeout_seconds,
+                )
+            except requests.exceptions.Timeout:
+                raise GraphError(
+                    f"Microsoft Graph request timed out after {self._timeout_seconds}s: {method} {url}",
+                    url=url,
+                )
+            except requests.exceptions.ConnectionError as exc:
+                raise GraphError(
+                    f"Microsoft Graph connection failed: {method} {url}: {exc}",
+                    url=url,
+                )
+            except requests.exceptions.RequestException as exc:
+                raise GraphError(
+                    f"Microsoft Graph request error: {method} {url}: {exc}",
+                    url=url,
+                )
             if response.status_code in {429, 500, 502, 503, 504} and attempt < self._max_retries:
                 sleep(self._retry_after_seconds(response.headers.get("Retry-After"), attempt))
                 continue

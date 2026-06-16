@@ -65,6 +65,7 @@ Deployment model:
 - The Entra app registration is created or updated manually with `scripts/provision-admin-app-registration.py` after the admin URL or custom domain is known.
 - FarSight API app registration and API app role for workload-token enforcement are created or updated manually with `scripts/provision-farsight-api-app-registration.py`.
 - Optional dedicated Agent Tools audience registration can be created/updated with `scripts/provision-farsight-agent-tools-app-registration.py` and used for `SRE_AGENT_TOOL_ENDPOINT_SCOPE`.
+- Agent Tools app-role grants for gateway inbound workload auth are assigned with `scripts/grant-farsight-agent-tools-access.sh`.
 - The resulting `FARSIGHT_ADMIN_AUTH_*` values are stored in the AZD environment.
 - Bicep enables Easy Auth only when the enable flag, client ID, client secret, auth encryption secret, and issuer are all populated.
 - The Easy Auth Entra client secret is stored on the admin web Container App as `microsoft-provider-authentication-secret`.

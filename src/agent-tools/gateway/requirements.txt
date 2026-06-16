@@ -5,5 +5,5 @@ httpx==0.28.1
 azure-identity==1.19.0
 azure-core==1.32.0
 PyJWT[crypto]==2.10.1
-agent-governance-toolkit[full]>=4.0.0
+agent-governance-toolkit-core>=4.1.0
 PyYAML==6.0.2

@@ -21,3 +21,5 @@ class DiagnosticConfig:
     max_timeline_events: int = 25
     include_beta_endpoint_analytics: bool = True
     include_pii: bool = False
+    graph_timeout_seconds: int = 15
+    graph_max_retries: int = 2

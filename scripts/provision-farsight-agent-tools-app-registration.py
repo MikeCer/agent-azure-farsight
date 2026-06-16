@@ -171,6 +171,12 @@ def main() -> int:
         print(f"# applicationObjectId={values['applicationObjectId']}")
         print(f"# servicePrincipalObjectId={values['servicePrincipalObjectId']}")
         print(f"# appRoleId={values['appRoleId']}")
+        print("")
+        print("# Next step: grant this app role to caller managed identities (for example SRE MI)")
+        print(
+            f"# MI_CLIENT_ID=\"<sre-mi-client-id>\" FARSIGHT_AGENT_TOOLS_APP_ID=\"{app['appId']}\" "
+            f"FARSIGHT_AGENT_TOOLS_ROLE_VALUE=\"{args.role_value}\" ./scripts/grant-farsight-agent-tools-access.sh"
+        )
     return 0
 
 

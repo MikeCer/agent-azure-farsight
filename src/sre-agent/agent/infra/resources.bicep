@@ -36,6 +36,9 @@ param enableSandboxGroup bool = true
 @description('Enable newer workspace tool capabilities on the SRE Agent runtime.')
 param enableWorkspaceTools bool = true
 
+@description('Grant Monitoring Reader role assignments on App Insights and Log Analytics for SRE identities.')
+param enableMonitoringReaderRoleAssignments bool = false
+
 @description('Initial sponsor group ID used to initialize 2026 SRE Agent identity on first create. Leave empty for idempotent updates.')
 param initialSponsorGroupId string = ''
 
@@ -161,7 +164,7 @@ module sreAgent 'modules/sre-agent.bicep' = {
 
 // Grant the SRE Agent identities Monitoring Reader on App Insights and the
 // Log Analytics workspace so the Agent portal trace viewer can load traces.
-module monitoringAccess 'modules/monitoring-access.bicep' = {
+module monitoringAccess 'modules/monitoring-access.bicep' = if (enableMonitoringReaderRoleAssignments) {
   name: 'monitoring-access'
   params: {
     appInsightsId: monitoring.outputs.appInsightsId

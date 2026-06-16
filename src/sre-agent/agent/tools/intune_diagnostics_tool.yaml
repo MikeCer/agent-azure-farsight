@@ -67,20 +67,20 @@ parameters:
   - name: include_beta_endpoint_analytics
     type: bool
     required: false
-    description: Include beta Endpoint Analytics evidence. Defaults to true.
+    description: Include beta Endpoint Analytics evidence. Defaults to false for faster baseline runs.
   - name: max_resolution_pages
     type: int
     required: false
-    description: Maximum Graph pages to read while resolving the target device. Defaults to 20.
+    description: Maximum Graph pages to read while resolving the target device. Defaults to 5.
   - name: max_optional_pages
     type: int
     required: false
-    description: Maximum Graph pages to read for optional evidence collections. Defaults to 5.
+    description: Maximum Graph pages to read for optional evidence collections. Defaults to 2.
 dependencies: []
 auth_enabled: true
 auth_scopes:
   - https://vault.azure.net/.default
 connector:
 attributes: []
-timeout_seconds: 120
+timeout_seconds: 300
 tool_mode: Auto

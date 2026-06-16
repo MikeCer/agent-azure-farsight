@@ -1,4 +1,6 @@
 from fastapi import Depends, FastAPI
+from fastapi.responses import JSONResponse
+from starlette.requests import Request
 
 from .auth import WorkloadCaller, require_workload_caller
 from .models import (
@@ -10,6 +12,7 @@ from .models import (
     JobLookupRequest,
     ToolResponse,
 )
+from .policy import PolicyConfigurationError
 from .tools import (
     create_diagnostic_job,
     get_job_result_summary,
@@ -19,6 +22,20 @@ from .tools import (
     request_follow_up_module_execution,
     retrieve_artifact_metadata,
 )
+
+app = FastAPI(title="FarSight AGT Tool Gateway", version="0.1.0")
+
+
+@app.exception_handler(PolicyConfigurationError)
+async def policy_configuration_error_handler(request: Request, exc: PolicyConfigurationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "policy_configuration_error",
+            "message": str(exc),
+            "hint": "Set FARSIGHT_ALLOW_POLICY_FALLBACK=true to use the built-in fallback policy evaluator.",
+        },
+    )
 
 app = FastAPI(title="FarSight AGT Tool Gateway", version="0.1.0")
 
