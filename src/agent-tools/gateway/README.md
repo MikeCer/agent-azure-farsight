@@ -6,35 +6,26 @@ The FarSight tool gateway exposes typed HTTP endpoints for Azure SRE Agent tools
 
 The gateway uses Microsoft Agent Governance Toolkit (AGT) as the production policy engine. Every tool function builds an action context and evaluates policy before calling the FarSight control API.
 
-Default bootstrap policy file:
+The active policy is loaded at runtime from the FarSight control API (`GET /api/v1/policies/{policyId}`), which is backed by the Cosmos DB `policies` container. The canonical seed policy lives at `src/api/app/policies/farsight-tool-policy.yaml` — it is seeded into Cosmos DB on first deploy and editable via the admin console. If the API is unavailable or returns an empty policy, the gateway fails closed with an error.
 
-```text
-src/agent-tools/gateway/policies/farsight-tool-policy.yaml
-```
-
-By default, the gateway uses `FARSIGHT_POLICY_SOURCE=api` so it retrieves the active policy from the FarSight control API, which is backed by the Cosmos DB `policies` container. If the API/policy cannot be loaded, the gateway fails closed and returns an error. Use `FARSIGHT_POLICY_SOURCE=file` only for explicit local/offline development.
-
-Runtime overrides:
+Runtime configuration:
 
 | Variable | Purpose |
 | --- | --- |
-| `FARSIGHT_POLICY_SOURCE` | Policy source selector. Default is `api` (fail-closed if API unavailable). Set `file` only for explicit local/offline development. |
+| `FARSIGHT_API_BASE_URL` | Required. Base URL of the FarSight control API. Used for policy loading and tool forwarding. |
+| `FARSIGHT_API_SCOPE` | Token scope for gateway→API managed identity auth. `api://...` normalized to `/.default`. Defaults to `{FARSIGHT_API_BASE_URL}/.default`. |
 | `FARSIGHT_POLICY_ID` | Policy ID to load from the repository. Defaults to `farsight-tool-policy`. |
-| `FARSIGHT_POLICY_CACHE_TTL_SECONDS` | Cache time for active API-loaded policy content. Defaults to 60 seconds. |
-| `FARSIGHT_AGT_POLICY_PATH` | Optional path to an alternative AGT policy file. |
-| `FARSIGHT_ALLOW_POLICY_FALLBACK` | Local development/test escape hatch. When `true`, use the deterministic fallback evaluator instead of AGT. Do not enable in production. |
-| `FARSIGHT_API_BASE_URL` | Required for API forwarding and API-backed policy loading. Base URL of the FarSight control API that the gateway calls after AGT allow decisions. |
-| `FARSIGHT_API_SCOPE` | Optional token scope used by the gateway managed identity when calling FarSight API. `api://...` values are normalized to end with `/.default`. Defaults to `{FARSIGHT_API_BASE_URL}/.default` when omitted. |
+| `FARSIGHT_POLICY_CACHE_TTL_SECONDS` | Cache time for API-loaded policy content. Defaults to 60 seconds. |
 | `FARSIGHT_AGENT_TOOLS_ENFORCE_WORKLOAD_AUTH` | Enable inbound JWT validation on `/tools/*` routes. Defaults to `false`. |
 | `FARSIGHT_AGENT_TOOLS_ALLOWED_AUDIENCES` | Required when inbound workload auth is enabled. CSV of accepted token audiences for gateway callers. |
-| `FARSIGHT_AGENT_TOOLS_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS` | Optional allowlist of caller service principal object IDs (`oid`). At least this or required app role must be configured when auth is enabled. |
+| `FARSIGHT_AGENT_TOOLS_ALLOWED_SERVICE_PRINCIPAL_OBJECT_IDS` | Optional allowlist of caller service principal object IDs (`oid`). |
 | `FARSIGHT_AGENT_TOOLS_REQUIRED_APP_ROLE` | Optional required app role claim (`roles`) in caller tokens. |
-| `FARSIGHT_AGENT_TOOLS_ALLOWED_ISSUERS` | Optional CSV issuer allowlist for inbound tokens. Falls back to `FARSIGHT_ENTRA_ALLOWED_ISSUERS` or tenant-derived defaults. |
+| `FARSIGHT_AGENT_TOOLS_ALLOWED_ISSUERS` | Optional CSV issuer allowlist for inbound tokens. |
 | `FARSIGHT_AGENT_TOOLS_ISSUER` | Optional single issuer override for inbound tokens. |
-| `FARSIGHT_AGENT_TOOLS_JWKS_URI` | Optional JWKS URI for inbound token validation. Falls back to `FARSIGHT_ENTRA_JWKS_URI` or tenant discovery endpoint. |
+| `FARSIGHT_AGENT_TOOLS_JWKS_URI` | Optional JWKS URI for inbound token validation. |
 | `FARSIGHT_ENTRA_TENANT_ID` | Tenant used for issuer/JWKS defaults when inbound workload auth is enabled. |
 
-Production behavior is fail-closed: if AGT cannot be imported or the policy file is missing, policy evaluation raises an explicit error and the tool call does not proceed.
+Production behavior is fail-closed: if `agent-governance-toolkit-core` is not installed or the policy cannot be loaded from the API, policy evaluation raises an explicit error and the tool call does not proceed.
 
 ## Policy outcomes
 
@@ -50,12 +41,13 @@ Production behavior is fail-closed: if AGT cannot be imported or the policy file
 cd src/agent-tools/gateway
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt pytest  # installs agent-governance-toolkit-core which provides agentmesh.governance
-FARSIGHT_ALLOW_POLICY_FALLBACK=true python3 -m unittest discover tests/  # with fallback
-FARSIGHT_POLICY_SOURCE=file python3 -m unittest discover tests/           # with real AGT + local policy file
+pip install -r requirements.txt  # installs agent-governance-toolkit-core (agentmesh.governance)
+python3 -m unittest discover tests/
 ```
 
-API-backed policy loading and forwarded tool execution both use `FARSIGHT_API_BASE_URL` plus managed identity/API scope configuration so the gateway can call `GET /api/v1/policies/{policyId}` and the FarSight job/approval APIs.
+Tests use an inline policy YAML (no API call required) so they run fully offline.
+
+API-backed policy loading and forwarded tool execution both use `FARSIGHT_API_BASE_URL` plus managed identity/API scope configuration.
 
 ## Safety rules
 

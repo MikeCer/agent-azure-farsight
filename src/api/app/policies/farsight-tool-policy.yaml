@@ -4,14 +4,9 @@ version: "2026-06-12.1"
 default_action: deny
 rules:
   - name: deny-arbitrary-execution-input
-    condition: "contains_dangerous_input == true"
+    condition: "contains_dangerous_input"
     action: deny
     description: "FarSight tools must never accept arbitrary PowerShell, shell commands, script text, encoded commands, or free-form paths."
-
-  - name: deny-unsupported-diagnostic-module
-    condition: "tool_name in ['create_diagnostic_job', 'request_follow_up_module_execution'] and task_type not in ['Get-AppLogBundle', 'Get-AppEventSlice', 'Get-AppHealthSnapshot', 'Test-AppConnectivity', 'Get-ConfigEvidence', 'Get-ServiceStatusSnapshot']"
-    action: deny
-    description: "Diagnostic job creation is limited to approved named FarSight modules."
 
   - name: allow-read-only-lookups
     condition: "tool_name in ['get_job_status', 'get_job_result_summary', 'retrieve_artifact_metadata', 'query_device_investigation_history']"
@@ -19,7 +14,7 @@ rules:
     description: "Read-only FarSight lookup tools are allowed."
 
   - name: allow-approval-request
-    condition: "tool_name == 'request_approval_for_action' and requested_action != ''"
+    condition: "tool_name == 'request_approval_for_action' and requested_action"
     action: allow
     description: "Approval request creation is allowed for well-formed requests."
 
@@ -29,11 +24,11 @@ rules:
     description: "Sensitive diagnostics require approval before a FarSight job is released."
 
   - name: allow-read-only-diagnostic-job
-    condition: "tool_name == 'create_diagnostic_job' and risk_level == 'read-only'"
+    condition: "tool_name == 'create_diagnostic_job' and risk_level == 'read-only' and task_type in ['Get-AppLogBundle', 'Get-AppEventSlice', 'Get-AppHealthSnapshot', 'Test-AppConnectivity', 'Get-ConfigEvidence', 'Get-ServiceStatusSnapshot']"
     action: allow
-    description: "Read-only diagnostic jobs with approved modules are allowed."
+    description: "Read-only diagnostic jobs with approved modules are allowed. Unapproved modules fall to default deny."
 
   - name: allow-read-only-follow-up
-    condition: "tool_name == 'request_follow_up_module_execution' and risk_level == 'read-only'"
+    condition: "tool_name == 'request_follow_up_module_execution' and risk_level == 'read-only' and task_type in ['Get-AppLogBundle', 'Get-AppEventSlice', 'Get-AppHealthSnapshot', 'Test-AppConnectivity', 'Get-ConfigEvidence', 'Get-ServiceStatusSnapshot']"
     action: allow
-    description: "Read-only follow-up diagnostics with approved modules are allowed."
+    description: "Read-only follow-up diagnostics with approved modules are allowed. Unapproved modules fall to default deny."
