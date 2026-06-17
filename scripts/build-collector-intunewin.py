@@ -463,7 +463,7 @@ def make_install_script(install_root: str, task_name: str) -> str:
         & (Join-Path $InstallRoot 'bootstrap.ps1') -InstallRoot $InstallRoot
 
         $collectorScript = Join-Path $InstallRoot 'collector.ps1'
-        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$collectorScript`""
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$collectorScript`" -InstallRoot `"$InstallRoot`""
         $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Minutes 5)
         $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
         $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
