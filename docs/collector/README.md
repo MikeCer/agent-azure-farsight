@@ -487,17 +487,20 @@ After patching, the next collector scheduled task run will use the new schema wi
 
 Use for any change to collector engine, modules, or configuration files that should be tracked through Intune rings.
 
-#### Step 1 — Increment collector version
+#### Step 1 — Increment the version string
 
-Edit `scripts/build-collector-intunewin.py` (or the config passed to it) to bump the collector version string. This is stamped into `package-metadata.json` and the detection script uses it to identify stale installs.
+The Intune app version field (set in the Intune portal when you upload the supersede) is what drives reinstall detection — **not** `manifestVersion` alone. However, bumping `manifestVersion` in `module-manifest.sample.json` is still good practice to track which manifest version is deployed on each device (it is sent in every checkin to the API).
 
-Alternatively, increment the version in `module-manifest.json`:
+Edit `src/collector/config/module-manifest.sample.json`:
 
 ```json
 {
-  "manifestVersion": "2026-06-17.1"
+  "manifestVersion": "2026-06-17.1",
+  ...
 }
 ```
+
+This becomes `config/module-manifest.json` in the packaged `.intunewin`. The detection script does **not** compare manifest versions — it checks file/task presence. The reinstall trigger comes from the **Intune app version** field you set when uploading the supersede (Step 3).
 
 #### Step 2 — Re-package
 
