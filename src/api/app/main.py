@@ -823,6 +823,40 @@ def get_admin_config() -> dict[str, object]:
     return {"retentionDays": {"jobs": 30, "artifacts": 30, "logs": 90}, "apimEnabled": False}
 
 
+@app.get("/api/v1/admin/jobs")
+def admin_list_jobs(
+    device_id: str | None = None,
+    limit: int = 100,
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, object]:
+    """Return recent jobs for admin monitoring. Optionally scoped to a device ID."""
+    limit = max(1, min(limit, 500))
+    container = get_jobs_container()
+    if container is not None:
+        if device_id:
+            items = list(container.query_items(
+                query="SELECT * FROM c WHERE c.deviceId = @deviceId ORDER BY c.createdAtUtc DESC OFFSET 0 LIMIT @limit",
+                parameters=[
+                    {"name": "@deviceId", "value": device_id},
+                    {"name": "@limit", "value": limit},
+                ],
+                partition_key=device_id,
+            ))
+        else:
+            items = list(container.query_items(
+                query="SELECT * FROM c ORDER BY c.createdAtUtc DESC OFFSET 0 LIMIT @limit",
+                parameters=[{"name": "@limit", "value": limit}],
+                enable_cross_partition_query=True,
+            ))
+        return {"jobs": items, "total": len(items)}
+    # In-memory fallback
+    job_list = list(jobs.values())
+    if device_id:
+        job_list = [j for j in job_list if j.device_id == device_id]
+    job_list.sort(key=lambda j: j.created_at_utc, reverse=True)
+    return {"jobs": [j.model_dump(by_alias=True, mode="json") for j in job_list[:limit]], "total": len(job_list)}
+
+
 @app.put("/api/v1/admin/config", status_code=status.HTTP_204_NO_CONTENT)
 def update_admin_config(config: dict[str, object]) -> Response:
     # TODO (Phase 5): Write to Azure App Configuration and audit changes.
