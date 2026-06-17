@@ -1,0 +1,55 @@
+name: monitor_farsight_job
+type: PythonFunctionTool
+description: >
+  Wait for a FarSight diagnostic job to complete and return the terminal
+  status and result summary in a single call. Call this tool immediately
+  after create_diagnostic_job instead of manually polling with get_job_status.
+  The tool waits for the collector to pick up the job, polls at intervals
+  tuned to the module type, and returns when the job succeeds or fails.
+  On success, the result summary is included in the response so the agent
+  can present findings to the user without any additional calls.
+code_file: monitor_farsight_job.py
+parameters:
+  - name: job_id
+    type: string
+    required: true
+    description: FarSight job id returned by create_diagnostic_job.
+  - name: task_type
+    type: string
+    required: false
+    description: >
+      Module/task type (e.g. Get-ServiceStatusSnapshot). Used to tune the
+      maximum wait time. Defaults to 300s if omitted.
+  - name: api_base_url
+    type: string
+    required: false
+    description: Optional AGT gateway base URL. Defaults to SRE_AGENT_TOOL_ENDPOINT_URL.
+  - name: auth_mode
+    type: string
+    required: false
+    description: Authentication mode for the AGT gateway. Defaults to default (managed identity).
+  - name: api_scope
+    type: string
+    required: false
+    description: Optional token scope. Defaults to SRE_AGENT_TOOL_ENDPOINT_SCOPE.
+  - name: max_wait_seconds
+    type: int
+    required: false
+    description: >
+      Maximum seconds to wait before returning a timeout result.
+      Capped at 600. Defaults to the module-specific estimate
+      (180s for Get-ServiceStatusSnapshot, 300s for Get-AppLogBundle, etc.).
+  - name: initial_delay_seconds
+    type: int
+    required: false
+    description: >
+      Seconds to wait before the first poll. Defaults to 30 (collector
+      check-in cadence). Reduce to 10 for fast modules in local dev.
+dependencies:
+  - azure-identity
+auth_enabled: true
+auth_scopes: []
+connector: null
+attributes: []
+timeout_seconds: 620
+tool_mode: Auto

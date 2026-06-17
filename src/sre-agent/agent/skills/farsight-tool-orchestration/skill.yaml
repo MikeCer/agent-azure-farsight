@@ -27,6 +27,7 @@ parameters:
     - max_services
 tools:
   - create_diagnostic_job
+  - monitor_farsight_job
   - get_job_status
   - get_job_result_summary
   - retrieve_artifact_metadata

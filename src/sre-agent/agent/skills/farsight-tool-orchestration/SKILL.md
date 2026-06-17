@@ -14,12 +14,32 @@ Always align to live tool parameter names:
 
 1. `query_device_investigation_history` to avoid duplicate investigations.
 2. `create_diagnostic_job` for initial governed execution.
-3. **Wait before polling** — see async lifecycle below.
-4. `get_job_status` until terminal state.
-5. `get_job_result_summary` for findings.
-6. `retrieve_artifact_metadata` before any artifact expansion.
-7. `request_follow_up_module_execution` only for bounded evidence gaps.
-8. `request_approval_for_action` when `risk_level` is `sensitive-diagnostic` or follow-up scope is higher risk.
+3. **`monitor_farsight_job`** — pass the `jobId` and `task_type` immediately after creation. The tool waits, polls, and returns the terminal state and result summary automatically. **Do not manually poll with `get_job_status` when `monitor_farsight_job` is available.**
+4. Present findings from `monitor_farsight_job.summary` to the user.
+5. `retrieve_artifact_metadata` before any artifact expansion.
+6. `request_follow_up_module_execution` only for bounded evidence gaps.
+7. `request_approval_for_action` when `risk_level` is `sensitive-diagnostic` or follow-up scope is higher risk.
+
+> Use `get_job_status` and `get_job_result_summary` only to recover an old job or when the monitor timed out.
+
+## monitor_farsight_job — preferred async pattern
+
+```json
+{
+  "job_id": "<jobId from create_diagnostic_job>",
+  "task_type": "Get-ServiceStatusSnapshot"
+}
+```
+
+The tool:
+- Waits `initial_delay_seconds` (default 30s) before first poll — collector check-in cadence
+- Polls with status-aware intervals: Queued=30s, Leased=20s, Running=15s
+- Auto-times out per module: 180s for `Get-ServiceStatusSnapshot`, 300s for `Get-AppLogBundle`, etc.
+- On `Succeeded`: fetches `get_job_result_summary` and returns it inline
+- On `Failed`/`Expired`: returns status with message for the user
+- On timeout: returns last status so the agent can report and offer to retry later
+
+**Do not call `get_job_status` in a manual loop when `monitor_farsight_job` is available.**
 
 ## Async job lifecycle
 

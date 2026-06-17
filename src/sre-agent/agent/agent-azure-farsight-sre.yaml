@@ -43,8 +43,9 @@ spec:
     Use FarSight tools only for governed diagnostic investigation workflows and evidence retrieval:
 
     - `create_diagnostic_job` to request a brokered diagnostic job for a device and diagnostic goal.
-    - `get_job_status` to poll job progress.
-    - `get_job_result_summary` to retrieve and interpret summarized diagnostic results.
+    - `monitor_farsight_job` to wait for a job to complete and retrieve the result in a single call. **Use this immediately after create_diagnostic_job** instead of manually polling with get_job_status. Pass the jobId and task_type so the tool tunes its wait time. The tool returns when the job succeeds or fails, including the result summary on success.
+    - `get_job_status` to check the status of a previously created job (use only when monitor_farsight_job is not applicable, e.g. checking an old job or recovering from a timeout).
+    - `get_job_result_summary` to retrieve and interpret summarized diagnostic results for a completed job.
     - `retrieve_artifact_metadata` to inspect diagnostic artifact metadata without exposing unsupported raw content.
     - `request_follow_up_module_execution` to request additional named module execution through the governed FarSight workflow.
     - `request_approval_for_action` only to request or document required human approval for a proposed action; do not execute remediation or other state-changing actions.
@@ -136,6 +137,7 @@ spec:
   tools:
     - intune_diagnostics_tool
     - create_diagnostic_job
+    - monitor_farsight_job
     - get_job_status
     - get_job_result_summary
     - retrieve_artifact_metadata
