@@ -40,12 +40,18 @@ function Test-CollectorTask {
         return $false
     }
 
+    # Check Execute contains powershell.exe (may be full path on some Windows versions)
+    $execute = [string]$action.Execute
+    if ($execute -inotlike '*powershell.exe') {
+        return $false
+    }
+
+    # Check Arguments contain the expected script path (use -like for robustness
+    # against minor whitespace/quoting differences stored by Task Scheduler)
     $expectedScript = Join-Path $InstallRoot 'collector.ps1'
-    $expectedArgument = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$expectedScript`""
-    return (
-        [string]$action.Execute -ieq 'powershell.exe' -and
-        [string]$action.Arguments -eq $expectedArgument
-    )
+    $arguments = [string]$action.Arguments
+    return ($arguments -ilike "*ExecutionPolicy Bypass*" -and
+            $arguments -ilike "*$expectedScript*")
 }
 
 function Test-CollectorCertificate {
@@ -57,8 +63,15 @@ function Test-CollectorCertificate {
         return $false
     }
 
-    $config = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    try {
+        $config = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return $false
+    }
+
     $thumbprint = [string]$config.api.certificateThumbprint
+    # If thumbprint is still a placeholder (install-time stamping failed or cert not yet enrolled)
+    # treat as not-installed so Intune retries rather than masking the real failure.
     if ([string]::IsNullOrWhiteSpace($thumbprint) -or $thumbprint -like '__*') {
         return $false
     }
@@ -66,9 +79,11 @@ function Test-CollectorCertificate {
     $storeLocation = 'LocalMachine'
     $storeName = 'My'
     if (Test-Path -LiteralPath $profilePath -PathType Leaf) {
-        $profile = Get-Content -LiteralPath $profilePath -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($profile.storeLocation) { $storeLocation = [string]$profile.storeLocation }
-        if ($profile.storeName) { $storeName = [string]$profile.storeName }
+        try {
+            $profile = Get-Content -LiteralPath $profilePath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($profile.storeLocation) { $storeLocation = [string]$profile.storeLocation }
+            if ($profile.storeName) { $storeName = [string]$profile.storeName }
+        } catch { }
     }
 
     $storePath = "Cert:\$storeLocation\$storeName"
@@ -76,21 +91,40 @@ function Test-CollectorCertificate {
         return $false
     }
 
-    $cert = Get-ChildItem -Path $storePath | Where-Object {
-        $_.HasPrivateKey -and $_.Thumbprint.Replace(' ', '').ToUpperInvariant() -eq $thumbprint.Replace(' ', '').ToUpperInvariant()
+    $normalizedThumbprint = $thumbprint.Replace(' ', '').ToUpperInvariant()
+    $cert = Get-ChildItem -Path $storePath -ErrorAction SilentlyContinue | Where-Object {
+        $_.HasPrivateKey -and
+        $_.Thumbprint.Replace(' ', '').ToUpperInvariant() -eq $normalizedThumbprint
     } | Select-Object -First 1
 
     return ($null -ne $cert)
 }
 
-$candidates = Get-ChildItem -Path (Join-Path $env:ProgramData '*\SreCollector\config\package-metadata.json') -File -ErrorAction SilentlyContinue
-foreach ($metadataFile in @($candidates)) {
+# --- Discovery: enumerate company subfolders under ProgramData directly ---
+# Avoid using wildcards in the middle of a path with Get-ChildItem, which can
+# be unreliable on some PS 5.1 environments running as SYSTEM.
+$programData = [Environment]::GetFolderPath('CommonApplicationData')
+$metadataFiles = @()
+foreach ($companyDir in (Get-ChildItem -LiteralPath $programData -Directory -ErrorAction SilentlyContinue)) {
+    $candidate = Join-Path $companyDir.FullName 'SreCollector\config\package-metadata.json'
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        $metadataFiles += Get-Item -LiteralPath $candidate
+    }
+}
+
+foreach ($metadataFile in $metadataFiles) {
     $installRoot = Split-Path -Parent (Split-Path -Parent $metadataFile.FullName)
+
     if (-not (Test-CollectorFiles -InstallRoot $installRoot)) {
         continue
     }
 
-    $metadata = Get-Content -LiteralPath $metadataFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+    try {
+        $metadata = Get-Content -LiteralPath $metadataFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        continue
+    }
+
     $taskName = [string]$metadata.taskName
     if ([string]::IsNullOrWhiteSpace($taskName)) {
         continue

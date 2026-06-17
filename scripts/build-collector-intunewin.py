@@ -426,7 +426,15 @@ def make_install_script(install_root: str, task_name: str) -> str:
 
         New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
         Copy-Item -Path (Join-Path $collectorSource '*') -Destination $InstallRoot -Recurse -Force
-        Copy-Item -Path $moduleSource -Destination (Join-Path $InstallRoot 'modules') -Recurse -Force
+
+        # Modules: copy each module subfolder explicitly to avoid nesting on re-install.
+        # Using 'Copy-Item $moduleSource $InstallRoot\modules' on an existing target
+        # would create $InstallRoot\modules\modules\<module> — wrong.
+        $modulesTarget = Join-Path $InstallRoot 'modules'
+        New-Item -ItemType Directory -Path $modulesTarget -Force | Out-Null
+        Get-ChildItem -LiteralPath $moduleSource -Directory | ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination $modulesTarget -Recurse -Force
+        }
 
         $configPath = Join-Path $InstallRoot 'config\config.json'
         $profilePath = Join-Path $InstallRoot 'config\certificate-source.json'
