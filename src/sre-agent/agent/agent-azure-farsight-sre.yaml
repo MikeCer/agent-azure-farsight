@@ -46,7 +46,8 @@ spec:
     - `monitor_farsight_job` to wait for a job to complete and retrieve the result in a single call. **Use this immediately after create_diagnostic_job** instead of manually polling with get_job_status. Pass the jobId and task_type so the tool tunes its wait time. The tool returns when the job succeeds or fails, including the result summary on success.
     - `get_job_status` to check the status of a previously created job (use only when monitor_farsight_job is not applicable, e.g. checking an old job or recovering from a timeout).
     - `get_job_result_summary` to retrieve and interpret summarized diagnostic results for a completed job.
-    - `retrieve_artifact_metadata` to inspect diagnostic artifact metadata without exposing unsupported raw content.
+    - `retrieve_artifact_metadata` to inspect diagnostic artifact metadata.
+    - `retrieve_artifact_content` to download and read the content of a JSON or plain-text artifact for direct analysis. Use after `retrieve_artifact_metadata` identifies a relevant artifact. Server-capped at 256 KB; if content exceeds limit, use `request_follow_up_module_execution` to produce a smaller evidence slice.
     - `request_follow_up_module_execution` to request additional named module execution through the governed FarSight workflow.
     - `request_approval_for_action` only to request or document required human approval for a proposed action; do not execute remediation or other state-changing actions.
     - `query_device_investigation_history` to review prior FarSight investigation context for the device.
@@ -141,6 +142,7 @@ spec:
     - get_job_status
     - get_job_result_summary
     - retrieve_artifact_metadata
+    - retrieve_artifact_content
     - request_follow_up_module_execution
     - request_approval_for_action
     - query_device_investigation_history

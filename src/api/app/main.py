@@ -451,7 +451,89 @@ def request_followup(
 # Artifacts (Phase 3 — Blob SAS)
 # ---------------------------------------------------------------------------
 
-@app.post("/api/v1/artifacts/prepare", response_model=ArtifactPrepareResponse)
+@app.get("/api/v1/jobs/{jobId}/artifacts/{artifactId}/content")
+def get_artifact_content(
+    jobId: str,
+    artifactId: str,
+    _: WorkloadCaller = Depends(require_workload_caller),
+) -> dict[str, object]:
+    """Return artifact content for agent analysis.
+
+    Only JSON and plain-text artifacts are supported. Content is capped at
+    FARSIGHT_ARTIFACT_MAX_CONTENT_BYTES (default 256 KB) to keep agent
+    context size manageable. Larger artifacts should be summarized or
+    queried via artifact metadata only.
+    """
+    max_bytes = int(os.getenv("FARSIGHT_ARTIFACT_MAX_CONTENT_BYTES", str(256 * 1024)))
+    blob_client = get_blob_service_client()
+    if blob_client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Artifact content retrieval requires Blob Storage (FARSIGHT_BLOB_ACCOUNT_URL not configured).",
+        )
+
+    # Look up the blob name from the artifact index.
+    ai_container = get_artifact_index_container()
+    blob_name: str | None = None
+    if ai_container is not None:
+        try:
+            item = ai_container.read_item(item=f"{jobId}:{artifactId}", partition_key=jobId)
+            blob_name = item.get("blobName")
+        except Exception:
+            pass
+
+    container_name = os.getenv("FARSIGHT_BLOB_ARTIFACTS_CONTAINER", "artifacts")
+    if not blob_name:
+        # Fallback: reconstruct the blob path from the upload convention.
+        blob_name = f"{jobId}/{artifactId}"
+
+    try:
+        blob = blob_client.get_blob_client(container=container_name, blob=blob_name)
+        props = blob.get_blob_properties()
+        content_type = (props.content_settings.content_type or "").lower()
+        size_bytes = props.size
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Artifact blob not found: {exc}") from exc
+
+    # Only serve text/JSON artifacts to the agent.
+    allowed_content_types = {"application/json", "text/plain", "text/json"}
+    is_allowed = any(ct in content_type for ct in allowed_content_types) or content_type == ""
+    if not is_allowed:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Artifact content type '{content_type}' is not supported for agent analysis. Only JSON and plain text artifacts can be retrieved.",
+        )
+
+    if size_bytes > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Artifact size {size_bytes} bytes exceeds the maximum allowed {max_bytes} bytes for agent content retrieval. Use retrieve_artifact_metadata to inspect the artifact.",
+        )
+
+    try:
+        raw = blob.download_blob().readall()
+        text = raw.decode("utf-8", errors="replace")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read artifact content: {exc}") from exc
+
+    # Try to parse as JSON for richer agent consumption.
+    import json as _json
+    try:
+        content = _json.loads(text)
+        content_format = "json"
+    except _json.JSONDecodeError:
+        content = text
+        content_format = "text"
+
+    return {
+        "jobId": jobId,
+        "artifactId": artifactId,
+        "blobName": blob_name,
+        "contentType": content_type,
+        "contentFormat": content_format,
+        "sizeBytes": size_bytes,
+        "content": content,
+    }
 def prepare_artifact_upload(request: ArtifactPrepareRequest, _: AzureClients = Depends(get_azure_clients)) -> ArtifactPrepareResponse:
     blob_client = get_blob_service_client()
     expires = _utc_now() + timedelta(minutes=10)

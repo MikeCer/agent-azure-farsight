@@ -16,7 +16,8 @@ Always align to live tool parameter names:
 2. `create_diagnostic_job` for initial governed execution.
 3. **`monitor_farsight_job`** — pass the `jobId` and `task_type` immediately after creation. The tool waits, polls, and returns the terminal state and result summary automatically. **Do not manually poll with `get_job_status` when `monitor_farsight_job` is available.**
 4. Present findings from `monitor_farsight_job.summary` to the user.
-5. `retrieve_artifact_metadata` before any artifact expansion.
+5. `retrieve_artifact_metadata` — list artifacts for a job.
+6. `retrieve_artifact_content(job_id, artifact_id)` — download the artifact content (JSON/text, ≤256 KB) for analysis. If too large or binary → `request_follow_up_module_execution` for a smaller slice.
 6. `request_follow_up_module_execution` only for bounded evidence gaps.
 7. `request_approval_for_action` when `risk_level` is `sensitive-diagnostic` or follow-up scope is higher risk.
 

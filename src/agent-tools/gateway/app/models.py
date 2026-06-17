@@ -77,6 +77,11 @@ class ApprovalToolRequest(CamelModel):
     expires_at_utc: datetime = Field(alias="expiresAtUtc")
 
 
+class ArtifactContentRequest(CamelModel):
+    job_id: str = Field(alias="jobId")
+    artifact_id: str = Field(alias="artifactId")
+
+
 class InvestigationHistoryRequest(CamelModel):
     device_id: str = Field(alias="deviceId")
     incident_id: str | None = Field(default=None, alias="incidentId")

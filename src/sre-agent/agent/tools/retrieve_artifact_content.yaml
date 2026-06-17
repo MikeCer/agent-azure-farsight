@@ -1,0 +1,44 @@
+name: retrieve_artifact_content
+type: PythonFunctionTool
+description: >
+  Download and return the content of a FarSight diagnostic artifact for agent
+  analysis. Only JSON and plain-text artifacts are supported. Content is
+  server-capped at 256 KB. Use this tool when retrieve_artifact_metadata
+  has identified an artifact that contains evidence needed for diagnosis
+  (for example a service snapshot JSON, config evidence, or event log slice).
+  If the artifact exceeds 256 KB or is a binary format, use
+  request_follow_up_module_execution to produce a smaller evidence slice.
+code_file: retrieve_artifact_content.py
+parameters:
+  - name: job_id
+    type: string
+    required: true
+    description: FarSight job id that produced the artifact.
+  - name: artifact_id
+    type: string
+    required: true
+    description: Artifact id from retrieve_artifact_metadata output.
+  - name: api_base_url
+    type: string
+    required: false
+    description: Optional AGT gateway base URL. Defaults to SRE_AGENT_TOOL_ENDPOINT_URL.
+  - name: auth_mode
+    type: string
+    required: false
+    description: Authentication mode for the AGT gateway. Defaults to default (managed identity).
+  - name: api_scope
+    type: string
+    required: false
+    description: Optional token scope. Defaults to SRE_AGENT_TOOL_ENDPOINT_SCOPE.
+  - name: timeout_seconds
+    type: int
+    required: false
+    description: HTTP timeout in seconds, capped at 120. Defaults to 30.
+dependencies:
+  - azure-identity
+auth_enabled: true
+auth_scopes: []
+connector: null
+attributes: []
+timeout_seconds: 60
+tool_mode: Auto

@@ -9,7 +9,7 @@ rules:
     description: "FarSight tools must never accept arbitrary PowerShell, shell commands, script text, encoded commands, or free-form paths."
 
   - name: allow-read-only-lookups
-    condition: "tool_name in ['get_job_status', 'get_job_result_summary', 'retrieve_artifact_metadata', 'query_device_investigation_history']"
+    condition: "tool_name in ['get_job_status', 'get_job_result_summary', 'retrieve_artifact_metadata', 'retrieve_artifact_content', 'query_device_investigation_history']"
     action: allow
     description: "Read-only FarSight lookup tools are allowed."
 

@@ -5,6 +5,7 @@ from starlette.requests import Request
 from .auth import WorkloadCaller, require_workload_caller
 from .models import (
     ApprovalToolRequest,
+    ArtifactContentRequest,
     ArtifactMetadataRequest,
     DiagnosticJobRequest,
     FollowUpRequest,
@@ -20,6 +21,7 @@ from .tools import (
     query_device_investigation_history,
     request_approval_for_action,
     request_follow_up_module_execution,
+    retrieve_artifact_content,
     retrieve_artifact_metadata,
 )
 
@@ -99,3 +101,11 @@ async def query_device_investigation_history_endpoint(
     _caller: WorkloadCaller = Depends(require_workload_caller),
 ) -> ToolResponse:
     return await query_device_investigation_history(request)
+
+
+@app.post("/tools/retrieve_artifact_content", response_model=ToolResponse)
+async def retrieve_artifact_content_endpoint(
+    request: ArtifactContentRequest,
+    _caller: WorkloadCaller = Depends(require_workload_caller),
+) -> ToolResponse:
+    return await retrieve_artifact_content(request)
