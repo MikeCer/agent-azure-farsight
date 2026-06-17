@@ -59,3 +59,53 @@ def get_audit_events_container() -> Any | None:
 
 def get_investigations_container() -> Any | None:
     return _cosmos_container(os.getenv("FARSIGHT_COSMOS_INVESTIGATIONS_CONTAINER", "investigations"))
+
+
+# ---------------------------------------------------------------------------
+# Service Bus sender (Phase 2)
+# ---------------------------------------------------------------------------
+
+_servicebus_client: Any | None = None
+
+
+def get_jobs_queue_sender() -> Any | None:
+    """Return an azure-servicebus ServiceBusSender for the jobs queue.
+
+    Returns None when FARSIGHT_SERVICE_BUS_NAMESPACE is not configured,
+    allowing create_job to skip the enqueue step in local dev.
+    """
+    global _servicebus_client
+    namespace = os.getenv("FARSIGHT_SERVICE_BUS_NAMESPACE", "").strip()
+    if not namespace:
+        return None
+    if _servicebus_client is None:
+        from azure.servicebus import ServiceBusClient
+        fully_qualified_namespace = namespace if "." in namespace else f"{namespace}.servicebus.windows.net"
+        _servicebus_client = ServiceBusClient(
+            fully_qualified_namespace=fully_qualified_namespace,
+            credential=DefaultAzureCredential(),
+        )
+    queue_name = os.getenv("FARSIGHT_SERVICE_BUS_JOBS_QUEUE", "jobs")
+    return _servicebus_client.get_queue_sender(queue_name=queue_name)
+
+
+# ---------------------------------------------------------------------------
+# Blob Storage client (Phase 3)
+# ---------------------------------------------------------------------------
+
+_blob_service_client: Any | None = None
+
+
+def get_blob_service_client() -> Any | None:
+    """Return an azure-storage-blob BlobServiceClient.
+
+    Returns None when FARSIGHT_BLOB_ACCOUNT_URL is not configured.
+    """
+    global _blob_service_client
+    account_url = os.getenv("FARSIGHT_BLOB_ACCOUNT_URL", "").strip()
+    if not account_url:
+        return None
+    if _blob_service_client is None:
+        from azure.storage.blob import BlobServiceClient
+        _blob_service_client = BlobServiceClient(account_url=account_url, credential=DefaultAzureCredential())
+    return _blob_service_client

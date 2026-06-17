@@ -119,6 +119,12 @@ var containerAppsEnvironmentInternal = enablePrivateEndpoints && !enablePublicIn
 var containerAppIngressExternal = enablePublicIngress
 var cosmosBuiltInDataContributorRoleDefinitionId = resourceId('Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions', cosmosAccountName, '00000000-0000-0000-0000-000000000002')
 var acrPullRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+// Storage Blob Delegator — required for user delegation SAS key generation
+var storageBlobDelegatorRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'db58b8e5-c6ad-4a2a-8342-4190687cbf4a')
+// Storage Blob Data Contributor — required for blob read/write operations
+var storageBlobDataContributorRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+// Azure Service Bus Data Sender — required to enqueue job messages
+var serviceBusDataSenderRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '69a216fc-b8fb-44d8-bc22-1f3c2cd27a39')
 var adminEasyAuthConfigured = enableAdminEasyAuth && !empty(adminAuthClientId) && !empty(adminAuthClientSecret) && !empty(adminAuthEncryptionSecret) && !empty(adminAuthIssuer)
 var apiInternalAuthConfigured = !empty(apiInternalAuthSecret)
 var gatewayApiAudience = empty(apiAllowedAudiences) ? '' : replace(split(apiAllowedAudiences, ',')[0], ' ', '')
@@ -350,6 +356,22 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'FARSIGHT_COSMOS_INVESTIGATIONS_CONTAINER'
               value: 'investigations'
+            }
+            {
+              name: 'FARSIGHT_SERVICE_BUS_NAMESPACE'
+              value: serviceBus.name
+            }
+            {
+              name: 'FARSIGHT_SERVICE_BUS_JOBS_QUEUE'
+              value: 'jobs'
+            }
+            {
+              name: 'FARSIGHT_BLOB_ACCOUNT_URL'
+              value: 'https://${storage.name}.blob.${az.environment().suffixes.storage}'
+            }
+            {
+              name: 'FARSIGHT_BLOB_ARTIFACTS_CONTAINER'
+              value: 'artifacts'
             }
             {
               name: 'FARSIGHT_ENABLE_POLICY_ADMIN_WRITES'
@@ -671,6 +693,39 @@ resource appIdentityCosmosDataContributor 'Microsoft.DocumentDB/databaseAccounts
     roleDefinitionId: cosmosBuiltInDataContributorRoleDefinitionId
     principalId: appIdentity.properties.principalId
     scope: '${cosmos.id}/dbs/farsight'
+  }
+}
+
+resource appIdentityStorageBlobDelegator 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storage.id, appIdentity.id, 'storage-blob-delegator')
+  scope: storage
+  properties: {
+    roleDefinitionId: storageBlobDelegatorRoleDefinitionId
+    principalId: appIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    description: 'Allow FarSight API to generate user-delegation SAS tokens for artifact uploads.'
+  }
+}
+
+resource appIdentityStorageBlobDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storage.id, appIdentity.id, 'storage-blob-data-contributor')
+  scope: storage
+  properties: {
+    roleDefinitionId: storageBlobDataContributorRoleDefinitionId
+    principalId: appIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    description: 'Allow FarSight API to read/write artifact blobs for commit validation.'
+  }
+}
+
+resource appIdentityServiceBusSender 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(serviceBus.id, appIdentity.id, 'servicebus-data-sender')
+  scope: serviceBus
+  properties: {
+    roleDefinitionId: serviceBusDataSenderRoleDefinitionId
+    principalId: appIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    description: 'Allow FarSight API to enqueue job messages on the Service Bus jobs queue.'
   }
 }
 

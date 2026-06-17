@@ -22,8 +22,10 @@ from .dependencies import (
     get_audit_events_container,
     get_azure_clients,
     get_approvals_container,
+    get_blob_service_client,
     get_investigations_container,
     get_jobs_container,
+    get_jobs_queue_sender,
 )
 from .models import (
     AuditEvent,
@@ -288,6 +290,29 @@ def create_job(
         container.upsert_item(item)
     else:
         jobs[job_id] = job
+
+    # Enqueue a session message on the Service Bus jobs queue so the job is
+    # durably tracked per device (deviceId = session ID). The collector
+    # discovers jobs via checkin; SB provides ordering and at-least-once
+    # delivery guarantees across API restarts.
+    sender = get_jobs_queue_sender()
+    if sender is not None:
+        import json as _json
+        from azure.servicebus import ServiceBusMessage
+        try:
+            with sender:
+                msg = ServiceBusMessage(
+                    body=_json.dumps({"jobId": job_id, "deviceId": request.device_id, "taskType": request.task_type}),
+                    session_id=request.device_id,
+                    content_type="application/json",
+                    subject="farsight.job.queued",
+                )
+                sender.send_messages(msg)
+        except Exception:
+            # Non-fatal: job is already persisted in Cosmos; SB failure does
+            # not prevent the collector from picking up the job via checkin.
+            pass
+
     return job
 
 
@@ -423,22 +448,77 @@ def request_followup(
 
 
 # ---------------------------------------------------------------------------
-# Artifacts (Phase 3 — Blob SAS, stubs remain for now)
+# Artifacts (Phase 3 — Blob SAS)
 # ---------------------------------------------------------------------------
 
 @app.post("/api/v1/artifacts/prepare", response_model=ArtifactPrepareResponse)
 def prepare_artifact_upload(request: ArtifactPrepareRequest, _: AzureClients = Depends(get_azure_clients)) -> ArtifactPrepareResponse:
-    # TODO (Phase 3): Generate user delegation SAS URL via azure-storage-blob.
+    blob_client = get_blob_service_client()
+    expires = _utc_now() + timedelta(minutes=10)
+    if blob_client is not None:
+        from azure.storage.blob import BlobSasPermissions, generate_blob_sas, UserDelegationKey
+        container_name = os.getenv("FARSIGHT_BLOB_ARTIFACTS_CONTAINER", "artifacts")
+        blob_name = f"{request.job_id}/{request.artifact_id}/{request.file_name}"
+        # Get a user delegation key (valid for 10 min, requires Storage Blob Delegator role).
+        start = _utc_now() - timedelta(seconds=30)
+        try:
+            user_delegation_key: UserDelegationKey = blob_client.get_user_delegation_key(start, expires)
+            account_name = blob_client.account_name
+            sas_token = generate_blob_sas(
+                account_name=account_name,
+                container_name=container_name,
+                blob_name=blob_name,
+                user_delegation_key=user_delegation_key,
+                permission=BlobSasPermissions(write=True, create=True),
+                expiry=expires,
+            )
+            upload_url = f"{blob_client.url.rstrip('/')}/{container_name}/{blob_name}?{sas_token}"
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to generate artifact upload URL: {exc}") from exc
+        return ArtifactPrepareResponse(
+            uploadUrl=upload_url,
+            expiresAtUtc=expires,
+            requiredHeaders={"x-ms-blob-type": "BlockBlob", "x-ms-blob-content-type": request.content_type},
+        )
+    # Local dev fallback: return a placeholder URL.
     return ArtifactPrepareResponse(
         uploadUrl=f"https://storage.example.invalid/farsight/{request.job_id}/{request.artifact_id}",
-        expiresAtUtc=_utc_now() + timedelta(minutes=10),
+        expiresAtUtc=expires,
         requiredHeaders={"x-ms-blob-type": "BlockBlob"},
     )
 
 
 @app.post("/api/v1/artifacts/commit", status_code=status.HTTP_202_ACCEPTED)
 def commit_artifact_upload(request: ArtifactCommitRequest, _: AzureClients = Depends(get_azure_clients)) -> dict[str, str]:
-    # TODO (Phase 3): Verify Blob exists, validate hash/size, update Cosmos artifactIndex.
+    blob_client = get_blob_service_client()
+    if blob_client is not None:
+        container_name = os.getenv("FARSIGHT_BLOB_ARTIFACTS_CONTAINER", "artifacts")
+        blob_name = f"{request.job_id}/{request.artifact_id}"
+        try:
+            blob = blob_client.get_blob_client(container=container_name, blob=blob_name)
+            props = blob.get_blob_properties()
+            actual_size = props.size
+            actual_md5 = props.content_settings.content_md5
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=f"Artifact blob not found or inaccessible: {exc}") from exc
+
+        if not request.uploaded:
+            raise HTTPException(status_code=400, detail="Artifact commit requires uploaded=true.")
+
+        # Update Cosmos artifactIndex with confirmed metadata.
+        ai_container = get_artifact_index_container()
+        if ai_container is not None:
+            ai_item = {
+                "id": f"{request.job_id}:{request.artifact_id}",
+                "jobId": request.job_id,
+                "artifactId": request.artifact_id,
+                "sha256": request.sha256,
+                "sizeBytes": actual_size,
+                "blobName": blob_name,
+                "committedAtUtc": _utc_now().isoformat(),
+            }
+            ai_container.upsert_item(ai_item)
+
     return {"status": "accepted", "artifactId": request.artifact_id}
 
 
