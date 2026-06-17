@@ -332,6 +332,26 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: 'policies'
             }
             {
+              name: 'FARSIGHT_COSMOS_JOBS_CONTAINER'
+              value: 'jobs'
+            }
+            {
+              name: 'FARSIGHT_COSMOS_APPROVALS_CONTAINER'
+              value: 'approvals'
+            }
+            {
+              name: 'FARSIGHT_COSMOS_ARTIFACT_INDEX_CONTAINER'
+              value: 'artifactIndex'
+            }
+            {
+              name: 'FARSIGHT_COSMOS_AUDIT_EVENTS_CONTAINER'
+              value: 'auditEvents'
+            }
+            {
+              name: 'FARSIGHT_COSMOS_INVESTIGATIONS_CONTAINER'
+              value: 'investigations'
+            }
+            {
               name: 'FARSIGHT_ENABLE_POLICY_ADMIN_WRITES'
               value: 'true'
             }

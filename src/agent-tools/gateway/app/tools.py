@@ -97,7 +97,9 @@ async def get_job_status(request: JobLookupRequest) -> ToolResponse:
         return policy
     if policy.outcome != PolicyOutcome.allow:
         return _blocked(tool_name, policy)
-    data = await _call_api("GET", f"/api/v1/jobs/{request.job_id}")
+    # /api/v1/jobs/{id}/summary is the workload-caller endpoint;
+    # /api/v1/jobs/{id} requires device cert and is collector-only.
+    data = await _call_api("GET", f"/api/v1/jobs/{request.job_id}/summary")
     return ToolResponse(toolName=tool_name, policy=policy, data=data)
 
 

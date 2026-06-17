@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
@@ -13,7 +16,15 @@ from .auth import (
     require_device_cert,
     require_workload_caller,
 )
-from .dependencies import AzureClients, get_azure_clients
+from .dependencies import (
+    AzureClients,
+    get_artifact_index_container,
+    get_audit_events_container,
+    get_azure_clients,
+    get_approvals_container,
+    get_investigations_container,
+    get_jobs_container,
+)
 from .models import (
     AuditEvent,
     ApprovalDecision,
@@ -43,6 +54,8 @@ app = FastAPI(title="Agent-Azure-FarSight Control API", version="0.1.0")
 
 POLICY_VERSION = "2026-06-12.1"
 MANIFEST_VERSION = "2026-06-12.1"
+
+# In-memory fallback stores (used when FARSIGHT_COSMOS_ENDPOINT is not set).
 jobs: dict[str, JobDocument] = {}
 results: dict[str, ResultEnvelope] = {}
 approvals: dict[str, ApprovalRequest] = {}
@@ -50,29 +63,85 @@ artifact_index: dict[str, list[dict[str, object]]] = {}
 audit_events: list[AuditEvent] = []
 
 
-def append_audit_event(action: str, actor: AdminActor, target: str, decision: str = "allowed", reason: str | None = None) -> None:
-    audit_events.append(
-        AuditEvent(
-            id=f"audit-{uuid4()}",
-            eventType="policy-admin",
-            action=action,
-            actorId=actor.actor_id,
-            actorName=actor.actor_name,
-            target=target,
-            decision=decision,
-            reason=reason,
-        )
-    )
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def actor_display(actor: AdminActor) -> str:
     return actor.actor_name or actor.actor_id
 
 
+def _cosmos_upsert(container: Any, doc: Any) -> None:
+    container.upsert_item(doc.model_dump(by_alias=True, mode="json"))
+
+
+def _query_jobs_for_device(container: Any, device_id: str, job_status: JobStatus | None = None) -> list[dict[str, Any]]:
+    if job_status is not None:
+        items = list(container.query_items(
+            query="SELECT * FROM c WHERE c.deviceId = @deviceId AND c.status = @status",
+            parameters=[{"name": "@deviceId", "value": device_id}, {"name": "@status", "value": job_status.value}],
+            partition_key=device_id,
+        ))
+    else:
+        items = list(container.query_items(
+            query="SELECT * FROM c WHERE c.deviceId = @deviceId",
+            parameters=[{"name": "@deviceId", "value": device_id}],
+            partition_key=device_id,
+        ))
+    return items
+
+
+def _get_job_from_cosmos(container: Any, job_id: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Return (item_dict, etag) or (None, None) if not found."""
+    items = list(container.query_items(
+        query="SELECT * FROM c WHERE c.jobId = @jobId",
+        parameters=[{"name": "@jobId", "value": job_id}],
+        enable_cross_partition_query=True,
+    ))
+    if not items:
+        return None, None
+    item = items[0]
+    return item, item.get("_etag")
+
+
+def append_audit_event(action: str, actor: AdminActor, target: str, decision: str = "allowed", reason: str | None = None) -> None:
+    event = AuditEvent(
+        id=f"audit-{uuid4()}",
+        eventType="policy-admin",
+        action=action,
+        actorId=actor.actor_id,
+        actorName=actor.actor_name,
+        target=target,
+        decision=decision,
+        reason=reason,
+    )
+    container = get_audit_events_container()
+    if container is not None:
+        # correlationId is the partition key; use actor_id as fallback if absent.
+        item = event.model_dump(by_alias=True, mode="json")
+        if not item.get("correlationId"):
+            item["correlationId"] = actor.actor_id
+        container.upsert_item(item)
+    else:
+        audit_events.append(event)
+
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+
 @app.get("/api/v1/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "farsight-api"}
 
+
+# ---------------------------------------------------------------------------
+# Collector (device mTLS)
+# ---------------------------------------------------------------------------
 
 @app.post("/api/v1/devices/checkin", response_model=CheckInResponse)
 def check_in(
@@ -81,16 +150,41 @@ def check_in(
     _: AzureClients = Depends(get_azure_clients),
 ) -> CheckInResponse:
     require_bound_device_id(device, request.device_id)
-    available = next((job for job in jobs.values() if job.device_id == request.device_id and job.status == JobStatus.queued), None)
     lease = None
-    if available:
-        # TODO: Persist lease transition in Cosmos with optimistic ETag concurrency.
-        available.status = JobStatus.leased
-        lease = LeaseOffer(
-            jobId=available.job_id,
-            leaseToken=f"lease-{uuid4()}",
-            leaseUntilUtc=datetime.now(timezone.utc) + timedelta(minutes=10),
+    container = get_jobs_container()
+    if container is not None:
+        # Atomic lease transition using Cosmos ETag optimistic concurrency.
+        queued_items = _query_jobs_for_device(container, request.device_id, JobStatus.queued)
+        if queued_items:
+            item = queued_items[0]
+            etag = item.get("_etag")
+            item["status"] = JobStatus.leased.value
+            token = f"lease-{uuid4()}"
+            item["leaseToken"] = token
+            item["leasedAtUtc"] = _utc_now().isoformat()
+            try:
+                container.replace_item(item=item["id"], body=item, if_match=etag)
+            except Exception:
+                # Concurrent update — another API instance already leased this job.
+                item = None
+            if item:
+                lease = LeaseOffer(
+                    jobId=item["jobId"],
+                    leaseToken=token,
+                    leaseUntilUtc=_utc_now() + timedelta(minutes=10),
+                )
+    else:
+        available = next(
+            (job for job in jobs.values() if job.device_id == request.device_id and job.status == JobStatus.queued),
+            None,
         )
+        if available:
+            available.status = JobStatus.leased
+            lease = LeaseOffer(
+                jobId=available.job_id,
+                leaseToken=f"lease-{uuid4()}",
+                leaseUntilUtc=_utc_now() + timedelta(minutes=10),
+            )
     return CheckInResponse(
         policyVersion=POLICY_VERSION,
         manifestVersion=MANIFEST_VERSION,
@@ -102,21 +196,51 @@ def check_in(
 @app.get("/api/v1/devices/{deviceId}/jobs")
 def get_device_jobs(deviceId: str, device: DeviceCaller = Depends(require_device_cert)) -> list[JobDocument]:
     require_bound_device_id(device, deviceId)
+    container = get_jobs_container()
+    if container is not None:
+        items = _query_jobs_for_device(container, deviceId)
+        return [JobDocument.model_validate(item) for item in items]
     return [job for job in jobs.values() if job.device_id == deviceId]
 
 
 @app.get("/api/v1/devices/{deviceId}/policy")
-def get_device_policy(deviceId: str, device: DeviceCaller = Depends(require_device_cert)) -> dict[str, object]:
+def get_device_policy(
+    deviceId: str,
+    device: DeviceCaller = Depends(require_device_cert),
+    repository: PolicyRepository = Depends(get_policy_repository),
+) -> dict[str, object]:
     require_bound_device_id(device, deviceId)
-    # TODO: Retrieve endpoint policy snapshot from Cosmos/App Configuration.
-    return {"deviceId": deviceId, "policyVersion": POLICY_VERSION, "allowedModules": []}
+    try:
+        policy_doc = repository.get("farsight-tool-policy")
+        return {
+            "deviceId": deviceId,
+            "policyVersion": policy_doc.version,
+            "policyId": policy_doc.policy_id,
+        }
+    except KeyError:
+        return {"deviceId": deviceId, "policyVersion": POLICY_VERSION}
 
 
 @app.get("/api/v1/devices/{deviceId}/investigations")
-def get_device_investigations(deviceId: str, _: WorkloadCaller = Depends(require_workload_caller)) -> dict[str, object]:
-    # TODO: Query Cosmos investigations container and redact sensitive history.
+def get_device_investigations(
+    deviceId: str,
+    _: WorkloadCaller = Depends(require_workload_caller),
+) -> dict[str, object]:
+    container = get_investigations_container()
+    if container is not None:
+        # investigations partition key is /incidentId — cross-partition query required.
+        items = list(container.query_items(
+            query="SELECT * FROM c WHERE c.deviceId = @deviceId ORDER BY c._ts DESC OFFSET 0 LIMIT 50",
+            parameters=[{"name": "@deviceId", "value": deviceId}],
+            enable_cross_partition_query=True,
+        ))
+        return {"deviceId": deviceId, "investigations": items}
     return {"deviceId": deviceId, "investigations": []}
 
+
+# ---------------------------------------------------------------------------
+# Jobs (workload callers / SRE agent gateway)
+# ---------------------------------------------------------------------------
 
 @app.post("/api/v1/jobs", response_model=JobDocument, status_code=status.HTTP_201_CREATED)
 def create_job(
@@ -125,8 +249,20 @@ def create_job(
     _: AzureClients = Depends(get_azure_clients),
     __: WorkloadCaller = Depends(require_workload_caller),
 ) -> JobDocument:
-    # TODO: Enforce Entra/managed identity authorization and idempotency key persistence.
-    # TODO: Write Cosmos job document, then enqueue Service Bus jobs message using deviceId as session ID.
+    container = get_jobs_container()
+    if container is not None and idempotency_key:
+        # Check for an existing job with the same idempotency key and device.
+        existing_items = list(container.query_items(
+            query="SELECT * FROM c WHERE c.deviceId = @deviceId AND c.idempotencyKey = @key",
+            parameters=[
+                {"name": "@deviceId", "value": request.device_id},
+                {"name": "@key", "value": idempotency_key},
+            ],
+            partition_key=request.device_id,
+        ))
+        if existing_items:
+            return JobDocument.model_validate(existing_items[0])
+
     job_id = f"job-{uuid4()}"
     job = JobDocument(
         id=job_id,
@@ -145,12 +281,26 @@ def create_job(
         expiresAtUtc=request.expires_at_utc,
         requestedBy=request.requested_by,
     )
-    jobs[job_id] = job
+    if container is not None:
+        item = job.model_dump(by_alias=True, mode="json")
+        if idempotency_key:
+            item["idempotencyKey"] = idempotency_key
+        container.upsert_item(item)
+    else:
+        jobs[job_id] = job
     return job
 
 
 @app.get("/api/v1/jobs/{jobId}", response_model=JobDocument)
 def get_job(jobId: str, device: DeviceCaller = Depends(require_device_cert)) -> JobDocument:
+    container = get_jobs_container()
+    if container is not None:
+        item, _ = _get_job_from_cosmos(container, jobId)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        job = JobDocument.model_validate(item)
+        require_bound_device_id(device, job.device_id)
+        return job
     job = jobs.get(jobId)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -160,6 +310,16 @@ def get_job(jobId: str, device: DeviceCaller = Depends(require_device_cert)) -> 
 
 @app.get("/api/v1/jobs/{jobId}/summary")
 def get_job_summary(jobId: str, _: WorkloadCaller = Depends(require_workload_caller)) -> dict[str, object]:
+    container = get_jobs_container()
+    if container is not None:
+        item, _ = _get_job_from_cosmos(container, jobId)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return {
+            "jobId": jobId,
+            "status": item.get("status"),
+            "summary": item.get("resultSummary") or {},
+        }
     if jobId not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     result = results.get(jobId)
@@ -183,22 +343,63 @@ def submit_job_result(
 ) -> dict[str, str]:
     if jobId != result.job_id:
         raise HTTPException(status_code=400, detail="Path jobId must match result jobId")
-    if jobId not in jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
-    job = jobs[jobId]
-    require_bound_device_id(device, job.device_id)
-    require_bound_device_id(device, result.device_id)
-    # TODO: Validate lease token, persist result to Cosmos, and ingest normalized summaries into Log Analytics.
-    results[jobId] = result
-    jobs[jobId].status = result.status
-    artifact_index[jobId] = [artifact.model_dump(by_alias=True) for artifact in result.artifacts]
+    jobs_container = get_jobs_container()
+    if jobs_container is not None:
+        item, etag = _get_job_from_cosmos(jobs_container, jobId)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        job_device_id = item.get("deviceId", "")
+        require_bound_device_id(device, job_device_id)
+        require_bound_device_id(device, result.device_id)
+        # Persist result summary into the job document.
+        item["status"] = result.status.value
+        item["resultSummary"] = result.summary
+        item["resultFindings"] = [f.model_dump(by_alias=True, mode="json") for f in result.findings]
+        item["completedAtUtc"] = result.completed_at_utc.isoformat()
+        jobs_container.replace_item(item=item["id"], body=item, if_match=etag)
+    else:
+        if jobId not in jobs:
+            raise HTTPException(status_code=404, detail="Job not found")
+        job = jobs[jobId]
+        require_bound_device_id(device, job.device_id)
+        require_bound_device_id(device, result.device_id)
+        results[jobId] = result
+        jobs[jobId].status = result.status
+        artifact_index[jobId] = [artifact.model_dump(by_alias=True) for artifact in result.artifacts]
+
+    # Persist artifact metadata to artifactIndex container.
+    ai_container = get_artifact_index_container()
+    if ai_container is not None and result.artifacts:
+        for artifact in result.artifacts:
+            ai_item = artifact.model_dump(by_alias=True, mode="json")
+            ai_item["id"] = f"{jobId}:{artifact.artifact_id}"
+            ai_item["jobId"] = jobId
+            ai_container.upsert_item(ai_item)
+    elif not ai_container:
+        artifact_index[jobId] = [artifact.model_dump(by_alias=True) for artifact in result.artifacts]
+
     return {"status": "accepted"}
 
 
 @app.get("/api/v1/jobs/{jobId}/artifacts")
 def get_job_artifacts(jobId: str, _: WorkloadCaller = Depends(require_workload_caller)) -> dict[str, object]:
-    if jobId not in jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
+    jobs_container = get_jobs_container()
+    if jobs_container is not None:
+        item, _ = _get_job_from_cosmos(jobs_container, jobId)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+    else:
+        if jobId not in jobs:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+    ai_container = get_artifact_index_container()
+    if ai_container is not None:
+        artifacts = list(ai_container.query_items(
+            query="SELECT * FROM c WHERE c.jobId = @jobId",
+            parameters=[{"name": "@jobId", "value": jobId}],
+            partition_key=jobId,
+        ))
+        return {"jobId": jobId, "artifacts": artifacts}
     return {"jobId": jobId, "artifacts": artifact_index.get(jobId, [])}
 
 
@@ -207,28 +408,43 @@ def request_followup(
     jobId: str,
     request: JobCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    _: WorkloadCaller = Depends(require_workload_caller),
+    azure_clients: AzureClients = Depends(get_azure_clients),
+    caller: WorkloadCaller = Depends(require_workload_caller),
 ) -> JobDocument:
-    if jobId not in jobs:
+    # Verify parent job exists.
+    jobs_container = get_jobs_container()
+    if jobs_container is not None:
+        item, _ = _get_job_from_cosmos(jobs_container, jobId)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Parent job not found")
+    elif jobId not in jobs:
         raise HTTPException(status_code=404, detail="Parent job not found")
-    return create_job(request, idempotency_key)
+    return create_job(request, idempotency_key, azure_clients, caller)
 
+
+# ---------------------------------------------------------------------------
+# Artifacts (Phase 3 — Blob SAS, stubs remain for now)
+# ---------------------------------------------------------------------------
 
 @app.post("/api/v1/artifacts/prepare", response_model=ArtifactPrepareResponse)
 def prepare_artifact_upload(request: ArtifactPrepareRequest, _: AzureClients = Depends(get_azure_clients)) -> ArtifactPrepareResponse:
-    # TODO: Create private Blob metadata record and return short-lived user delegation SAS upload URL.
+    # TODO (Phase 3): Generate user delegation SAS URL via azure-storage-blob.
     return ArtifactPrepareResponse(
         uploadUrl=f"https://storage.example.invalid/farsight/{request.job_id}/{request.artifact_id}",
-        expiresAtUtc=datetime.now(timezone.utc) + timedelta(minutes=10),
+        expiresAtUtc=_utc_now() + timedelta(minutes=10),
         requiredHeaders={"x-ms-blob-type": "BlockBlob"},
     )
 
 
 @app.post("/api/v1/artifacts/commit", status_code=status.HTTP_202_ACCEPTED)
 def commit_artifact_upload(request: ArtifactCommitRequest, _: AzureClients = Depends(get_azure_clients)) -> dict[str, str]:
-    # TODO: Verify Blob exists, validate hash/size, update Cosmos artifactIndex, and audit retention metadata.
+    # TODO (Phase 3): Verify Blob exists, validate hash/size, update Cosmos artifactIndex.
     return {"status": "accepted", "artifactId": request.artifact_id}
 
+
+# ---------------------------------------------------------------------------
+# Approvals
+# ---------------------------------------------------------------------------
 
 @app.post("/api/v1/approvals", response_model=ApprovalRequest, status_code=status.HTTP_201_CREATED)
 def create_approval(
@@ -236,27 +452,79 @@ def create_approval(
     _: AzureClients = Depends(get_azure_clients),
     __: WorkloadCaller = Depends(require_workload_caller),
 ) -> ApprovalRequest:
-    # TODO: Persist approval in Cosmos and send Teams notification through configured transport.
-    approvals[request.approval_id] = request
+    container = get_approvals_container()
+    if container is not None:
+        item = request.model_dump(by_alias=True, mode="json")
+        item["id"] = request.approval_id
+        container.upsert_item(item)
+    else:
+        approvals[request.approval_id] = request
+    # TODO (Phase 2+): Send Teams notification via configured transport.
     return request
 
 
 @app.post("/api/v1/approvals/{approvalId}/decision", status_code=status.HTTP_202_ACCEPTED)
-def decide_approval(approvalId: str, decision: ApprovalDecision, _: AzureClients = Depends(get_azure_clients)) -> dict[str, str]:
+def decide_approval(
+    approvalId: str,
+    decision: ApprovalDecision,
+    _: AzureClients = Depends(get_azure_clients),
+) -> dict[str, str]:
     if approvalId != decision.approval_id:
         raise HTTPException(status_code=400, detail="Path approvalId must match decision approvalId")
-    if approvalId not in approvals:
-        raise HTTPException(status_code=404, detail="Approval not found")
-    # TODO: Persist immutable approval decision and release blocked jobs when approved.
-    return {"status": "accepted", "decision": decision.decision}
+    container = get_approvals_container()
+    if container is not None:
+        try:
+            item = container.read_item(item=approvalId, partition_key=approvalId)
+        except Exception as exc:
+            if "NotFound" in type(exc).__name__:
+                raise HTTPException(status_code=404, detail="Approval not found") from exc
+            raise
+        # Persist immutable decision fields; do not overwrite an already-decided approval.
+        if item.get("decidedBy"):
+            raise HTTPException(status_code=409, detail="Approval has already been decided.")
+        item.update(decision.model_dump(by_alias=True, mode="json"))
+        container.replace_item(item=approvalId, body=item)
 
+        # Release blocked jobs when approved.
+        if decision.decision.value == "approved":
+            _release_jobs_for_approval(approvalId)
+    else:
+        if approvalId not in approvals:
+            raise HTTPException(status_code=404, detail="Approval not found")
+        if decision.decision.value == "approved":
+            _release_jobs_for_approval(approvalId)
+    return {"status": "accepted", "decision": decision.decision.value}
+
+
+def _release_jobs_for_approval(approval_id: str) -> None:
+    """Set approvalStatus=approved on all jobs linked to this approval."""
+    jobs_container = get_jobs_container()
+    if jobs_container is not None:
+        blocked = list(jobs_container.query_items(
+            query="SELECT * FROM c WHERE c.approvalId = @approvalId AND c.approvalStatus = 'pending'",
+            parameters=[{"name": "@approvalId", "value": approval_id}],
+            enable_cross_partition_query=True,
+        ))
+        for item in blocked:
+            item["approvalStatus"] = "approved"
+            item["status"] = JobStatus.queued.value
+            jobs_container.replace_item(item=item["id"], body=item)
+    else:
+        for job in jobs.values():
+            if getattr(job, "approval_id", None) == approval_id:
+                job.approval_status = "approved"  # type: ignore[assignment]
+                job.status = JobStatus.queued
+
+
+# ---------------------------------------------------------------------------
+# Policy management
+# ---------------------------------------------------------------------------
 
 @app.get("/api/v1/policy")
 def get_policy(
     repository: PolicyRepository = Depends(get_policy_repository),
     _: WorkloadCaller = Depends(require_workload_caller),
 ) -> PolicyDocument:
-    # Backwards-compatible active policy endpoint for gateway consumers.
     return repository.get("farsight-tool-policy")
 
 
@@ -340,19 +608,23 @@ def delete_policy_version(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+# ---------------------------------------------------------------------------
+# Telemetry and admin (stubs — Phase 4/5)
+# ---------------------------------------------------------------------------
+
 @app.get("/api/v1/telemetry/tool-calls/summary", response_model=ToolCallTelemetrySummary)
 def get_tool_call_summary() -> ToolCallTelemetrySummary:
-    # TODO: Query AGT/tool gateway audit events from Log Analytics, Application Insights, or Cosmos.
+    # TODO (Phase 4): Query AGT/tool gateway audit events from Log Analytics / App Insights.
     return ToolCallTelemetrySummary()
 
 
 @app.get("/api/v1/admin/config")
 def get_admin_config() -> dict[str, object]:
-    # TODO: Enforce FarSight Admin role and read settings from App Configuration.
+    # TODO (Phase 5): Read settings from Azure App Configuration.
     return {"retentionDays": {"jobs": 30, "artifacts": 30, "logs": 90}, "apimEnabled": False}
 
 
 @app.put("/api/v1/admin/config", status_code=status.HTTP_204_NO_CONTENT)
 def update_admin_config(config: dict[str, object]) -> Response:
-    # TODO: Validate admin config schema, write App Configuration, and audit changes.
+    # TODO (Phase 5): Write to Azure App Configuration and audit changes.
     return Response(status_code=status.HTTP_204_NO_CONTENT)

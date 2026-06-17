@@ -71,6 +71,27 @@ Use `scripts/provision-farsight-api-app-registration.py` to create/update the Fa
 
 When enforcement is enabled, the API validates JWT signature/audience/issuer/tenant using Entra JWKS, requires application workload token claims (`oid`, `appid`/`azp`), blocks delegated `scp` tokens, and then enforces caller allowlist and/or required app role.
 
+## Persistence
+
+The API uses Cosmos DB for durable state when `FARSIGHT_COSMOS_ENDPOINT` is configured. All containers use `DefaultAzureCredential` (managed identity). When the endpoint is not configured, the API falls back to in-memory state for local development.
+
+| Container | Partition key | Used for |
+|---|---|---|
+| `jobs` | `/deviceId` | Job documents, lease state, result summaries |
+| `approvals` | `/approvalId` | Approval requests and decisions |
+| `artifactIndex` | `/jobId` | Artifact metadata per job |
+| `auditEvents` | `/correlationId` | Policy admin audit trail |
+| `investigations` | `/incidentId` | Device investigation history |
+| `policies` | `/policyId` | AGT policy versions (managed by `PolicyRepository`) |
+
+Cosmos container name env vars (all default to the container names above):
+- `FARSIGHT_COSMOS_JOBS_CONTAINER`
+- `FARSIGHT_COSMOS_APPROVALS_CONTAINER`
+- `FARSIGHT_COSMOS_ARTIFACT_INDEX_CONTAINER`
+- `FARSIGHT_COSMOS_AUDIT_EVENTS_CONTAINER`
+- `FARSIGHT_COSMOS_INVESTIGATIONS_CONTAINER`
+- `FARSIGHT_COSMOS_POLICIES_CONTAINER`
+
 ## Idempotency
 
 - Clients provide an `Idempotency-Key` for job creation.
