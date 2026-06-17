@@ -88,12 +88,22 @@ type ArtifactMetadata = {
 type DeviceRecord = {
   deviceId: string;
   tenantId?: string;
+  hostname?: string;
   collectorVersion?: string;
   manifestVersion?: string;
   hostnameHash?: string;
   os?: { name: string; version: string };
   lastCheckinUtc?: string;
   lastJobId?: string;
+  appliedConfigVersion?: string;
+};
+
+type DeviceConfig = {
+  scheduledTaskIntervalMinutes?: number;
+  maxSingleRunSeconds?: number;
+  checkInIntervalSeconds?: number;
+  logRetentionDays?: number;
+  configVersion?: string;
 };
 
 const HEARTBEAT_STALE_MINUTES = 15;
@@ -229,6 +239,9 @@ function App() {
   const [selectedDevice, setSelectedDevice] = useState<DeviceRecord | null>(null);
   const [deviceFilter, setDeviceFilter] = useState("");
   const [deviceHeartbeatFilter, setDeviceHeartbeatFilter] = useState("all");
+  const [deviceConfig, setDeviceConfig] = useState<DeviceConfig>({});
+  const [deviceConfigLoading, setDeviceConfigLoading] = useState(false);
+  const [deviceConfigSaving, setDeviceConfigSaving] = useState(false);
 
   // Shared status
   const [message, setMessage] = useState("");
@@ -364,6 +377,41 @@ function App() {
     }
   }
 
+  async function loadDeviceConfig(deviceId: string) {
+    setDeviceConfigLoading(true);
+    try {
+      const cfg = await api<DeviceConfig>(`/api/bff/devices/${encodeURIComponent(deviceId)}/config`);
+      setDeviceConfig(cfg ?? {});
+    } catch {
+      setDeviceConfig({});
+    } finally {
+      setDeviceConfigLoading(false);
+    }
+  }
+
+  async function saveDeviceConfig(deviceId: string) {
+    setDeviceConfigSaving(true); setError(""); setMessage("");
+    try {
+      const r = await fetch(`/api/bff/devices/${encodeURIComponent(deviceId)}/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(deviceConfig),
+      });
+      if (r.ok) {
+        setMessage("Configuration saved. The device will receive it on its next check-in.");
+        await loadDeviceConfig(deviceId);
+        setTimeout(() => setMessage(""), 4000);
+      } else {
+        const t = await r.text();
+        setError(`Save failed: ${t}`);
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setDeviceConfigSaving(false);
+    }
+  }
+
   // ── Effects ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -401,7 +449,8 @@ function App() {
 
   const filteredDevices = devices.filter((d) => {
     const q = deviceFilter.toLowerCase();
-    const matchesText = !q || d.deviceId.toLowerCase().includes(q) || (d.hostnameHash ?? "").toLowerCase().includes(q) ||
+    const matchesText = !q || d.deviceId.toLowerCase().includes(q) ||
+      (d.hostname ?? "").toLowerCase().includes(q) ||
       (d.collectorVersion ?? "").toLowerCase().includes(q);
     const hb = heartbeatStatus(d.lastCheckinUtc);
     const matchesHb = deviceHeartbeatFilter === "all" || hb === deviceHeartbeatFilter;
@@ -606,6 +655,7 @@ function App() {
             <h3>Job detail</h3>
             <button onClick={() => { setSelectedJob(null); setJobArtifacts([]); }}>✕ Close</button>
           </div>
+          <div className="panel-body">
           <dl className="job-dl">
             <dt>Job ID</dt><dd className="mono">{job.jobId}</dd>
             <dt>Device</dt><dd className="mono">{job.deviceId}</dd>
@@ -619,6 +669,23 @@ function App() {
             <dt>Expires</dt><dd>{formatTimestamp(job.expiresAtUtc)}</dd>
             <dt>Policy</dt><dd>{job.policyVersion ?? "—"}</dd>
           </dl>
+          {(job.status === "Leased" || job.status === "Queued") && (
+            <div className="job-section">
+              <button className="requeue-btn" onClick={async () => {
+                try {
+                  const r = await fetch(`/api/bff/jobs/${job.jobId}/requeue`, { method: "POST" });
+                  if (r.ok || r.status === 204) {
+                    setSelectedJob({ ...job, status: "Queued" });
+                    loadJobs(job.deviceId).catch(() => {});
+                  } else {
+                    const t = await r.text();
+                    setError(`Requeue failed: ${t}`);
+                  }
+                } catch (e: any) { setError(e.message); }
+              }}>↺ Requeue job</button>
+              <span className="requeue-hint">Resets a stuck Leased job back to Queued so the collector can pick it up.</span>
+            </div>
+          )}
           {job.resultSummary && Object.keys(job.resultSummary).length > 0 && (
             <div className="job-section">
               <h4>Result summary</h4>
@@ -661,6 +728,7 @@ function App() {
               </table>
             </div>
           )}
+          </div>
         </div>
       </div>
     );
@@ -766,7 +834,9 @@ function App() {
                 <h3>Device detail</h3>
                 <button onClick={() => setSelectedDevice(null)}>✕ Close</button>
               </div>
+              <div className="panel-body">
               <dl className="job-dl">
+                <dt>Hostname</dt><dd><strong>{selectedDevice.hostname ?? selectedDevice.deviceId}</strong></dd>
                 <dt>Device ID</dt><dd className="mono">{selectedDevice.deviceId}</dd>
                 <dt>Tenant</dt><dd>{selectedDevice.tenantId ?? "—"}</dd>
                 <dt>Heartbeat</dt><dd>
@@ -788,6 +858,65 @@ function App() {
                   setActiveFeature("jobs");
                   loadJobs(selectedDevice.deviceId).catch(() => {});
                 }}>View jobs for this device →</button>
+              </div>
+
+              <div className="job-section config-section">
+                <div className="config-section-header">
+                  <span>⚙</span>
+                  <h4>Remote configuration</h4>
+                </div>
+                <p className="config-hint">These settings are pushed to the collector on its next check-in. The device acknowledges receipt by reporting the config version.</p>
+                {deviceConfigLoading ? (
+                  <p className="empty-state">Loading…</p>
+                ) : (
+                  <div className="device-config-form">
+                    <label>
+                      <span>Scheduled task interval (minutes)</span>
+                      <input type="number" min={1} max={1440}
+                        value={deviceConfig.scheduledTaskIntervalMinutes ?? ""}
+                        placeholder="5"
+                        onChange={(e) => setDeviceConfig({ ...deviceConfig, scheduledTaskIntervalMinutes: e.target.value ? parseInt(e.target.value) : undefined })} />
+                    </label>
+                    <label>
+                      <span>Max single run (seconds)</span>
+                      <input type="number" min={30} max={3600}
+                        value={deviceConfig.maxSingleRunSeconds ?? ""}
+                        placeholder="300"
+                        onChange={(e) => setDeviceConfig({ ...deviceConfig, maxSingleRunSeconds: e.target.value ? parseInt(e.target.value) : undefined })} />
+                    </label>
+                    <label>
+                      <span>Check-in interval (seconds)</span>
+                      <input type="number" min={60} max={86400}
+                        value={deviceConfig.checkInIntervalSeconds ?? ""}
+                        placeholder="300"
+                        onChange={(e) => setDeviceConfig({ ...deviceConfig, checkInIntervalSeconds: e.target.value ? parseInt(e.target.value) : undefined })} />
+                    </label>
+                    <label>
+                      <span>Log retention (days)</span>
+                      <input type="number" min={1} max={365}
+                        value={deviceConfig.logRetentionDays ?? ""}
+                        placeholder="7"
+                        onChange={(e) => setDeviceConfig({ ...deviceConfig, logRetentionDays: e.target.value ? parseInt(e.target.value) : undefined })} />
+                    </label>
+                    <div className="config-actions">
+                      <button className="requeue-btn" disabled={deviceConfigSaving}
+                        onClick={() => saveDeviceConfig(selectedDevice.deviceId)}>
+                        {deviceConfigSaving ? "Saving…" : "Push configuration"}
+                      </button>
+                      {message && <span className="config-saved">✓ {message}</span>}
+                      {error && <span className="config-error">✕ {error}</span>}
+                      {!message && !error && deviceConfig.configVersion && (
+                        <span className="requeue-hint">
+                          Pending since {new Date(deviceConfig.configVersion).toLocaleString()}.
+                          {selectedDevice.appliedConfigVersion === deviceConfig.configVersion
+                            ? " ✓ Applied by device."
+                            : " ⏳ Waiting for device check-in."}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               </div>
             </div>
           </div>
@@ -838,12 +967,12 @@ function App() {
                 <thead>
                   <tr>
                     <th>Heartbeat</th>
+                    <th>Hostname</th>
                     <th>Device ID</th>
                     <th>Last check-in</th>
                     <th>Collector version</th>
-                    <th>Manifest version</th>
                     <th>OS</th>
-                    <th>Last job</th>
+                    <th></th>
                     <th></th>
                   </tr>
                 </thead>
@@ -853,15 +982,19 @@ function App() {
                     return (
                       <tr key={d.deviceId}
                         className={selectedDevice?.deviceId === d.deviceId ? "selected-row" : ""}
-                        onClick={() => setSelectedDevice(selectedDevice?.deviceId === d.deviceId ? null : d)}>
+                        onClick={() => {
+                          const next = selectedDevice?.deviceId === d.deviceId ? null : d;
+                          setSelectedDevice(next);
+                          if (next) loadDeviceConfig(next.deviceId).catch(() => {});
+                        }}>
                         <td><span className={`status-badge ${hbColors[hb]}`}>{hb}</span></td>
+                        <td><strong>{d.hostname ?? d.deviceId}</strong></td>
                         <td className="mono truncate">{d.deviceId}</td>
                         <td title={d.lastCheckinUtc ?? ""}>{minutesAgo(d.lastCheckinUtc)}</td>
                         <td>{d.collectorVersion ?? "—"}</td>
-                        <td>{d.manifestVersion ?? "—"}</td>
                         <td>{d.os ? `${d.os.name} ${d.os.version}` : "—"}</td>
-                        <td className="mono truncate">{d.lastJobId ?? "—"}</td>
                         <td><button className="row-action" onClick={(e) => { e.stopPropagation(); setDeviceFilter(d.deviceId); setActiveFeature("jobs"); setDeviceIdInput(d.deviceId); loadJobs(d.deviceId).catch(() => {}); }}>Jobs →</button></td>
+                        <td><button className="row-action row-action-config" onClick={(e) => { e.stopPropagation(); const next = d; setSelectedDevice(next); loadDeviceConfig(next.deviceId).catch(() => {}); }}>⚙ Configure</button></td>
                       </tr>
                     );
                   })}
@@ -907,10 +1040,6 @@ function App() {
               <small>Container App console</small>
             </div>
           </div>
-          <label className="blade-search">
-            <span aria-hidden="true">⌕</span>
-            <input placeholder="Search menu" />
-          </label>
           <nav>
             {features.map((feature) => (
               <button key={feature.id} className={activeFeature === feature.id ? "selected" : ""}
@@ -932,7 +1061,6 @@ function App() {
                 <p>Governed diagnostics, policy management, and operational visibility.</p>
               </div>
             </div>
-            <button className="close-blade" type="button" aria-label="Close blade">×</button>
           </section>
           <section className="blade-content">
             {renderActiveFeature()}

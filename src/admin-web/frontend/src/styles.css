@@ -552,14 +552,37 @@ th {
 }
 
 .job-detail-panel {
-  width: min(640px, 100%);
-  max-height: 85vh;
-  background: var(--surface);
+  width: min(1100px, 90vw);
+  max-height: 88vh;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 1.5rem;
+  padding: 0;
   overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  box-shadow: 0 24px 72px rgba(0,0,0,0.6);
+}
+
+.job-detail-panel .panel-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-radius: 8px 8px 0 0;
+}
+
+.job-detail-panel .panel-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.job-detail-panel .panel-body {
+  padding: 1.5rem;
 }
 
 .job-dl { display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 0.75rem; margin: 0.75rem 0; font-size: 0.85em; }
@@ -574,7 +597,42 @@ th {
 .finding-error .finding-severity { color: #991b1b; }
 .finding-warning .finding-severity { color: #92400e; }
 .finding-code { font-family: monospace; color: var(--text-secondary); }
-.finding-msg { word-break: break-word; }
+.requeue-btn {
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 0.85em;
+  font-weight: 600;
+  margin-right: 0.75rem;
+}
+.requeue-btn:hover { opacity: 0.85; }
+.requeue-hint { font-size: 0.78em; color: var(--text-secondary); vertical-align: middle; }
+
+.config-hint { font-size: 0.8em; color: var(--text-secondary); margin: 0 0 0.75rem; }
+.device-config-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.5rem; }
+.device-config-form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85em; }
+.device-config-form label span { color: var(--text-secondary); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; }
+.device-config-form input[type="number"] {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); padding: 6px 10px; font-size: 0.9em; width: 100%;
+}
+.device-config-form input[type="number"]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.config-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 1rem; margin-top: 0.25rem; }
+
+.row-action-config { color: var(--accent) !important; }
+.config-section { border-top: 2px solid var(--accent); margin-top: 1.25rem; padding-top: 1rem; }
+.config-section-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+.config-section-header span { font-size: 1.1em; }
+.config-section-header h4 { margin: 0; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
+.config-saved { font-size: 0.82em; color: #16a34a; font-weight: 600; }
+.config-error { font-size: 0.82em; color: #dc2626; font-weight: 600; }
+.delete-device-btn { background: transparent; border: 1px solid #dc2626; color: #dc2626; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 0.8em; }
+.delete-device-btn:hover { background: #dc2626; color: #fff; }
+
+
 
 @media (max-width: 1100px) {
   .jobs-layout { grid-template-columns: 1fr; }

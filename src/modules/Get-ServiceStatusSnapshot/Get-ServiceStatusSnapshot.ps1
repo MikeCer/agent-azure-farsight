@@ -136,6 +136,7 @@ try {
             artifactId = "services-$JobId"
             kind = 'service-snapshot'
             name = [string]$artifactItem.Name
+            localPath = $artifactPath
             sha256 = $artifactHash.Hash.ToLowerInvariant()
             sizeBytes = [int64]$artifactItem.Length
         }

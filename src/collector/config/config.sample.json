@@ -8,8 +8,10 @@
   },
   "device": {
     "tenantId": "tenant-guid",
-    "deviceId": "aad-device-guid",
-    "hostnameHash": "sha256:replace-with-hashed-hostname"
+    "deviceId": "machine-hostname",
+    "hostname": "machine-hostname",
+    "hostnameHash": "sha256:replace-with-hashed-hostname",
+    "appliedConfigVersion": null
   },
   "runtime": {
     "maxSingleRunSeconds": 300,

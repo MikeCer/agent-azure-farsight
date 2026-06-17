@@ -177,10 +177,33 @@ async def get_job_artifacts(job_id: str, current_admin: dict[str, Any] = Depends
     return await _control_api("GET", f"/api/v1/jobs/{job_id}/artifacts", actor=str(current_admin["id"]))
 
 
+@app.post("/api/bff/jobs/{job_id}/requeue", status_code=200)
+async def requeue_job(job_id: str, current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    """Force a stuck Leased job back to Queued."""
+    await _control_api_admin("POST", f"/api/v1/admin/jobs/{job_id}/requeue", current_admin=current_admin)
+    return {"ok": True}
+
+
 @app.get("/api/bff/devices")
 async def list_devices(current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
     return await _control_api_admin("GET", "/api/v1/devices", current_admin=current_admin)
 
+
+@app.get("/api/bff/devices/{device_id}/config")
+async def get_device_config(device_id: str, current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    return await _control_api_admin("GET", f"/api/v1/admin/devices/{device_id}/config", current_admin=current_admin)
+
+
+@app.put("/api/bff/devices/{device_id}/config", status_code=200)
+async def set_device_config(device_id: str, body: dict[str, Any], current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    await _control_api_admin("PUT", f"/api/v1/admin/devices/{device_id}/config", current_admin=current_admin, json=body)
+    return {"ok": True}
+
+
+@app.delete("/api/bff/devices/{device_id}", status_code=200)
+async def delete_device(device_id: str, current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    await _control_api_admin("DELETE", f"/api/v1/admin/devices/{device_id}", current_admin=current_admin)
+    return {"ok": True}
 
 if static_root.exists():
     app.mount("/assets", StaticFiles(directory=static_root / "assets"), name="assets")

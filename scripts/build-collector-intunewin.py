@@ -191,8 +191,9 @@ def build_config(install_root: str) -> dict:
     config["api"]["baseUrl"] = prompt("FarSight API base URL (shared package setting)", config["api"]["baseUrl"])
     config["api"]["timeoutSeconds"] = int(prompt("API timeout seconds (shared package setting)", str(config["api"]["timeoutSeconds"])))
     config["device"]["tenantId"] = prompt("Entra tenant ID (shared package setting)", config["device"]["tenantId"])
-    config["device"]["deviceId"] = "__DEVICE_ID_FROM_CERT_CN__"
-    print("Device ID will be stamped at install time from the enrolled certificate CN.")
+    config["device"]["deviceId"] = "__DEVICE_HOSTNAME__"
+    print("Device ID will be stamped at install time from the local machine hostname (used for job matching).")
+    config["device"]["hostname"] = "__DEVICE_HOSTNAME__"
     config["device"]["hostnameHash"] = "__HOSTNAME_HASH_FROM_DEVICE_NAME__"
     print("Hostname hash will be stamped at install time from the local machine name.")
     config["runtime"]["maxSingleRunSeconds"] = int(prompt("Max single-run seconds (shared package setting)", str(config["runtime"]["maxSingleRunSeconds"])))
@@ -380,7 +381,12 @@ def make_install_script(install_root: str, task_name: str) -> str:
         }
 
         function Resolve-FarSightDeviceId {
-            param([string]$ConfigPath, [string]$CertificateProfilePath)
+            # Device ID is always the local machine hostname (lowercased).
+            # This keeps device identity consistent with what operators type when
+            # submitting jobs via the SRE agent tools (e.g. "fswin111").
+            # The client certificate is used for transport authentication only —
+            # its CN is NOT used as the device identity.
+            param([string]$ConfigPath)
 
             $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
             $deviceId = [string]$config.device.deviceId
@@ -388,38 +394,7 @@ def make_install_script(install_root: str, task_name: str) -> str:
                 return $deviceId
             }
 
-            if (-not (Test-Path -LiteralPath $CertificateProfilePath -PathType Leaf)) {
-                throw 'Certificate metadata file is missing and the config does not contain a usable device ID.'
-            }
-
-            $profile = Get-Content -LiteralPath $CertificateProfilePath -Raw -Encoding UTF8 | ConvertFrom-Json
-            $stores = @()
-            if ($profile.storeLocation -and $profile.storeName) {
-                $stores += "Cert:\$($profile.storeLocation)\$($profile.storeName)"
-            } else {
-                $stores += 'Cert:\LocalMachine\My'
-            }
-
-            $candidates = foreach ($store in $stores) {
-                if (Test-Path -LiteralPath $store) {
-                    Get-ChildItem -Path $store | Where-Object {
-                        $_.HasPrivateKey -and
-                        (-not $profile.subjectContains -or $_.Subject -like "*$($profile.subjectContains)*") -and
-                        (-not $profile.issuerContains -or $_.Issuer -like "*$($profile.issuerContains)*")
-                    }
-                }
-            }
-
-            $selected = @($candidates | Sort-Object NotAfter -Descending | Select-Object -First 1)
-            if (-not $selected) {
-                throw 'No matching certificate found. Install the Intune PKI certificate profile before deploying the collector.'
-            }
-
-            $cn = [string]($selected[0].Subject -replace '.*CN=([^,]+).*', '$1')
-            if ([string]::IsNullOrWhiteSpace($cn) -or $cn -eq $selected[0].Subject) {
-                throw 'Selected device certificate does not expose a usable CN for device ID stamping.'
-            }
-            return $cn
+            return [System.Environment]::MachineName.Trim().ToLowerInvariant()
         }
 
         function Resolve-FarSightHostnameHash {
@@ -461,12 +436,13 @@ def make_install_script(install_root: str, task_name: str) -> str:
         $configPath = Join-Path $InstallRoot 'config\config.json'
         $profilePath = Join-Path $InstallRoot 'config\certificate-source.json'
         $resolvedThumbprint = Resolve-FarSightCertificateThumbprint -ConfigPath $configPath -CertificateProfilePath $profilePath
-        $resolvedDeviceId = Resolve-FarSightDeviceId -ConfigPath $configPath -CertificateProfilePath $profilePath
+        $resolvedDeviceId = Resolve-FarSightDeviceId -ConfigPath $configPath
         $resolvedHostnameHash = Resolve-FarSightHostnameHash -ConfigPath $configPath
 
         $config = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $config.api.certificateThumbprint = $resolvedThumbprint
         $config.device.deviceId = $resolvedDeviceId
+        $config.device.hostname = $resolvedDeviceId
         $config.device.hostnameHash = $resolvedHostnameHash
         $config | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $configPath -Encoding UTF8
 

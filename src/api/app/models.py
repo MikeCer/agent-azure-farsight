@@ -48,15 +48,26 @@ class LocalState(CamelModel):
     pending_artifact_count: int = Field(default=0, alias="pendingArtifactCount")
 
 
+class DeviceConfig(CamelModel):
+    """Remote configuration that the API pushes to a collector on its next check-in."""
+    scheduled_task_interval_minutes: int | None = Field(default=None, alias="scheduledTaskIntervalMinutes")
+    max_single_run_seconds: int | None = Field(default=None, alias="maxSingleRunSeconds")
+    check_in_interval_seconds: int | None = Field(default=None, alias="checkInIntervalSeconds")
+    log_retention_days: int | None = Field(default=None, alias="logRetentionDays")
+    config_version: str | None = Field(default=None, alias="configVersion")
+
+
 class CheckInRequest(CamelModel):
     schema_version: str = Field(alias="schemaVersion")
     device_id: str = Field(alias="deviceId")
     tenant_id: str = Field(alias="tenantId")
     collector_version: str = Field(alias="collectorVersion")
     manifest_version: str = Field(alias="manifestVersion")
+    hostname: str | None = Field(default=None, alias="hostname")
     hostname_hash: str = Field(alias="hostnameHash")
     os: DeviceOs
     last_job_id: str | None = Field(default=None, alias="lastJobId")
+    applied_config_version: str | None = Field(default=None, alias="appliedConfigVersion")
     local_state: LocalState = Field(alias="localState")
 
 
@@ -74,6 +85,7 @@ class CheckInResponse(CamelModel):
     next_check_in_after_seconds: int = Field(default=300, alias="nextCheckInAfterSeconds")
     job_available: bool = Field(default=False, alias="jobAvailable")
     job: LeaseOffer | None = None
+    pending_config: DeviceConfig | None = Field(default=None, alias="pendingConfig")
 
 
 class Lease(CamelModel):
@@ -134,6 +146,7 @@ class ArtifactMetadata(CamelModel):
     name: str
     sha256: str
     size_bytes: int = Field(alias="sizeBytes")
+    local_path: str | None = Field(default=None, alias="localPath")
 
 
 class ResultEnvelope(CamelModel):
@@ -169,6 +182,7 @@ class ArtifactPrepareResponse(CamelModel):
 class ArtifactCommitRequest(CamelModel):
     job_id: str = Field(alias="jobId")
     artifact_id: str = Field(alias="artifactId")
+    file_name: str | None = Field(default=None, alias="fileName")
     uploaded: bool
     sha256: str
 

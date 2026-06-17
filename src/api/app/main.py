@@ -37,6 +37,7 @@ from .models import (
     ArtifactPrepareResponse,
     CheckInRequest,
     CheckInResponse,
+    DeviceConfig,
     JobCreateRequest,
     JobDocument,
     JobStatus,
@@ -156,28 +157,69 @@ def check_in(
     lease = None
     now = _utc_now()
 
-    # Record heartbeat in the devices container.
+    # Record heartbeat in the devices container; preserve pendingConfig across upserts.
+    pending_config: DeviceConfig | None = None
     devices_container = get_devices_container()
     if devices_container is not None:
+        # Read existing record via cross-partition query to preserve pendingConfig.
+        # (Container is partitioned by tenantDeviceId, not deviceId.)
+        existing: dict[str, Any] = _get_device_record(devices_container, request.device_id) or {}
         device_record = {
+            **existing,
             "id": request.device_id,
             "tenantDeviceId": f"{request.tenant_id}:{request.device_id}",
             "deviceId": request.device_id,
             "tenantId": request.tenant_id,
+            "hostname": request.hostname or request.device_id,
             "collectorVersion": request.collector_version,
             "manifestVersion": request.manifest_version,
             "hostnameHash": request.hostname_hash,
             "os": request.os.model_dump(by_alias=True, mode="json") if request.os else {},
             "lastCheckinUtc": now.isoformat(),
             "lastJobId": request.last_job_id,
+            "appliedConfigVersion": request.applied_config_version,
         }
         try:
             devices_container.upsert_item(device_record)
         except Exception:
             pass  # Non-fatal — checkin still proceeds
 
+        # Clean up any pre-staged placeholder records now that the device has checked in for real.
+        _delete_device_placeholders(devices_container, request.device_id)
+
+        # Send pendingConfig if it exists and the client hasn't applied it yet.
+        raw_cfg = device_record.get("pendingConfig")
+        if raw_cfg:
+            cfg_version = raw_cfg.get("configVersion")
+            if cfg_version and cfg_version != request.applied_config_version:
+                try:
+                    pending_config = DeviceConfig(**{
+                        k: v for k, v in raw_cfg.items() if not k.startswith("_")
+                    })
+                except Exception:
+                    pass
+
     container = get_jobs_container()
     if container is not None:
+        # Reset any expired leases back to Queued before scanning for available jobs.
+        lease_timeout = timedelta(minutes=10)
+        leased_items = _query_jobs_for_device(container, request.device_id, JobStatus.leased)
+        for leased in leased_items:
+            leased_at_raw = leased.get("leasedAtUtc")
+            if leased_at_raw:
+                try:
+                    leased_at = datetime.fromisoformat(leased_at_raw.replace("Z", "+00:00"))
+                    if now - leased_at > lease_timeout:
+                        leased["status"] = JobStatus.queued.value
+                        leased.pop("leaseToken", None)
+                        leased.pop("leasedAtUtc", None)
+                        try:
+                            container.replace_item(item=leased["id"], body=leased, if_match=leased.get("_etag"))
+                        except Exception:
+                            pass  # Concurrency conflict — another replica may have handled it
+                except (ValueError, TypeError):
+                    pass
+
         # Atomic lease transition using Cosmos ETag optimistic concurrency.
         queued_items = _query_jobs_for_device(container, request.device_id, JobStatus.queued)
         if queued_items:
@@ -214,6 +256,7 @@ def check_in(
         manifestVersion=MANIFEST_VERSION,
         jobAvailable=lease is not None,
         job=lease,
+        pendingConfig=pending_config,
     )
 
 
@@ -230,6 +273,97 @@ def list_devices(
         ))
         return {"devices": items, "total": len(items)}
     return {"devices": [], "total": 0}
+
+
+def _get_device_record(container: Any, device_id: str) -> dict[str, Any] | None:
+    """Fetch a device record by deviceId using a cross-partition query.
+    Returns the most-recently-checked-in real record, preferring non-placeholder entries."""
+    try:
+        items = list(container.query_items(
+            query="SELECT * FROM c WHERE c.deviceId = @deviceId",
+            parameters=[{"name": "@deviceId", "value": device_id}],
+            enable_cross_partition_query=True,
+        ))
+        if not items:
+            return None
+        # Prefer real records (tenantDeviceId not starting with "unknown:") sorted by lastCheckinUtc desc.
+        real = [i for i in items if not (i.get("tenantDeviceId") or "").startswith("unknown:")]
+        return sorted(real or items, key=lambda i: i.get("lastCheckinUtc") or "", reverse=True)[0]
+    except Exception:
+        return None
+
+
+def _delete_device_placeholders(container: Any, device_id: str) -> None:
+    """Delete any placeholder records (tenantDeviceId = unknown:*) for a device after it checks in."""
+    try:
+        items = list(container.query_items(
+            query="SELECT * FROM c WHERE c.deviceId = @deviceId AND STARTSWITH(c.tenantDeviceId, 'unknown:')",
+            parameters=[{"name": "@deviceId", "value": device_id}],
+            enable_cross_partition_query=True,
+        ))
+        for item in items:
+            try:
+                container.delete_item(item=item["id"], partition_key=item.get("tenantDeviceId"))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+@app.get("/api/v1/admin/devices/{deviceId}/config")
+def get_device_config(deviceId: str, _: AdminActor = Depends(require_admin_actor)) -> dict[str, Any]:
+    """Return the pending remote configuration for a device (if any). Returns {} if the device is unknown."""
+    container = get_devices_container()
+    if container is None:
+        raise HTTPException(status_code=503, detail="Devices store unavailable.")
+    record = _get_device_record(container, deviceId)
+    return (record or {}).get("pendingConfig") or {}
+
+
+@app.delete("/api/v1/admin/devices/{deviceId}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_device(deviceId: str, _: AdminActor = Depends(require_admin_actor)) -> Response:
+    """Remove a stale device record (e.g. an old GUID-based entry after renaming to hostname)."""
+    container = get_devices_container()
+    if container is None:
+        raise HTTPException(status_code=503, detail="Devices store unavailable.")
+    try:
+        items = list(container.query_items(
+            query="SELECT * FROM c WHERE c.deviceId = @deviceId",
+            parameters=[{"name": "@deviceId", "value": device_id}],
+            enable_cross_partition_query=True,
+        ))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Query failed: {exc}") from exc
+    if not items:
+        raise HTTPException(status_code=404, detail="Device not found.")
+    for item in items:
+        try:
+            container.delete_item(item=item["id"], partition_key=item.get("tenantDeviceId"))
+        except Exception:
+            pass
+    return Response(status_code=status.HTTP_204_NO_CONTENT), status_code=status.HTTP_204_NO_CONTENT)
+def set_device_config(deviceId: str, config: DeviceConfig, _: AdminActor = Depends(require_admin_actor)) -> Response:
+    """Push a new remote configuration to a device. Creates a placeholder record if the device hasn't checked in yet."""
+    container = get_devices_container()
+    if container is None:
+        raise HTTPException(status_code=503, detail="Devices store unavailable.")
+    record = _get_device_record(container, deviceId)
+    if record is None:
+        # Pre-stage config before the device first checks in.
+        record = {
+            "id": deviceId,
+            "tenantDeviceId": f"unknown:{deviceId}",
+            "deviceId": deviceId,
+            "hostname": deviceId,
+        }
+    config_dict = config.model_dump(by_alias=True, mode="json", exclude_none=True)
+    config_dict["configVersion"] = _utc_now().isoformat()
+    record["pendingConfig"] = config_dict
+    try:
+        container.upsert_item(record)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Cosmos update failed: {exc}") from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get("/api/v1/devices/{deviceId}/jobs")
@@ -509,20 +643,25 @@ def get_artifact_content(
             detail="Artifact content retrieval requires Blob Storage (FARSIGHT_BLOB_ACCOUNT_URL not configured).",
         )
 
-    # Look up the blob name from the artifact index.
+    # Look up the blob name from the artifact index (set by commit after upload).
     ai_container = get_artifact_index_container()
     blob_name: str | None = None
+    artifact_file_name: str | None = None
     if ai_container is not None:
         try:
             item = ai_container.read_item(item=f"{jobId}:{artifactId}", partition_key=jobId)
             blob_name = item.get("blobName")
+            artifact_file_name = item.get("name")  # e.g. "job-xxx-services.json"
         except Exception:
             pass
 
     container_name = os.getenv("FARSIGHT_BLOB_ARTIFACTS_CONTAINER", "artifacts")
     if not blob_name:
-        # Fallback: reconstruct the blob path from the upload convention.
-        blob_name = f"{jobId}/{artifactId}"
+        # Fallback: try 3-level path first (prepare convention), then 2-level.
+        if artifact_file_name:
+            blob_name = f"{jobId}/{artifactId}/{artifact_file_name}"
+        else:
+            blob_name = f"{jobId}/{artifactId}"
 
     try:
         blob = blob_client.get_blob_client(container=container_name, blob=blob_name)
@@ -612,22 +751,36 @@ def commit_artifact_upload(request: ArtifactCommitRequest, _: AzureClients = Dep
     blob_client = get_blob_service_client()
     if blob_client is not None:
         container_name = os.getenv("FARSIGHT_BLOB_ARTIFACTS_CONTAINER", "artifacts")
-        blob_name = f"{request.job_id}/{request.artifact_id}"
+        # Use the same 3-level path that prepare_artifact_upload created.
+        # If fileName is not provided, fall back to 2-level path.
+        if request.file_name:
+            blob_name = f"{request.job_id}/{request.artifact_id}/{request.file_name}"
+        else:
+            blob_name = f"{request.job_id}/{request.artifact_id}"
         try:
             blob = blob_client.get_blob_client(container=container_name, blob=blob_name)
             props = blob.get_blob_properties()
             actual_size = props.size
-            actual_md5 = props.content_settings.content_md5
         except Exception as exc:
-            raise HTTPException(status_code=404, detail=f"Artifact blob not found or inaccessible: {exc}") from exc
+            raise HTTPException(status_code=404, detail=f"Artifact blob not found: {exc}") from exc
 
         if not request.uploaded:
             raise HTTPException(status_code=400, detail="Artifact commit requires uploaded=true.")
 
-        # Update Cosmos artifactIndex with confirmed metadata.
+        # Update Cosmos artifactIndex with confirmed metadata including the blob name.
         ai_container = get_artifact_index_container()
         if ai_container is not None:
+            # Merge with any existing metadata (e.g. kind, name from result envelope).
+            existing: dict[str, Any] = {}
+            try:
+                existing = ai_container.read_item(
+                    item=f"{request.job_id}:{request.artifact_id}",
+                    partition_key=request.job_id,
+                )
+            except Exception:
+                pass
             ai_item = {
+                **existing,
                 "id": f"{request.job_id}:{request.artifact_id}",
                 "jobId": request.job_id,
                 "artifactId": request.artifact_id,
@@ -855,6 +1008,35 @@ def admin_list_jobs(
         job_list = [j for j in job_list if j.device_id == device_id]
     job_list.sort(key=lambda j: j.created_at_utc, reverse=True)
     return {"jobs": [j.model_dump(by_alias=True, mode="json") for j in job_list[:limit]], "total": len(job_list)}
+
+
+@app.post("/api/v1/admin/jobs/{jobId}/requeue", status_code=status.HTTP_204_NO_CONTENT)
+def requeue_job(jobId: str, _: AdminActor = Depends(require_admin_actor)) -> Response:
+    """Force a stuck Leased job back to Queued so the collector can pick it up again."""
+    container = get_jobs_container()
+    if container is None:
+        raise HTTPException(status_code=503, detail="Jobs store unavailable.")
+    try:
+        items = list(container.query_items(
+            query="SELECT * FROM c WHERE c.jobId = @jobId",
+            parameters=[{"name": "@jobId", "value": jobId}],
+            enable_cross_partition_query=True,
+        ))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Cosmos query failed: {exc}") from exc
+    if not items:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    item = items[0]
+    if item.get("status") not in (JobStatus.leased.value, JobStatus.queued.value):
+        raise HTTPException(status_code=409, detail=f"Job status is '{item.get('status')}' — only Leased or Queued jobs can be requeued.")
+    item["status"] = JobStatus.queued.value
+    item.pop("leaseToken", None)
+    item.pop("leasedAtUtc", None)
+    try:
+        container.replace_item(item=item["id"], body=item)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Cosmos update failed: {exc}") from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.put("/api/v1/admin/config", status_code=status.HTTP_204_NO_CONTENT)
