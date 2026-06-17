@@ -150,12 +150,22 @@ def ensure_clean_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def copy_collector_runtime() -> None:
+def copy_collector_runtime(install_root: str) -> None:
     target = PACKAGE_ROOT / "collector"
     target.mkdir(parents=True, exist_ok=True)
 
+    # Scripts that contain the generic Company\SreCollector fallback path.
+    # Replace it with the real install root so manual test runs work without -InstallRoot.
+    _PLACEHOLDER = r"$env:ProgramData\Company\SreCollector"
+    # Double-backslash for PS string literal embedded in Python raw string
+    _replacement = install_root.replace("\\", "\\\\")
+
     for name in ("bootstrap.ps1", "collector.ps1", "common.psm1", "healthcheck.ps1", "repair.ps1"):
-        shutil.copy2(COLLECTOR_SRC / name, target / name)
+        src = COLLECTOR_SRC / name
+        content = src.read_text(encoding="utf-8")
+        if _PLACEHOLDER in content:
+            content = content.replace(_PLACEHOLDER, install_root)
+        (target / name).write_text(content, encoding="utf-8")
 
     shutil.copytree(COLLECTOR_SRC / "schemas", target / "schemas", dirs_exist_ok=True)
 
@@ -573,7 +583,7 @@ def main() -> int:
     (PACKAGE_ROOT / "collector" / "config").mkdir(parents=True, exist_ok=True)
     (PACKAGE_ROOT / "modules").mkdir(parents=True, exist_ok=True)
 
-    copy_collector_runtime()
+    copy_collector_runtime(install_root)
     for module_name in selected_modules:
         copy_module_source(module_name)
     write_json(PACKAGE_ROOT / "collector" / "config" / "config.json", config)
