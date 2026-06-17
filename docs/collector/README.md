@@ -162,10 +162,12 @@ In Intune:
 1. Apps -> Windows -> Add -> Windows app (Win32).
 2. Upload generated `.intunewin`.
 3. Install command:
-   `powershell.exe -ExecutionPolicy Bypass -File .\install.ps1`
+   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1`
 4. Uninstall command:
-   `powershell.exe -ExecutionPolicy Bypass -File .\uninstall.ps1`
+   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1`
 5. Install behavior: **System**.
+
+> **Important**: `-NoProfile` is required. Without it PowerShell attempts to load a user profile before execution, which fails silently under the SYSTEM account (no user profile exists) causing the install script to produce no output and exit with a non-zero code.
 
 ### Recommended detection rule
 
