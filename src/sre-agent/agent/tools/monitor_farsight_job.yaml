@@ -51,5 +51,5 @@ auth_enabled: true
 auth_scopes: []
 connector: null
 attributes: []
-timeout_seconds: 620
+timeout_seconds: 900
 tool_mode: Auto
