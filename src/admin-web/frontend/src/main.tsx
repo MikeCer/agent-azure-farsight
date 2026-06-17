@@ -871,10 +871,7 @@ function App() {
           <span className="waffle" aria-hidden="true">▦</span>
           <strong>Agent-Azure-FarSight</strong>
         </div>
-        <label className="portal-search">
-          <span aria-hidden="true">⌕</span>
-          <input placeholder="Search diagnostics, devices, policies, jobs" />
-        </label>
+
         <button className="theme-toggle" type="button" aria-pressed={theme === "dark"}
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
           <span aria-hidden="true">{theme === "dark" ? "☾" : "☼"}</span>

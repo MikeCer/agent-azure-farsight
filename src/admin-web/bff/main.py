@@ -178,7 +178,7 @@ async def get_job_artifacts(job_id: str, current_admin: dict[str, Any] = Depends
 
 @app.get("/api/bff/devices")
 async def list_devices(current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
-    return await _control_api("GET", "/api/v1/devices", actor=str(current_admin["id"]))
+    return await _control_api_admin("GET", "/api/v1/devices", current_admin=current_admin)
 
 
 if static_root.exists():

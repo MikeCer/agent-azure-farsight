@@ -219,7 +219,7 @@ def check_in(
 
 @app.get("/api/v1/devices")
 def list_devices(
-    _: WorkloadCaller = Depends(require_workload_caller),
+    _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, object]:
     """Return registered devices with their last checkin timestamp for heartbeat monitoring."""
     container = get_devices_container()
