@@ -437,9 +437,13 @@ def _build_module_parameters(
         }, justification, approval_id)
 
     if task_type == "Get-ServiceStatusSnapshot":
-        err = _validate_text(action, "app_id", app_id, required=True, max_len=128)
-        if err:
-            return err
+        # app_id is optional for Get-ServiceStatusSnapshot — it narrows results to
+        # services owned by a specific application but is not required for a full
+        # system-wide snapshot.
+        if app_id:
+            err = _validate_text(action, "app_id", app_id, required=False, max_len=128)
+            if err:
+                return err
         services = _csv_list(action, "service_names_csv", service_names_csv, max_items=50, max_item_len=128)
         if isinstance(services, dict):
             return services

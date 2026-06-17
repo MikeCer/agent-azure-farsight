@@ -54,7 +54,7 @@ parameters:
 - name: app_id
   type: string
   required: false
-  description: App id for app-scoped modules.
+  description: App id for app-scoped modules (Get-AppLogBundle, Get-AppHealthSnapshot). Not required for Get-ServiceStatusSnapshot, Get-ConfigEvidence, Test-AppConnectivity, or Get-AppDiskEvidence.
 - name: path_profile
   type: string
   required: false
