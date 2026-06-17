@@ -78,7 +78,7 @@ async def _call_api(method: str, path: str, payload: dict[str, Any] | None = Non
 
 async def create_diagnostic_job(request: DiagnosticJobRequest) -> ToolResponse:
     tool_name = "create_diagnostic_job"
-    payload = request.model_dump(by_alias=True)
+    payload = request.model_dump(by_alias=True, mode="json")
     policy = _eval_policy(tool_name, request.risk_level, payload)
     if isinstance(policy, ToolResponse):
         return policy
@@ -92,7 +92,7 @@ async def create_diagnostic_job(request: DiagnosticJobRequest) -> ToolResponse:
 
 async def get_job_status(request: JobLookupRequest) -> ToolResponse:
     tool_name = "get_job_status"
-    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True))
+    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True, mode="json"))
     if isinstance(policy, ToolResponse):
         return policy
     if policy.outcome != PolicyOutcome.allow:
@@ -105,7 +105,7 @@ async def get_job_status(request: JobLookupRequest) -> ToolResponse:
 
 async def get_job_result_summary(request: JobLookupRequest) -> ToolResponse:
     tool_name = "get_job_result_summary"
-    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True))
+    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True, mode="json"))
     if isinstance(policy, ToolResponse):
         return policy
     if policy.outcome != PolicyOutcome.allow:
@@ -116,7 +116,7 @@ async def get_job_result_summary(request: JobLookupRequest) -> ToolResponse:
 
 async def retrieve_artifact_metadata(request: ArtifactMetadataRequest) -> ToolResponse:
     tool_name = "retrieve_artifact_metadata"
-    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True))
+    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True, mode="json"))
     if isinstance(policy, ToolResponse):
         return policy
     if policy.outcome != PolicyOutcome.allow:
@@ -127,7 +127,7 @@ async def retrieve_artifact_metadata(request: ArtifactMetadataRequest) -> ToolRe
 
 async def request_follow_up_module_execution(request: FollowUpRequest) -> ToolResponse:
     tool_name = "request_follow_up_module_execution"
-    payload = request.model_dump(by_alias=True)
+    payload = request.model_dump(by_alias=True, mode="json")
     policy = _eval_policy(tool_name, request.risk_level, payload)
     if isinstance(policy, ToolResponse):
         return policy
@@ -140,7 +140,7 @@ async def request_follow_up_module_execution(request: FollowUpRequest) -> ToolRe
 
 async def request_approval_for_action(request: ApprovalToolRequest) -> ToolResponse:
     tool_name = "request_approval_for_action"
-    payload = request.model_dump(by_alias=True) | {"requestedBy": "azure-sre-agent"}
+    payload = request.model_dump(by_alias=True, mode="json") | {"requestedBy": "azure-sre-agent"}
     policy = _eval_policy(tool_name, request.risk_level, payload)
     if isinstance(policy, ToolResponse):
         return policy
@@ -152,7 +152,7 @@ async def request_approval_for_action(request: ApprovalToolRequest) -> ToolRespo
 
 async def query_device_investigation_history(request: InvestigationHistoryRequest) -> ToolResponse:
     tool_name = "query_device_investigation_history"
-    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True))
+    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True, mode="json"))
     if isinstance(policy, ToolResponse):
         return policy
     if policy.outcome != PolicyOutcome.allow:
