@@ -434,3 +434,134 @@ For each ring, confirm:
 ## 8. Known gaps
 
 - Exact enterprise Intune assignment group IDs, cert profile names, and remediation IDs are tenant-specific and must be added during production onboarding.
+
+## 9. Collector update workflow
+
+The update strategy depends on what changed. Choose the lightest approach that covers the delta.
+
+### What changed — choose the right strategy
+
+| Change type | Strategy |
+|---|---|
+| Module schema file only (`input.schema.json`) | **Hot-patch on device** (Option A) or re-package + supersede |
+| Module script only (`*.ps1` in `src/modules/`) | Re-package + Intune **supersede** (same app, new version) |
+| Collector engine (`collector.ps1`, `common.psm1`, `bootstrap.ps1`) | Re-package + Intune **supersede** |
+| `config.json` or `module-manifest.json` | Re-package + Intune **supersede** |
+| Breaking install layout change | New Intune app + migration script |
+
+---
+
+### Option A — Hot-patch a single file on a device (for urgent schema/script fixes)
+
+Use this only for isolated file patches during active testing. Do **not** use in production without an Intune-tracked deployment.
+
+**Manually on the device (admin PowerShell):**
+
+```powershell
+$installRoot = "C:\ProgramData\Company\SreCollector"  # adjust if different
+$targetFile  = "modules\Get-ServiceStatusSnapshot\input.schema.json"
+$newContent  = @' 
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "serviceNames":         { "type": "array", "items": { "type": "string" }, "maxItems": 50 },
+    "includeStartupType":   { "type": "boolean", "default": true },
+    "includeServiceAccount":{ "type": "boolean", "default": false },
+    "includeArtifact":      { "type": "boolean", "default": false },
+    "maxServices":          { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 }
+  },
+  "additionalProperties": false
+}
+'@
+$newContent | Set-Content -LiteralPath (Join-Path $installRoot $targetFile) -Encoding UTF8
+Write-Host "Updated $targetFile" -ForegroundColor Green
+```
+
+After patching, the next collector scheduled task run will use the new schema without requiring a re-install or Intune sync.
+
+---
+
+### Option B — Re-package + Intune supersede (recommended for all tracked releases)
+
+Use for any change to collector engine, modules, or configuration files that should be tracked through Intune rings.
+
+#### Step 1 — Increment collector version
+
+Edit `scripts/build-collector-intunewin.py` (or the config passed to it) to bump the collector version string. This is stamped into `package-metadata.json` and the detection script uses it to identify stale installs.
+
+Alternatively, increment the version in `module-manifest.json`:
+
+```json
+{
+  "manifestVersion": "2026-06-17.1"
+}
+```
+
+#### Step 2 — Re-package
+
+Run the build helper from the repo root:
+
+```bash
+python3 scripts/build-collector-intunewin.py
+```
+
+The helper stages the updated files, prompts for config/cert metadata, and produces a new `.intunewin` at `.farsight-dist/`. The output file name includes the version string.
+
+#### Step 3 — Upload new `.intunewin` to Intune with supersede
+
+You do **not** need to create a new app. Use the Intune **Supersedence** feature on the existing Win32 app:
+
+1. In **Intune admin center** → **Apps** → **Windows** → select the existing FarSight Collector app.
+2. Go to **Supersedence** → **Add**.
+3. Select the **same app** (self-supersede).
+4. Set **Supersedence type**: `Update` (the new version replaces the old version without reinstalling from scratch).
+5. Upload the new `.intunewin` as a new version of the app.
+6. Set the **App version** field to match the new manifest version.
+7. **Save** and assign to ring groups using the same ring assignment as the original app.
+
+Intune will detect that the currently installed version does not match the superseded version (via the detection script) and re-run `install.ps1` on targeted devices.
+
+> If the detection script uses the `package-metadata.json` version string as the installed version marker, the install is re-triggered as soon as the new package version is available — matching normal Intune Win32 app update behavior.
+
+#### Step 4 — Validate in Lab ring first
+
+Before promoting to IT pilot and production, confirm in Lab:
+
+- `collector.ndjson` shows clean start on the next scheduled task run.
+- No parameter validation errors (check for `Invalid module parameters` in log).
+- Checkin returns `jobAvailable: false` (confirms API reachability and schema match).
+- Create a test job manually and confirm result is posted successfully.
+
+#### Step 5 — Promote through rings
+
+Follow the same ring promotion gate as the initial deployment (see Section 4). Monitor:
+
+```
+collector.ndjson — look for: 'Collector job completed' or 'No job available'
+API logs        — look for: POST /api/v1/devices/checkin 200, POST /api/v1/jobs/{id}/results 202
+```
+
+---
+
+### Option C — New Intune app (breaking layout change)
+
+If the install root, task name, or package structure changed incompatibly:
+
+1. Create a **new** Intune Win32 app for the updated collector.
+2. Add the **old** app as a **dependency** with **Uninstall previous version** enabled, so Intune removes the old collector before installing the new one.
+3. Assign the new app to the same ring groups.
+4. Keep the old app available for the grace period until all devices report the new version installed.
+
+---
+
+### Quick reference — what to do after a schema-only fix in the repo
+
+When you change `src/modules/<ModuleName>/input.schema.json` in the repository:
+
+1. **Active testing devices**: use Option A (hot-patch) to unblock immediately.
+2. **Tracked release**: run `python3 scripts/build-collector-intunewin.py`, bump manifest version, upload supersede to Intune, promote through rings.
+3. **No re-enrollment of certificates is needed** — the cert and `config.json` on the device are unaffected by module file changes.
+4. **No API redeployment is needed** — the API does not validate against module schemas; validation runs on-device in the collector.
+
