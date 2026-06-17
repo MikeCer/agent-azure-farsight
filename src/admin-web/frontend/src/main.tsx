@@ -421,26 +421,49 @@ function App() {
     return (
       <section className="feature-panel">
         <div className="feature-heading">
-          <p className="eyebrow">Overview</p>
-          <h2>FarSight operations at a glance</h2>
-          <p>Choose a feature from the console menu to manage governance policies, monitor tool-call activity, or inspect diagnostic job history.</p>
+          <p className="eyebrow">Agent-Azure-FarSight</p>
+          <h2>Governed endpoint diagnostics</h2>
+          <p>
+            FarSight provides a governed, policy-enforced diagnostic workflow for corporate Windows endpoints managed through
+            Microsoft Intune. An Azure SRE Agent submits diagnostic job requests through an AGT gateway. The gateway evaluates
+            each request against the active governance policy before forwarding to the control API. A PowerShell collector
+            installed on managed devices polls the API for assigned jobs, executes only allowlisted diagnostic modules, and
+            posts structured result envelopes back for SRE review.
+          </p>
         </div>
-        <div className="overview-strip">
-          <article>
-            <span className="icon-badge">◇</span>
-            <strong>Governance first</strong>
-            <p>Policy edits stay versioned and auditable before gateway enforcement changes.</p>
-          </article>
-          <article>
-            <span className="icon-badge">↯</span>
-            <strong>Tool-call monitoring</strong>
-            <p>Gateway activity, policy decisions, and SRE Agent tool-call history.</p>
-          </article>
-          <article>
-            <span className="icon-badge">▣</span>
-            <strong>Diagnostic jobs</strong>
-            <p>Full lifecycle view — from creation through collector execution to result summary.</p>
-          </article>
+
+        <div className="overview-section">
+          <h3>Architecture</h3>
+          <ol className="quickstart-steps">
+            <li><strong>SRE Agent</strong> calls <code>create_diagnostic_job</code> → routed through the AGT tool gateway.</li>
+            <li><strong>AGT gateway</strong> evaluates the request against the active policy (loaded from this API). Denied or approval-required calls are blocked.</li>
+            <li><strong>Control API</strong> persists the job document to Cosmos DB and enqueues a session message on Service Bus.</li>
+            <li><strong>Collector</strong> on the managed device checks in, receives a lease, executes the approved module, and posts results.</li>
+            <li><strong>SRE Agent</strong> polls job status via <code>monitor_farsight_job</code>, then surfaces findings and artifact metadata.</li>
+          </ol>
+        </div>
+
+        <div className="overview-section">
+          <h3>Quick-start — what to do first</h3>
+          <ol className="quickstart-steps">
+            <li>Open <strong>Policy repository</strong> and verify the active <code>farsight-tool-policy</code> is present and valid.</li>
+            <li>Open <strong>Devices</strong> to confirm at least one collector is checking in with a healthy heartbeat.</li>
+            <li>Ask the SRE Agent to run a <code>Get-ServiceStatusSnapshot</code> or <code>Get-ConfigEvidence</code> job for a device. Approved read-only modules proceed automatically; sensitive-diagnostic modules require an approval record.</li>
+            <li>Open <strong>Diagnostic jobs</strong> to monitor the job lifecycle and inspect result summaries once the collector completes.</li>
+          </ol>
+        </div>
+
+        <div className="overview-section">
+          <h3>Approved diagnostic modules</h3>
+          <ul className="module-list">
+            <li><code>Get-ServiceStatusSnapshot</code> — Windows service list and runtime status</li>
+            <li><code>Get-AppHealthSnapshot</code> — Application process health and service account state</li>
+            <li><code>Get-AppLogBundle</code> — Bounded application log collection (requires app scope)</li>
+            <li><code>Get-AppEventSlice</code> — Windows Event Log slice by time range and provider</li>
+            <li><code>Get-ConfigEvidence</code> — Registry and file system configuration evidence</li>
+            <li><code>Test-AppConnectivity</code> — Network reachability and TLS certificate checks</li>
+            <li><code>Get-AppDiskEvidence</code> — Bounded disk artefact sampling</li>
+          </ul>
         </div>
       </section>
     );
@@ -577,79 +600,77 @@ function App() {
     if (!selectedJob) return null;
     const job = selectedJob;
     return (
-      <aside className="job-detail-panel">
-        <div className="panel-header">
-          <h3>Job detail</h3>
-          <button onClick={() => { setSelectedJob(null); setJobArtifacts([]); }}>✕ Close</button>
-        </div>
-        <dl className="job-dl">
-          <dt>Job ID</dt><dd className="mono">{job.jobId}</dd>
-          <dt>Device</dt><dd className="mono">{job.deviceId}</dd>
-          <dt>Task type</dt><dd>{job.taskType}</dd>
-          <dt>Status</dt><dd><StatusBadge status={job.status} /></dd>
-          <dt>Risk level</dt><dd>{job.riskLevel}</dd>
-          <dt>Correlation</dt><dd className="mono">{job.correlationId ?? "—"}</dd>
-          <dt>Incident</dt><dd>{job.incidentId ?? "—"}</dd>
-          <dt>Requested by</dt><dd>{job.requestedBy ? `${job.requestedBy.kind}${job.requestedBy.toolName ? ` / ${job.requestedBy.toolName}` : ""}` : "—"}</dd>
-          <dt>Created</dt><dd>{formatTimestamp(job.createdAtUtc)}</dd>
-          <dt>Expires</dt><dd>{formatTimestamp(job.expiresAtUtc)}</dd>
-          <dt>Policy</dt><dd>{job.policyVersion ?? "—"}</dd>
-        </dl>
-
-        {job.resultSummary && Object.keys(job.resultSummary).length > 0 && (
-          <div className="job-section">
-            <h4>Result summary</h4>
-            <table>
-              <tbody>
+      <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setSelectedJob(null); setJobArtifacts([]); } }}>
+        <div className="job-detail-panel">
+          <div className="panel-header">
+            <h3>Job detail</h3>
+            <button onClick={() => { setSelectedJob(null); setJobArtifacts([]); }}>✕ Close</button>
+          </div>
+          <dl className="job-dl">
+            <dt>Job ID</dt><dd className="mono">{job.jobId}</dd>
+            <dt>Device</dt><dd className="mono">{job.deviceId}</dd>
+            <dt>Task type</dt><dd>{job.taskType}</dd>
+            <dt>Status</dt><dd><StatusBadge status={job.status} /></dd>
+            <dt>Risk level</dt><dd>{job.riskLevel}</dd>
+            <dt>Correlation</dt><dd className="mono">{job.correlationId ?? "—"}</dd>
+            <dt>Incident</dt><dd>{job.incidentId ?? "—"}</dd>
+            <dt>Requested by</dt><dd>{job.requestedBy ? `${job.requestedBy.kind}${job.requestedBy.toolName ? ` / ${job.requestedBy.toolName}` : ""}` : "—"}</dd>
+            <dt>Created</dt><dd>{formatTimestamp(job.createdAtUtc)}</dd>
+            <dt>Expires</dt><dd>{formatTimestamp(job.expiresAtUtc)}</dd>
+            <dt>Policy</dt><dd>{job.policyVersion ?? "—"}</dd>
+          </dl>
+          {job.resultSummary && Object.keys(job.resultSummary).length > 0 && (
+            <div className="job-section">
+              <h4>Result summary</h4>
+              <table><tbody>
                 {Object.entries(job.resultSummary).map(([k, v]) => (
                   <tr key={k}><td className="summary-key">{k}</td><td>{String(v)}</td></tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {job.resultFindings && job.resultFindings.length > 0 && (
-          <div className="job-section">
-            <h4>Findings ({job.resultFindings.length})</h4>
-            <ul className="findings-list">
-              {job.resultFindings.map((f, i) => (
-                <li key={i} className={`finding finding-${f.severity}`}>
-                  <span className="finding-severity">{f.severity}</span>
-                  <span className="finding-code">{f.code}</span>
-                  <span className="finding-msg">{f.message}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {jobArtifacts.length > 0 && (
-          <div className="job-section">
-            <h4>Artifacts ({jobArtifacts.length})</h4>
-            <table>
-              <thead><tr><th>ID</th><th>Kind</th><th>Name</th><th>Size</th></tr></thead>
-              <tbody>
-                {jobArtifacts.map((a) => (
-                  <tr key={a.artifactId}>
-                    <td className="mono">{a.artifactId}</td>
-                    <td>{a.kind}</td>
-                    <td>{a.name}</td>
-                    <td>{(a.sizeBytes / 1024).toFixed(1)} KB</td>
-                  </tr>
+              </tbody></table>
+            </div>
+          )}
+          {job.resultFindings && job.resultFindings.length > 0 && (
+            <div className="job-section">
+              <h4>Findings ({job.resultFindings.length})</h4>
+              <ul className="findings-list">
+                {job.resultFindings.map((f, i) => (
+                  <li key={i} className={`finding finding-${f.severity}`}>
+                    <span className="finding-severity">{f.severity}</span>
+                    <span className="finding-code">{f.code}</span>
+                    <span className="finding-msg">{f.message}</span>
+                  </li>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </aside>
+              </ul>
+            </div>
+          )}
+          {jobArtifacts.length > 0 && (
+            <div className="job-section">
+              <h4>Artifacts ({jobArtifacts.length})</h4>
+              <table>
+                <thead><tr><th>ID</th><th>Kind</th><th>Name</th><th>Size</th></tr></thead>
+                <tbody>
+                  {jobArtifacts.map((a) => (
+                    <tr key={a.artifactId}>
+                      <td className="mono">{a.artifactId}</td>
+                      <td>{a.kind}</td>
+                      <td>{a.name}</td>
+                      <td>{(a.sizeBytes / 1024).toFixed(1)} KB</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     );
   }
 
   function renderDiagnosticJobs() {
     return (
-      <section className="jobs-layout">
-        <div className="jobs-main">
+      <>
+        {selectedJob && renderJobDetail()}
+        <section className="feature-panel">
           <div className="feature-heading">
             <p className="eyebrow">Diagnostic jobs</p>
             <h2>Job monitoring</h2>
@@ -727,10 +748,9 @@ function App() {
               </table>
             </div>
           )}
-        </div>
 
-        {selectedJob && renderJobDetail()}
-      </section>
+        </section>
+      </>
     );
   }
 
@@ -738,15 +758,47 @@ function App() {
     const hbColors: Record<string, string> = { healthy: "status-success", stale: "status-warning", offline: "status-error", unknown: "status-neutral" };
     const hbLabels: Record<string, string> = { healthy: `✓ Online (<${HEARTBEAT_STALE_MINUTES}m)`, stale: `⚠ Stale (<${HEARTBEAT_DEAD_MINUTES}m)`, offline: "✕ Offline", unknown: "? Unknown" };
     return (
-      <section className="jobs-layout">
-        <div className="jobs-main">
+      <>
+        {selectedDevice && (
+          <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setSelectedDevice(null); }}>
+            <div className="job-detail-panel">
+              <div className="panel-header">
+                <h3>Device detail</h3>
+                <button onClick={() => setSelectedDevice(null)}>✕ Close</button>
+              </div>
+              <dl className="job-dl">
+                <dt>Device ID</dt><dd className="mono">{selectedDevice.deviceId}</dd>
+                <dt>Tenant</dt><dd>{selectedDevice.tenantId ?? "—"}</dd>
+                <dt>Heartbeat</dt><dd>
+                  <span className={`status-badge ${hbColors[heartbeatStatus(selectedDevice.lastCheckinUtc)]}`}>
+                    {hbLabels[heartbeatStatus(selectedDevice.lastCheckinUtc)]}
+                  </span>
+                </dd>
+                <dt>Last check-in</dt><dd>{formatTimestamp(selectedDevice.lastCheckinUtc)} ({minutesAgo(selectedDevice.lastCheckinUtc)})</dd>
+                <dt>Collector version</dt><dd>{selectedDevice.collectorVersion ?? "—"}</dd>
+                <dt>Manifest version</dt><dd>{selectedDevice.manifestVersion ?? "—"}</dd>
+                <dt>OS</dt><dd>{selectedDevice.os ? `${selectedDevice.os.name} ${selectedDevice.os.version}` : "—"}</dd>
+                <dt>Hostname hash</dt><dd className="mono">{selectedDevice.hostnameHash ?? "—"}</dd>
+                <dt>Last job ID</dt><dd className="mono">{selectedDevice.lastJobId ?? "—"}</dd>
+              </dl>
+              <div className="job-section">
+                <button className="primary" onClick={() => {
+                  setSelectedDevice(null);
+                  setDeviceIdInput(selectedDevice.deviceId);
+                  setActiveFeature("jobs");
+                  loadJobs(selectedDevice.deviceId).catch(() => {});
+                }}>View jobs for this device →</button>
+              </div>
+            </div>
+          </div>
+        )}
+        <section className="feature-panel">
           <div className="feature-heading">
             <p className="eyebrow">Devices</p>
             <h2>Collector heartbeat monitor</h2>
             <p>Every collector check-in is recorded as a heartbeat. Devices that have not checked in within {HEARTBEAT_STALE_MINUTES} minutes are stale; beyond {HEARTBEAT_DEAD_MINUTES} minutes they are offline.</p>
           </div>
 
-          {/* Heartbeat summary */}
           <div className="metric-grid">
             <article><span>Total</span><strong>{devices.length}</strong></article>
             <article><span className="status-success">Online</span><strong>{heartbeatCounts.healthy}</strong></article>
@@ -817,41 +869,8 @@ function App() {
               </table>
             </div>
           )}
-        </div>
-
-        {/* Device detail panel */}
-        {selectedDevice && (
-          <aside className="job-detail-panel">
-            <div className="panel-header">
-              <h3>Device detail</h3>
-              <button onClick={() => setSelectedDevice(null)}>✕ Close</button>
-            </div>
-            <dl className="job-dl">
-              <dt>Device ID</dt><dd className="mono">{selectedDevice.deviceId}</dd>
-              <dt>Tenant</dt><dd>{selectedDevice.tenantId ?? "—"}</dd>
-              <dt>Heartbeat</dt><dd>
-                <span className={`status-badge ${hbColors[heartbeatStatus(selectedDevice.lastCheckinUtc)]}`}>
-                  {hbLabels[heartbeatStatus(selectedDevice.lastCheckinUtc)]}
-                </span>
-              </dd>
-              <dt>Last check-in</dt><dd>{formatTimestamp(selectedDevice.lastCheckinUtc)} ({minutesAgo(selectedDevice.lastCheckinUtc)})</dd>
-              <dt>Collector version</dt><dd>{selectedDevice.collectorVersion ?? "—"}</dd>
-              <dt>Manifest version</dt><dd>{selectedDevice.manifestVersion ?? "—"}</dd>
-              <dt>OS</dt><dd>{selectedDevice.os ? `${selectedDevice.os.name} ${selectedDevice.os.version}` : "—"}</dd>
-              <dt>Hostname hash</dt><dd className="mono">{selectedDevice.hostnameHash ?? "—"}</dd>
-              <dt>Last job ID</dt><dd className="mono">{selectedDevice.lastJobId ?? "—"}</dd>
-            </dl>
-            <div className="job-section">
-              <button className="primary" onClick={() => {
-                setSelectedDevice(null);
-                setDeviceIdInput(selectedDevice.deviceId);
-                setActiveFeature("jobs");
-                loadJobs(selectedDevice.deviceId).catch(() => {});
-              }}>View jobs for this device →</button>
-            </div>
-          </aside>
-        )}
-      </section>
+        </section>
+      </>
     );
   }
 
