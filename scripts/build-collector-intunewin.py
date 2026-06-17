@@ -226,20 +226,34 @@ def _next_manifest_version(current: str) -> str:
 
     If current is already today's date, increments the counter.
     Otherwise starts a new date sequence at .1.
+    Returns empty string if auto-generation cannot be determined
+    (caller should prompt the user).
     """
     from datetime import date
-    today = date.today().isoformat()  # e.g. 2026-06-17
+    today = date.today().isoformat()
     if current and current.startswith(today + "."):
         try:
             counter = int(current.split(".")[-1])
             return f"{today}.{counter + 1}"
         except (ValueError, IndexError):
             pass
-    return f"{today}.1"
+    if current:
+        # Previous version exists but is from a different date — start today at .1
+        return f"{today}.1"
+    # No previous version at all — cannot auto-determine
+    return ""
 
 
 def build_manifest(selected_modules: list[str]) -> dict:
-    sample_manifest = json.loads((COLLECTOR_SRC / "config" / "module-manifest.sample.json").read_text(encoding="utf-8"))
+    sample_path = COLLECTOR_SRC / "config" / "module-manifest.sample.json"
+    try:
+        sample_manifest = json.loads(sample_path.read_text(encoding="utf-8"))
+        current_version = sample_manifest.get("manifestVersion", "")
+    except (OSError, json.JSONDecodeError):
+        print(f"  Warning: could not read {sample_path}")
+        sample_manifest = {}
+        current_version = ""
+
     lookup = {path.name: path for path in module_directories()}
     manifest_modules: list[dict] = []
 
@@ -259,19 +273,30 @@ def build_manifest(selected_modules: list[str]) -> dict:
         fragment["sha256"] = sha256_file(script_path)
         manifest_modules.append(fragment)
 
-    current_version = sample_manifest.get("manifestVersion", "")
     new_version = _next_manifest_version(current_version)
+    if not new_version:
+        # Could not determine version automatically — ask the user
+        from datetime import date
+        suggested = f"{date.today().isoformat()}.1"
+        new_version = prompt(
+            "Cannot determine manifestVersion automatically. Enter version "
+            "(format: YYYY-MM-DD.N)",
+            default=suggested,
+        )
+
     sample_manifest["manifestVersion"] = new_version
     sample_manifest["modules"] = manifest_modules
 
     # Write the bumped version back to the sample file so the next build
     # continues incrementing from the correct base.
-    sample_path = COLLECTOR_SRC / "config" / "module-manifest.sample.json"
-    updated_sample = json.loads(sample_path.read_text(encoding="utf-8"))
-    updated_sample["manifestVersion"] = new_version
-    sample_path.write_text(json.dumps(updated_sample, indent=2) + "\n", encoding="utf-8")
-    print(f"  manifestVersion → {new_version}")
+    try:
+        updated_sample = json.loads(sample_path.read_text(encoding="utf-8")) if sample_path.exists() else {}
+        updated_sample["manifestVersion"] = new_version
+        sample_path.write_text(json.dumps(updated_sample, indent=2) + "\n", encoding="utf-8")
+    except OSError as exc:
+        print(f"  Warning: could not write back manifestVersion to sample file: {exc}")
 
+    print(f"  manifestVersion → {new_version}")
     return sample_manifest
 
 
