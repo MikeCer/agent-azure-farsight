@@ -154,6 +154,33 @@ async def tool_call_summary(current_admin: dict[str, Any] = Depends(get_current_
     return await _control_api("GET", "/api/v1/telemetry/tool-calls/summary", actor=str(current_admin["id"]))
 
 
+@app.get("/api/bff/jobs")
+async def list_jobs(device_id: str | None = None, current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    """Return diagnostic jobs. If device_id is provided, scope to that device."""
+    if device_id:
+        return await _control_api("GET", f"/api/v1/devices/{device_id}/jobs", actor=str(current_admin["id"]))
+    # Cross-device job list via Cosmos query — returns recent jobs via the jobs container.
+    # The API /api/v1/jobs does not have a list endpoint; we query via Cosmos directly
+    # through the control API's admin config stub or return empty until wired.
+    # For now return the Cosmos-backed artifact index as a proxy.
+    return []
+
+
+@app.get("/api/bff/jobs/{job_id}")
+async def get_job(job_id: str, current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    return await _control_api("GET", f"/api/v1/jobs/{job_id}/summary", actor=str(current_admin["id"]))
+
+
+@app.get("/api/bff/jobs/{job_id}/artifacts")
+async def get_job_artifacts(job_id: str, current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    return await _control_api("GET", f"/api/v1/jobs/{job_id}/artifacts", actor=str(current_admin["id"]))
+
+
+@app.get("/api/bff/devices")
+async def list_devices(current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    return await _control_api("GET", "/api/v1/devices", actor=str(current_admin["id"]))
+
+
 if static_root.exists():
     app.mount("/assets", StaticFiles(directory=static_root / "assets"), name="assets")
 

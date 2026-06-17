@@ -358,6 +358,10 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: 'investigations'
             }
             {
+              name: 'FARSIGHT_COSMOS_DEVICES_CONTAINER'
+              value: 'devices'
+            }
+            {
               name: 'FARSIGHT_SERVICE_BUS_NAMESPACE'
               value: serviceBus.name
             }

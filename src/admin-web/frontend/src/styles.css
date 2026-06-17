@@ -487,3 +487,98 @@ th {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Status badges ──────────────────────────────────────────────────────────── */
+.status-badge {
+  display: inline-block;
+  padding: 0.15em 0.55em;
+  border-radius: 3px;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.status-success { background: #d1fae5; color: #065f46; }
+.status-error   { background: #fee2e2; color: #991b1b; }
+.status-running { background: #dbeafe; color: #1e40af; }
+.status-pending { background: #fef3c7; color: #92400e; }
+.status-warning { background: #fef3c7; color: #92400e; }
+.status-neutral { background: var(--surface-alt); color: var(--text-secondary); }
+[data-theme="dark"] .status-success { background: #064e3b; color: #6ee7b7; }
+[data-theme="dark"] .status-error   { background: #7f1d1d; color: #fca5a5; }
+[data-theme="dark"] .status-running { background: #1e3a5f; color: #93c5fd; }
+[data-theme="dark"] .status-pending { background: #78350f; color: #fcd34d; }
+[data-theme="dark"] .status-warning { background: #78350f; color: #fcd34d; }
+[data-theme="dark"] .status-neutral { background: var(--surface-alt); color: var(--text-secondary); }
+
+/* ── Risk badges ─────────────────────────────────────────────────────────────── */
+.risk-badge {
+  display: inline-block;
+  padding: 0.15em 0.5em;
+  border-radius: 3px;
+  font-size: 0.75em;
+  font-weight: 600;
+}
+.risk-read-only           { background: #d1fae5; color: #065f46; }
+.risk-sensitive-diagnostic { background: #fee2e2; color: #991b1b; }
+[data-theme="dark"] .risk-read-only           { background: #064e3b; color: #6ee7b7; }
+[data-theme="dark"] .risk-sensitive-diagnostic { background: #7f1d1d; color: #fca5a5; }
+
+/* ── Jobs / Devices layout ──────────────────────────────────────────────────── */
+.jobs-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.5rem;
+  align-items: start;
+}
+.jobs-main { min-width: 0; }
+.jobs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+.jobs-device-query { display: flex; gap: 0.5rem; }
+.jobs-device-query input { min-width: 220px; }
+.jobs-filter { flex: 1; min-width: 200px; }
+.jobs-count { font-size: 0.82em; color: var(--text-secondary); white-space: nowrap; }
+.jobs-table { width: 100%; }
+.jobs-table tbody tr { cursor: pointer; }
+.jobs-table tbody tr:hover { background: var(--surface-alt); }
+.jobs-table tbody tr.selected-row { background: var(--accent-subtle, #eff6ff); }
+[data-theme="dark"] .jobs-table tbody tr.selected-row { background: #1e3a5f; }
+.truncate { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mono { font-family: var(--font-mono, monospace); font-size: 0.82em; }
+.row-action { font-size: 0.8em; padding: 0.2em 0.6em; }
+
+/* ── Job / Device detail panel ─────────────────────────────────────────────── */
+.job-detail-panel {
+  width: 340px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1.25rem;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
+}
+.job-dl { display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 0.75rem; margin: 0.75rem 0; font-size: 0.85em; }
+.job-dl dt { color: var(--text-secondary); white-space: nowrap; align-self: start; padding-top: 0.1em; }
+.job-dl dd { margin: 0; word-break: break-all; }
+.job-section { margin-top: 1rem; }
+.job-section h4 { font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin: 0 0 0.5rem; }
+.summary-key { color: var(--text-secondary); font-size: 0.8em; padding-right: 0.75rem; white-space: nowrap; }
+.findings-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.finding { display: grid; grid-template-columns: auto auto 1fr; gap: 0.4rem; font-size: 0.8em; align-items: start; }
+.finding-severity { font-weight: 700; text-transform: uppercase; font-size: 0.75em; }
+.finding-error .finding-severity { color: #991b1b; }
+.finding-warning .finding-severity { color: #92400e; }
+.finding-code { font-family: monospace; color: var(--text-secondary); }
+.finding-msg { word-break: break-word; }
+
+@media (max-width: 1100px) {
+  .jobs-layout { grid-template-columns: 1fr; }
+  .job-detail-panel { width: 100%; position: static; }
+}

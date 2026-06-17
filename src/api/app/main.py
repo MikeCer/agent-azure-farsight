@@ -23,6 +23,7 @@ from .dependencies import (
     get_azure_clients,
     get_approvals_container,
     get_blob_service_client,
+    get_devices_container,
     get_investigations_container,
     get_jobs_container,
     get_jobs_queue_sender,
@@ -153,6 +154,28 @@ def check_in(
 ) -> CheckInResponse:
     require_bound_device_id(device, request.device_id)
     lease = None
+    now = _utc_now()
+
+    # Record heartbeat in the devices container.
+    devices_container = get_devices_container()
+    if devices_container is not None:
+        device_record = {
+            "id": request.device_id,
+            "tenantDeviceId": f"{request.tenant_id}:{request.device_id}",
+            "deviceId": request.device_id,
+            "tenantId": request.tenant_id,
+            "collectorVersion": request.collector_version,
+            "manifestVersion": request.manifest_version,
+            "hostnameHash": request.hostname_hash,
+            "os": request.os.model_dump(by_alias=True, mode="json") if request.os else {},
+            "lastCheckinUtc": now.isoformat(),
+            "lastJobId": request.last_job_id,
+        }
+        try:
+            devices_container.upsert_item(device_record)
+        except Exception:
+            pass  # Non-fatal — checkin still proceeds
+
     container = get_jobs_container()
     if container is not None:
         # Atomic lease transition using Cosmos ETag optimistic concurrency.
@@ -163,17 +186,16 @@ def check_in(
             item["status"] = JobStatus.leased.value
             token = f"lease-{uuid4()}"
             item["leaseToken"] = token
-            item["leasedAtUtc"] = _utc_now().isoformat()
+            item["leasedAtUtc"] = now.isoformat()
             try:
                 container.replace_item(item=item["id"], body=item, if_match=etag)
             except Exception:
-                # Concurrent update — another API instance already leased this job.
                 item = None
             if item:
                 lease = LeaseOffer(
                     jobId=item["jobId"],
                     leaseToken=token,
-                    leaseUntilUtc=_utc_now() + timedelta(minutes=10),
+                    leaseUntilUtc=now + timedelta(minutes=10),
                 )
     else:
         available = next(
@@ -185,7 +207,7 @@ def check_in(
             lease = LeaseOffer(
                 jobId=available.job_id,
                 leaseToken=f"lease-{uuid4()}",
-                leaseUntilUtc=_utc_now() + timedelta(minutes=10),
+                leaseUntilUtc=now + timedelta(minutes=10),
             )
     return CheckInResponse(
         policyVersion=POLICY_VERSION,
@@ -193,6 +215,21 @@ def check_in(
         jobAvailable=lease is not None,
         job=lease,
     )
+
+
+@app.get("/api/v1/devices")
+def list_devices(
+    _: WorkloadCaller = Depends(require_workload_caller),
+) -> dict[str, object]:
+    """Return registered devices with their last checkin timestamp for heartbeat monitoring."""
+    container = get_devices_container()
+    if container is not None:
+        items = list(container.query_items(
+            query="SELECT * FROM c ORDER BY c.lastCheckinUtc DESC OFFSET 0 LIMIT 200",
+            enable_cross_partition_query=True,
+        ))
+        return {"devices": items, "total": len(items)}
+    return {"devices": [], "total": 0}
 
 
 @app.get("/api/v1/devices/{deviceId}/jobs")

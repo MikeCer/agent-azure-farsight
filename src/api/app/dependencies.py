@@ -61,6 +61,10 @@ def get_investigations_container() -> Any | None:
     return _cosmos_container(os.getenv("FARSIGHT_COSMOS_INVESTIGATIONS_CONTAINER", "investigations"))
 
 
+def get_devices_container() -> Any | None:
+    return _cosmos_container(os.getenv("FARSIGHT_COSMOS_DEVICES_CONTAINER", "devices"))
+
+
 # ---------------------------------------------------------------------------
 # Service Bus sender (Phase 2)
 # ---------------------------------------------------------------------------
