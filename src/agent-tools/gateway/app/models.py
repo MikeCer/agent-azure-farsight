@@ -36,6 +36,12 @@ class ToolResponse(CamelModel):
     data: dict[str, Any] = Field(default_factory=dict)
 
 
+class RequestedBy(CamelModel):
+    kind: str = "agent_tool"
+    identity_object_id: str | None = Field(default=None, alias="identityObjectId")
+    tool_name: str | None = Field(default=None, alias="toolName")
+
+
 class DiagnosticJobRequest(CamelModel):
     device_id: str = Field(alias="deviceId")
     incident_id: str | None = Field(default=None, alias="incidentId")
@@ -44,6 +50,10 @@ class DiagnosticJobRequest(CamelModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
     risk_level: ToolRisk = Field(default=ToolRisk.read_only, alias="riskLevel")
     expires_at_utc: datetime = Field(alias="expiresAtUtc")
+    requested_by: RequestedBy = Field(
+        default_factory=lambda: RequestedBy(kind="agent_tool"),
+        alias="requestedBy",
+    )
 
 
 class JobLookupRequest(CamelModel):
