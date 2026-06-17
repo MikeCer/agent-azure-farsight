@@ -19,7 +19,7 @@ parameters:
     - approval_id
     - requested_action
     - reason
-    - app_id
+    - app_id  # Only for Get-AppLogBundle and Get-AppHealthSnapshot
     - service_names_csv
     - include_startup_type
     - include_service_account
