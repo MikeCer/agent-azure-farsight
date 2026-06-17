@@ -1,5 +1,5 @@
 {
-  "manifestVersion": "2026-06-12.1",
+  "manifestVersion": "2026-06-17.4",
   "modules": [
     {
       "name": "Get-AppLogBundle",
@@ -9,7 +9,9 @@
       "sha256": "sha256-placeholder",
       "timeoutSeconds": 120,
       "maxArtifactBytes": 10485760,
-      "allowedPathProfiles": ["default"],
+      "allowedPathProfiles": [
+        "default"
+      ],
       "schemaRef": "Get-AppLogBundle/input.schema.json"
     },
     {
