@@ -313,7 +313,19 @@ def make_install_script(install_root: str, task_name: str) -> str:
 
         Set-StrictMode -Version 2.0
         $ErrorActionPreference = 'Stop'
-        $SourceRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+        # Resolve the script's own directory robustly.
+        # $MyInvocation.MyCommand.Path is null when Intune's executor launches via
+        # its internal runner rather than -File. Fall back to $PSScriptRoot (PS 3+)
+        # and then to the current working directory, which Intune sets to the
+        # extracted package root.
+        if ($PSScriptRoot -and (Test-Path -LiteralPath $PSScriptRoot -PathType Container)) {
+            $SourceRoot = $PSScriptRoot
+        } elseif ($MyInvocation.MyCommand.Path) {
+            $SourceRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+        } else {
+            $SourceRoot = (Get-Location).Path
+        }
 
         function Resolve-FarSightCertificateThumbprint {
             param([string]$ConfigPath, [string]$CertificateProfilePath)
