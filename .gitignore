@@ -51,3 +51,4 @@ infra-test/main.json
 .logs
 
 .farsight-dist
+.azure/plan.md
