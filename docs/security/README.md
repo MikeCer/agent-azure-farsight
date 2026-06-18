@@ -155,7 +155,7 @@ Expected controls:
 - Modules collect only the minimum data required for the diagnostic hypothesis.
 - Redaction runs before upload where feasible.
 - Artifacts are size-limited and retained only for the configured lifecycle.
-- Blob artifacts are encrypted at rest and accessed through controlled API flows or short-lived scoped upload/download URLs.
+- Blob artifacts are encrypted at rest and accessed through controlled API flows or short-lived scoped upload/download URLs. When storage firewall rules block direct client uploads, collectors use the mTLS-protected API upload fallback so Blob Storage can remain network-restricted.
 - Cosmos DB job state, policy documents, approvals, and device metadata use TTL where appropriate.
 - Log Analytics retention is bounded and reviewed for data classification.
 - Sensitive fields, tokens, certificates, private keys, and secrets must never be written to collector logs, API logs, policy documents, or artifacts.

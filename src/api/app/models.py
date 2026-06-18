@@ -187,6 +187,15 @@ class ArtifactCommitRequest(CamelModel):
     sha256: str
 
 
+class ArtifactUploadRequest(CamelModel):
+    job_id: str = Field(alias="jobId")
+    artifact_id: str = Field(alias="artifactId")
+    file_name: str = Field(alias="fileName")
+    content_type: str = Field(alias="contentType")
+    content_base64: str = Field(alias="contentBase64")
+    sha256: str
+
+
 class ApprovalRequest(CamelModel):
     approval_id: str = Field(alias="approvalId")
     correlation_id: str = Field(alias="correlationId")

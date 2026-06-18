@@ -49,6 +49,7 @@ Each scheduled execution follows this sequence:
    - verify module SHA256 when manifest hash is not placeholder;
    - validate module parameters against module schema;
    - execute module with bounded timeout;
+   - upload any module artifacts by preparing a Blob SAS URL, trying direct Blob PUT, then falling back to `POST /api/v1/artifacts/upload` through the API when storage firewall rules block endpoint-to-Blob traffic;
    - post `POST /api/v1/jobs/{jobId}/results`.
 7. Persist updated local state and exit.
 

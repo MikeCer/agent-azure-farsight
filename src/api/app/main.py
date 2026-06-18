@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -35,6 +37,7 @@ from .models import (
     ArtifactCommitRequest,
     ArtifactPrepareRequest,
     ArtifactPrepareResponse,
+    ArtifactUploadRequest,
     CheckInRequest,
     CheckInResponse,
     DeviceConfig,
@@ -582,11 +585,11 @@ def submit_job_result(
         jobs_container.replace_item(item=item["id"], body=item, if_match=etag)
         devices_container = get_devices_container()
         if devices_container is not None and job_device_id:
-            device_item, device_etag = _get_device_record(devices_container, job_device_id)
+            device_item = _get_device_record(devices_container, job_device_id)
             if device_item is not None:
                 device_item["lastJobId"] = jobId
-                device_item["updatedAt"] = _utc_now()
-                devices_container.replace_item(item=device_item["id"], body=device_item, if_match=device_etag)
+                device_item["updatedAt"] = _utc_now().isoformat()
+                devices_container.upsert_item(device_item)
     else:
         if jobId not in jobs:
             raise HTTPException(status_code=404, detail="Job not found")
@@ -596,10 +599,7 @@ def submit_job_result(
         results[jobId] = result
         jobs[jobId].status = result.status
         artifact_index[jobId] = [artifact.model_dump(by_alias=True) for artifact in result.artifacts]
-        device_record = devices.get(job.device_id)
-        if device_record is not None:
-            device_record["lastJobId"] = jobId
-            device_record["updatedAt"] = _utc_now()
+        # In-memory fallback does not persist device documents.
 
     # Persist artifact metadata to artifactIndex container.
     ai_container = get_artifact_index_container()
@@ -756,6 +756,7 @@ def get_artifact_content(
         "sizeBytes": size_bytes,
         "content": content,
     }
+@app.post("/api/v1/artifacts/prepare", status_code=status.HTTP_201_CREATED)
 def prepare_artifact_upload(request: ArtifactPrepareRequest, _: AzureClients = Depends(get_azure_clients)) -> ArtifactPrepareResponse:
     blob_client = get_blob_service_client()
     expires = _utc_now() + timedelta(minutes=10)
@@ -790,6 +791,48 @@ def prepare_artifact_upload(request: ArtifactPrepareRequest, _: AzureClients = D
         expiresAtUtc=expires,
         requiredHeaders={"x-ms-blob-type": "BlockBlob"},
     )
+
+
+@app.post("/api/v1/artifacts/upload", status_code=status.HTTP_201_CREATED)
+def upload_artifact_via_api(
+    request: ArtifactUploadRequest,
+    device: DeviceCaller = Depends(require_device_cert),
+    _: AzureClients = Depends(get_azure_clients),
+) -> dict[str, str]:
+    jobs_container = get_jobs_container()
+    if jobs_container is not None:
+        item, _ = _get_job_from_cosmos(jobs_container, request.job_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        require_bound_device_id(device, item.get("deviceId", ""))
+
+    try:
+        content = base64.b64decode(request.content_base64, validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Artifact contentBase64 is not valid base64.") from exc
+
+    actual_sha256 = hashlib.sha256(content).hexdigest()
+    if actual_sha256.lower() != request.sha256.lower():
+        raise HTTPException(status_code=400, detail="Artifact SHA-256 does not match uploaded content.")
+
+    blob_client = get_blob_service_client()
+    if blob_client is None:
+        raise HTTPException(status_code=503, detail="Artifact upload requires Blob Storage (FARSIGHT_BLOB_ACCOUNT_URL not configured).")
+
+    container_name = os.getenv("FARSIGHT_BLOB_ARTIFACTS_CONTAINER", "artifacts")
+    blob_name = f"{request.job_id}/{request.artifact_id}/{request.file_name}"
+    try:
+        from azure.storage.blob import ContentSettings
+        blob = blob_client.get_blob_client(container=container_name, blob=blob_name)
+        blob.upload_blob(
+            content,
+            overwrite=True,
+            content_settings=ContentSettings(content_type=request.content_type),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to upload artifact via API: {exc}") from exc
+
+    return {"status": "uploaded", "blobName": blob_name, "sha256": actual_sha256}
 
 
 @app.post("/api/v1/artifacts/commit", status_code=status.HTTP_202_ACCEPTED)

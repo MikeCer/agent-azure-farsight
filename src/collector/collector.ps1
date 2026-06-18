@@ -196,8 +196,21 @@ try {
             if ($uploadHeaders.ContainsKey('x-ms-blob-content-type')) {
                 $uploadHeaders.Remove('x-ms-blob-content-type') | Out-Null
             }
-            $uploadResp = Invoke-WebRequest -Uri $prepareResp.uploadUrl -Method PUT -Body $fileBytes -Headers $uploadHeaders -UseBasicParsing -ErrorAction Stop
-            if ($uploadResp.StatusCode -notin @(200, 201)) { throw "Blob upload returned HTTP $($uploadResp.StatusCode)" }
+            try {
+                $uploadResp = Invoke-WebRequest -Uri $prepareResp.uploadUrl -Method PUT -Body $fileBytes -Headers $uploadHeaders -UseBasicParsing -ErrorAction Stop
+                if ($uploadResp.StatusCode -notin @(200, 201)) { throw "Blob upload returned HTTP $($uploadResp.StatusCode)" }
+            } catch {
+                Write-FarSightLog -Level Warning -Message "Direct blob upload failed for $($artifact.artifactId); retrying through API: $_" -LogPath $logPath
+                $uploadBody = [ordered]@{
+                    jobId = $job.jobId
+                    artifactId = $artifact.artifactId
+                    fileName = $fileName
+                    contentType = $contentType
+                    contentBase64 = [Convert]::ToBase64String($fileBytes)
+                    sha256 = $sha256Hex
+                }
+                Invoke-FarSightApi -Method POST -Uri ($config.api.baseUrl.TrimEnd('/') + '/api/v1/artifacts/upload') -Body $uploadBody -Headers $headers -TimeoutSeconds $config.api.timeoutSeconds -CertificateThumbprint $config.api.certificateThumbprint | Out-Null
+            }
 
             # Commit the upload so the API indexes it.
             $commitBody = [ordered]@{
