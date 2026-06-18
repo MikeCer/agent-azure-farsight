@@ -79,6 +79,26 @@ def actor_display(actor: AdminActor) -> str:
     return actor.actor_name or actor.actor_id
 
 
+def _device_checkin_interval_seconds(device_record: dict[str, Any] | None, default_seconds: int = 300) -> int:
+    """Return the effective collector cadence for a device."""
+    if not device_record:
+        return default_seconds
+    pending = device_record.get("pendingConfig") or {}
+    interval_seconds = pending.get("checkInIntervalSeconds")
+    if interval_seconds is not None:
+        try:
+            return max(60, int(interval_seconds))
+        except (TypeError, ValueError):
+            return default_seconds
+    task_minutes = pending.get("scheduledTaskIntervalMinutes")
+    if task_minutes is not None:
+        try:
+            return max(60, int(task_minutes) * 60)
+        except (TypeError, ValueError):
+            return default_seconds
+    return default_seconds
+
+
 def _cosmos_upsert(container: Any, doc: Any) -> None:
     container.upsert_item(doc.model_dump(by_alias=True, mode="json"))
 
@@ -156,6 +176,7 @@ def check_in(
     require_bound_device_id(device, request.device_id)
     lease = None
     now = _utc_now()
+    next_check_in_after_seconds = 300
 
     # Record heartbeat in the devices container; preserve pendingConfig across upserts.
     pending_config: DeviceConfig | None = None
@@ -189,6 +210,7 @@ def check_in(
 
         # Send pendingConfig if it exists and the client hasn't applied it yet.
         raw_cfg = device_record.get("pendingConfig")
+        next_check_in_after_seconds = _device_checkin_interval_seconds(device_record)
         if raw_cfg:
             cfg_version = raw_cfg.get("configVersion")
             if cfg_version and cfg_version != request.applied_config_version:
@@ -254,6 +276,7 @@ def check_in(
     return CheckInResponse(
         policyVersion=POLICY_VERSION,
         manifestVersion=MANIFEST_VERSION,
+        nextCheckInAfterSeconds=next_check_in_after_seconds,
         jobAvailable=lease is not None,
         job=lease,
         pendingConfig=pending_config,
@@ -329,7 +352,7 @@ def delete_device(deviceId: str, _: AdminActor = Depends(require_admin_actor)) -
     try:
         items = list(container.query_items(
             query="SELECT * FROM c WHERE c.deviceId = @deviceId",
-            parameters=[{"name": "@deviceId", "value": device_id}],
+            parameters=[{"name": "@deviceId", "value": deviceId}],
             enable_cross_partition_query=True,
         ))
     except Exception as exc:
@@ -341,7 +364,11 @@ def delete_device(deviceId: str, _: AdminActor = Depends(require_admin_actor)) -
             container.delete_item(item=item["id"], partition_key=item.get("tenantDeviceId"))
         except Exception:
             pass
-    return Response(status_code=status.HTTP_204_NO_CONTENT), status_code=status.HTTP_204_NO_CONTENT)
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.put("/api/v1/admin/devices/{deviceId}/config", status_code=status.HTTP_204_NO_CONTENT)
 def set_device_config(deviceId: str, config: DeviceConfig, _: AdminActor = Depends(require_admin_actor)) -> Response:
     """Push a new remote configuration to a device. Creates a placeholder record if the device hasn't checked in yet."""
     container = get_devices_container()
@@ -553,6 +580,13 @@ def submit_job_result(
         item["resultFindings"] = [f.model_dump(by_alias=True, mode="json") for f in result.findings]
         item["completedAtUtc"] = result.completed_at_utc.isoformat()
         jobs_container.replace_item(item=item["id"], body=item, if_match=etag)
+        devices_container = get_devices_container()
+        if devices_container is not None and job_device_id:
+            device_item, device_etag = _get_device_record(devices_container, job_device_id)
+            if device_item is not None:
+                device_item["lastJobId"] = jobId
+                device_item["updatedAt"] = _utc_now()
+                devices_container.replace_item(item=device_item["id"], body=device_item, if_match=device_etag)
     else:
         if jobId not in jobs:
             raise HTTPException(status_code=404, detail="Job not found")
@@ -562,12 +596,24 @@ def submit_job_result(
         results[jobId] = result
         jobs[jobId].status = result.status
         artifact_index[jobId] = [artifact.model_dump(by_alias=True) for artifact in result.artifacts]
+        device_record = devices.get(job.device_id)
+        if device_record is not None:
+            device_record["lastJobId"] = jobId
+            device_record["updatedAt"] = _utc_now()
 
     # Persist artifact metadata to artifactIndex container.
     ai_container = get_artifact_index_container()
     if ai_container is not None and result.artifacts:
         for artifact in result.artifacts:
-            ai_item = artifact.model_dump(by_alias=True, mode="json")
+            existing: dict[str, Any] = {}
+            try:
+                existing = ai_container.read_item(item=f"{jobId}:{artifact.artifact_id}", partition_key=jobId)
+            except Exception:
+                pass
+            ai_item = {
+                **existing,
+                **artifact.model_dump(by_alias=True, mode="json"),
+            }
             ai_item["id"] = f"{jobId}:{artifact.artifact_id}"
             ai_item["jobId"] = jobId
             ai_container.upsert_item(ai_item)
@@ -736,7 +782,7 @@ def prepare_artifact_upload(request: ArtifactPrepareRequest, _: AzureClients = D
         return ArtifactPrepareResponse(
             uploadUrl=upload_url,
             expiresAtUtc=expires,
-            requiredHeaders={"x-ms-blob-type": "BlockBlob", "x-ms-blob-content-type": request.content_type},
+            requiredHeaders={"x-ms-blob-type": "BlockBlob"},
         )
     # Local dev fallback: return a placeholder URL.
     return ArtifactPrepareResponse(

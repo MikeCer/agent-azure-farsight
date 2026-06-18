@@ -61,6 +61,11 @@ Use the admin web policy repository page to edit AGT policies. Recommended workf
 
 If a policy blocks expected diagnostics, reactivate the previous known-good version and investigate the changed rule.
 
+## Admin console navigation
+
+- Each data-rich blade in the admin console includes a refresh action so operators can pull the latest server state without reloading the page.
+- Browser back/forward stays within the single-page console and moves between console blades instead of leaving the app immediately.
+
 ## Incident response
 
 Disable affected module IDs, revoke credentials, preserve audit logs, notify owners, and document customer impact.

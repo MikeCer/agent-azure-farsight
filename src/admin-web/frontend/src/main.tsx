@@ -247,6 +247,15 @@ function App() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  function navigateFeature(feature: FeatureId) {
+    if (feature === activeFeature) return;
+    setActiveFeature(feature);
+    setSelectedJob(null);
+    setJobArtifacts([]);
+    setSelectedDevice(null);
+    window.history.pushState({ feature }, "", window.location.href);
+  }
+
   // ── Policy functions ────────────────────────────────────────────────────────
 
   function loadPolicyDocument(policy: PolicySummary) {
@@ -263,7 +272,7 @@ function App() {
   function startNewPolicy() {
     const policyId = `custom-policy-${new Date().toISOString().slice(0, 10)}`;
     const policyVersion = new Date().toISOString().slice(0, 10);
-    setActiveFeature("policies");
+    navigateFeature("policies");
     setSelectedPolicyId(policyId);
     setVersion(policyVersion);
     setContent(newPolicyTemplate(policyId, policyVersion));
@@ -419,6 +428,16 @@ function App() {
     window.localStorage.setItem(themeStorageKey, theme);
   }, [theme]);
 
+  useEffect(() => {
+    window.history.replaceState({ feature: activeFeature }, "", window.location.href);
+    const onPopState = (event: PopStateEvent) => {
+      const nextFeature = (event.state?.feature as FeatureId | undefined) ?? "overview";
+      setActiveFeature(nextFeature);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   useEffect(() => { loadPolicies().catch((err) => setError(err.message)); }, []);
 
   useEffect(() => {
@@ -431,6 +450,12 @@ function App() {
     if (activeFeature === "devices" && devices.length === 0 && !devicesLoading) {
       loadDevices().catch((err) => setError(err.message));
     }
+  }, [activeFeature]);
+
+  useEffect(() => {
+    setSelectedJob(null);
+    setJobArtifacts([]);
+    setSelectedDevice(null);
   }, [activeFeature]);
 
   // ── Filtered jobs ───────────────────────────────────────────────────────────
@@ -524,7 +549,10 @@ function App() {
         <aside className="panel">
           <div className="panel-header">
             <h2>Policy repository</h2>
-            <button onClick={startNewPolicy}>New policy</button>
+            <div>
+              <button onClick={() => loadPolicies().catch((err) => setError(err.message))}>Refresh</button>
+              <button onClick={startNewPolicy}>New policy</button>
+            </div>
           </div>
           <p className="helper">The AGT gateway uses the active version of the configured policy ID.</p>
           {policies.length === 0 ? <p>No policies loaded yet.</p> : (
@@ -757,6 +785,19 @@ function App() {
               <button onClick={() => loadJobs(deviceIdInput || undefined).catch((err) => setError(err.message))}>
                 {jobsLoading ? "Loading…" : "Search"}
               </button>
+              <button onClick={async () => {
+                try {
+                  const currentJob = selectedJob;
+                  await loadJobs(deviceIdInput || undefined);
+                  if (currentJob) {
+                    await loadJobDetail(currentJob);
+                  }
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              }}>
+                Refresh
+              </button>
             </div>
             <input
               className="jobs-filter"
@@ -809,7 +850,7 @@ function App() {
                       <td className="mono truncate">{job.correlationId ?? "—"}</td>
                       <td><span className={`risk-badge risk-${job.riskLevel}`}>{job.riskLevel}</span></td>
                       <td>{formatTimestamp(job.createdAtUtc)}</td>
-                      <td><button className="row-action">Details →</button></td>
+                      <td><button className="row-action" onClick={(e) => { e.stopPropagation(); navigateFeature("jobs"); loadJobDetail(job).catch((err) => setError(err.message)); }}>Details →</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -836,7 +877,11 @@ function App() {
               </div>
               <div className="panel-body">
               <dl className="job-dl">
-                <dt>Hostname</dt><dd><strong>{selectedDevice.hostname ?? selectedDevice.deviceId}</strong></dd>
+                {selectedDevice.hostname && selectedDevice.hostname !== selectedDevice.deviceId && (
+                  <>
+                    <dt>Hostname</dt><dd><strong>{selectedDevice.hostname}</strong></dd>
+                  </>
+                )}
                 <dt>Device ID</dt><dd className="mono">{selectedDevice.deviceId}</dd>
                 <dt>Tenant</dt><dd>{selectedDevice.tenantId ?? "—"}</dd>
                 <dt>Heartbeat</dt><dd>
@@ -855,7 +900,7 @@ function App() {
                 <button className="primary" onClick={() => {
                   setSelectedDevice(null);
                   setDeviceIdInput(selectedDevice.deviceId);
-                  setActiveFeature("jobs");
+                  navigateFeature("jobs");
                   loadJobs(selectedDevice.deviceId).catch(() => {});
                 }}>View jobs for this device →</button>
               </div>
@@ -993,7 +1038,7 @@ function App() {
                         <td title={d.lastCheckinUtc ?? ""}>{minutesAgo(d.lastCheckinUtc)}</td>
                         <td>{d.collectorVersion ?? "—"}</td>
                         <td>{d.os ? `${d.os.name} ${d.os.version}` : "—"}</td>
-                        <td><button className="row-action" onClick={(e) => { e.stopPropagation(); setDeviceFilter(d.deviceId); setActiveFeature("jobs"); setDeviceIdInput(d.deviceId); loadJobs(d.deviceId).catch(() => {}); }}>Jobs →</button></td>
+                        <td><button className="row-action" onClick={(e) => { e.stopPropagation(); setDeviceFilter(d.deviceId); navigateFeature("jobs"); setDeviceIdInput(d.deviceId); loadJobs(d.deviceId).catch(() => {}); }}>Jobs →</button></td>
                         <td><button className="row-action row-action-config" onClick={(e) => { e.stopPropagation(); const next = d; setSelectedDevice(next); loadDeviceConfig(next.deviceId).catch(() => {}); }}>⚙ Configure</button></td>
                       </tr>
                     );
@@ -1043,7 +1088,7 @@ function App() {
           <nav>
             {features.map((feature) => (
               <button key={feature.id} className={activeFeature === feature.id ? "selected" : ""}
-                onClick={() => setActiveFeature(feature.id)}>
+                  onClick={() => navigateFeature(feature.id)}>
                 <span className="nav-icon" aria-hidden="true">{feature.icon}</span>
                 <span>{feature.label}</span>
               </button>

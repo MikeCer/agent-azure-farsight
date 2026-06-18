@@ -82,6 +82,30 @@ def sanitize_path_segment(value: str) -> str:
     return cleaned or "Company"
 
 
+def validate_company_name(value: str) -> str:
+    """
+    Validate the company name once and reuse it for path segments, task names,
+    and package metadata.
+
+    Keep it conservative: letters, numbers, spaces, dots, underscores, hyphens,
+    parentheses, and ampersands are allowed. That covers common real-world
+    company names while avoiding characters that tend to break PowerShell,
+    Task Scheduler, or Windows path usage.
+    """
+    import re
+
+    trimmed = value.strip()
+    if not trimmed:
+        raise ValueError("Company name cannot be empty.")
+    if len(trimmed) > 64:
+        raise ValueError("Company name must be 64 characters or fewer.")
+    if not re.fullmatch(r"[A-Za-z0-9 ._()&-]+", trimmed):
+        raise ValueError(
+            "Company name contains unsupported characters. Use only letters, numbers, spaces, dots, underscores, hyphens, parentheses, and ampersands."
+        )
+    return trimmed
+
+
 def ps_single_quoted(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
@@ -446,7 +470,7 @@ def make_install_script(install_root: str, task_name: str) -> str:
         $config.device.hostnameHash = $resolvedHostnameHash
         $config | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $configPath -Encoding UTF8
 
-        & (Join-Path $InstallRoot 'bootstrap.ps1') -InstallRoot $InstallRoot
+        & (Join-Path $InstallRoot 'bootstrap.ps1') -InstallRoot $InstallRoot -TaskName $TaskName
 
         $collectorScript = Join-Path $InstallRoot 'collector.ps1'
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$collectorScript`" -InstallRoot `"$InstallRoot`""
@@ -531,7 +555,7 @@ def main() -> int:
     print(f"Collector source:   {COLLECTOR_SRC}")
     print(f"Modules source:     {MODULES_SRC}")
 
-    company_name = prompt("Company name", "Company")
+    company_name = validate_company_name(prompt("Company name", "Company"))
     company_segment = sanitize_path_segment(company_name)
     install_root = rf"C:\ProgramData\{company_segment}\SreCollector"
     task_name = f"{company_name} FarSight Collector"

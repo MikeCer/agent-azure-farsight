@@ -22,6 +22,43 @@ $lockPath = Join-Path $stateRoot 'collector.lock'
 $lockStream = $null
 $logPath = $null  # Initialize early so catch block can reference it
 
+function Get-FarSightScheduledTaskName {
+    param([string]$InstallRoot)
+
+    $intentPath = Join-Path (Join-Path $InstallRoot 'config') 'scheduled-task.intent.json'
+    if (Test-Path -LiteralPath $intentPath -PathType Leaf) {
+        try {
+            $intent = Read-FarSightJsonFile -Path $intentPath
+            if ($intent.taskName) {
+                return [string]$intent.taskName
+            }
+        } catch {
+            # Ignore malformed intent metadata and fall back to the default name.
+        }
+    }
+
+    return 'FarSight Collector'
+}
+
+function Register-FarSightScheduledTask {
+    param(
+        [string]$InstallRoot,
+        [string]$TaskName,
+        [int]$IntervalMinutes
+    )
+
+    $collectorScript = Join-Path $InstallRoot 'collector.ps1'
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$collectorScript`" -InstallRoot `"$InstallRoot`""
+    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes($IntervalMinutes) -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes)
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+
+    if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    }
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+}
+
 # Ensure state directory exists
 if (-not (Test-Path -LiteralPath $stateRoot -PathType Container)) {
     New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
@@ -64,22 +101,13 @@ try {
             Write-FarSightLog -Level Information -Message 'Applying remote configuration' -LogPath $logPath -Context @{ configVersion = $cfg.configVersion }
 
             # Update scheduled task repetition interval if specified.
-            # Must create a fresh trigger object — CimInstance properties are read-only.
             if ($cfg.scheduledTaskIntervalMinutes) {
-                $taskName = 'FarSight Collector'
-                $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-                if ($task) {
-                    $intervalMinutes = [int]$cfg.scheduledTaskIntervalMinutes
-                    # Build a new trigger via the task XML so the repetition interval is set correctly.
-                    $taskXml = [xml]($task | Export-ScheduledTask)
-                    $ns = 'http://schemas.microsoft.com/windows/2004/02/mit/task'
-                    $triggerNode = $taskXml.Task.Triggers.ChildNodes | Select-Object -First 1
-                    if ($triggerNode -and $triggerNode.Repetition) {
-                        $isoDuration = 'PT{0}M' -f $intervalMinutes
-                        $triggerNode.Repetition.Interval = $isoDuration
-                        Register-ScheduledTask -Xml $taskXml.OuterXml -TaskName $taskName -Force | Out-Null
-                        Write-FarSightLog -Level Information -Message 'Scheduled task interval updated' -LogPath $logPath -Context @{ intervalMinutes = $intervalMinutes }
-                    }
+                $taskName = Get-FarSightScheduledTaskName -InstallRoot $InstallRoot
+                $intervalMinutes = [int]$cfg.scheduledTaskIntervalMinutes
+                Register-FarSightScheduledTask -InstallRoot $InstallRoot -TaskName $taskName -IntervalMinutes $intervalMinutes
+                Write-FarSightLog -Level Information -Message 'Scheduled task interval updated' -LogPath $logPath -Context @{
+                    taskName = $taskName
+                    intervalMinutes = $intervalMinutes
                 }
             }
 
@@ -165,11 +193,20 @@ try {
             # Upload the file directly to blob storage.
             $uploadHeaders = @{ 'x-ms-blob-type' = 'BlockBlob'; 'Content-Type' = $contentType }
             foreach ($h in $prepareResp.requiredHeaders.PSObject.Properties) { $uploadHeaders[$h.Name] = $h.Value }
+            if ($uploadHeaders.ContainsKey('x-ms-blob-content-type')) {
+                $uploadHeaders.Remove('x-ms-blob-content-type') | Out-Null
+            }
             $uploadResp = Invoke-WebRequest -Uri $prepareResp.uploadUrl -Method PUT -Body $fileBytes -Headers $uploadHeaders -UseBasicParsing -ErrorAction Stop
             if ($uploadResp.StatusCode -notin @(200, 201)) { throw "Blob upload returned HTTP $($uploadResp.StatusCode)" }
 
             # Commit the upload so the API indexes it.
-            $commitBody = [ordered]@{ jobId = $job.jobId; artifactId = $artifact.artifactId; uploaded = $true; sha256 = $sha256Hex }
+            $commitBody = [ordered]@{
+                jobId = $job.jobId
+                artifactId = $artifact.artifactId
+                fileName = $fileName
+                uploaded = $true
+                sha256 = $sha256Hex
+            }
             Invoke-FarSightApi -Method POST -Uri ($config.api.baseUrl.TrimEnd('/') + '/api/v1/artifacts/commit') -Body $commitBody -Headers $headers -TimeoutSeconds $config.api.timeoutSeconds -CertificateThumbprint $config.api.certificateThumbprint | Out-Null
 
             Write-FarSightLog -Level Information -Message 'Artifact uploaded' -LogPath $logPath -Context @{ artifactId = $artifact.artifactId; sizeBytes = $sizeBytes }

@@ -1,5 +1,5 @@
 {
-  "manifestVersion": "2026-06-18.3",
+  "manifestVersion": "2026-06-18.6",
   "modules": [
     {
       "name": "Get-AppLogBundle",

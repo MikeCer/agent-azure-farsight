@@ -81,6 +81,10 @@ Create environment-specific files from:
 | `runtime.logPath` | Collector log directory (Windows path); the collector writes `collector.ndjson` inside it |
 | `redaction.enabled` | Keep `true` outside isolated tests |
 
+When remote configuration sets `scheduledTaskIntervalMinutes`, the collector resolves the packaged task name from `config/scheduled-task.intent.json` and re-registers the scheduled task in place with the new interval. This replaces the old task registration rather than trying to mutate the existing CIM trigger object.
+
+The API now returns `nextCheckInAfterSeconds` based on the device's effective remote configuration (`checkInIntervalSeconds` or `scheduledTaskIntervalMinutes`), so the collector log matches the configured cadence instead of always showing the model default.
+
 ### `module-manifest.json` expectations
 
 - Include only approved module names.
@@ -98,11 +102,15 @@ Recommended artifacts:
 
 For the fastest operator flow, use `scripts/build-collector-intunewin.py`. It first asks for the customer/company name, then stages a package under `.farsight-dist/collector-package/`, interactively collects `config.json`, the final `module-manifest.json`, and certificate metadata, then invokes `scripts/IntuneWinAppUtil.exe` to produce the `.intunewin` output.
 
+The builder validates the company name before using it. Allowed characters are letters, numbers, spaces, dots, underscores, hyphens, parentheses, and ampersands; the value is then reused for the install root, scheduled task name, and package metadata so it cannot break path or Task Scheduler generation.
+
 **Install command**: The helper automatically includes the `-i` parameter with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File install.ps1` so Intune knows how to execute the PowerShell install script. This is essential for the Win32 app installation to proceed after detection succeeds.
 
 The helper separates shared package settings from install-time lookup values, so it should not ask for per-device IDs or thumbprints when Intune PKI is selected.
 
 The helper also emits package metadata (`package-metadata.json`) so the generated install/uninstall scripts use the chosen company name in the install root and scheduled task name.
+
+The generated `install.ps1` now passes that chosen task name through to `bootstrap.ps1`, so `config/scheduled-task.intent.json` and the actual scheduled task stay aligned instead of falling back to the generic `Company FarSight Collector`.
 
 ### Package staging structure
 
@@ -569,4 +577,3 @@ When you change `src/modules/<ModuleName>/input.schema.json` in the repository:
 2. **Tracked release**: run `python3 scripts/build-collector-intunewin.py`, bump manifest version, upload supersede to Intune, promote through rings.
 3. **No re-enrollment of certificates is needed** — the cert and `config.json` on the device are unaffected by module file changes.
 4. **No API redeployment is needed** — the API does not validate against module schemas; validation runs on-device in the collector.
-
