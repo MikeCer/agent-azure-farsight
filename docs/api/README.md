@@ -93,15 +93,9 @@ Cosmos container name env vars (all default to the container names above):
 - `FARSIGHT_COSMOS_INVESTIGATIONS_CONTAINER`
 - `FARSIGHT_COSMOS_POLICIES_CONTAINER`
 
-## Service Bus job queuing
+## Service Bus job queuing (removed)
 
-When a job is created, the API enqueues a session message on the `jobs` Service Bus queue with `deviceId` as the session ID. This provides durable, ordered job delivery per device across API restarts. The collector discovers jobs via `POST /api/v1/devices/checkin` (pull model), not by consuming the queue directly. Service Bus is a durability layer: if `FARSIGHT_SERVICE_BUS_NAMESPACE` is not set, the queue step is skipped and job delivery still works via Cosmos.
-
-Service Bus env vars (auto-injected by infra):
-- `FARSIGHT_SERVICE_BUS_NAMESPACE` — namespace name (FQDN or short name)
-- `FARSIGHT_SERVICE_BUS_JOBS_QUEUE` — queue name, defaults to `jobs`
-
-The API managed identity is assigned **Azure Service Bus Data Sender** on the namespace.
+Service Bus has been removed from the deployment to reduce cost. Job delivery uses Cosmos DB exclusively: the API writes job documents to Cosmos on creation, and the collector discovers pending jobs via `POST /api/v1/devices/checkin` (pull model). This approach is sufficient for the current scale and avoids the Premium tier requirement imposed by private endpoint networking. If durable ordered delivery per device becomes necessary at higher scale, Service Bus can be re-added by setting `FARSIGHT_SERVICE_BUS_NAMESPACE` and restoring the Bicep resources.
 
 ## Blob Storage artifacts
 

@@ -4,7 +4,6 @@ pydantic==2.10.5
 azure-identity==1.19.0
 azure-core==1.32.0
 azure-cosmos==4.9.0
-azure-servicebus==7.14.2
 azure-storage-blob==12.25.0
 PyYAML==6.0.2
 PyJWT[crypto]==2.10.1

@@ -214,7 +214,6 @@ output adminContainerAppName string = core.outputs.adminContainerAppName
 output agentToolGatewayName string = core.outputs.agentToolGatewayName
 output storageAccountName string = core.outputs.storageAccountName
 output cosmosAccountName string = core.outputs.cosmosAccountName
-output serviceBusNamespaceName string = core.outputs.serviceBusNamespaceName
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = core.outputs.acrLoginServer
 output collectorVnetId string = core.outputs.vnetId
 output collectorSubnetIds object = core.outputs.subnetIds

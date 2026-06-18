@@ -66,34 +66,6 @@ def get_devices_container() -> Any | None:
 
 
 # ---------------------------------------------------------------------------
-# Service Bus sender (Phase 2)
-# ---------------------------------------------------------------------------
-
-_servicebus_client: Any | None = None
-
-
-def get_jobs_queue_sender() -> Any | None:
-    """Return an azure-servicebus ServiceBusSender for the jobs queue.
-
-    Returns None when FARSIGHT_SERVICE_BUS_NAMESPACE is not configured,
-    allowing create_job to skip the enqueue step in local dev.
-    """
-    global _servicebus_client
-    namespace = os.getenv("FARSIGHT_SERVICE_BUS_NAMESPACE", "").strip()
-    if not namespace:
-        return None
-    if _servicebus_client is None:
-        from azure.servicebus import ServiceBusClient
-        fully_qualified_namespace = namespace if "." in namespace else f"{namespace}.servicebus.windows.net"
-        _servicebus_client = ServiceBusClient(
-            fully_qualified_namespace=fully_qualified_namespace,
-            credential=DefaultAzureCredential(),
-        )
-    queue_name = os.getenv("FARSIGHT_SERVICE_BUS_JOBS_QUEUE", "jobs")
-    return _servicebus_client.get_queue_sender(queue_name=queue_name)
-
-
-# ---------------------------------------------------------------------------
 # Blob Storage client (Phase 3)
 # ---------------------------------------------------------------------------
 

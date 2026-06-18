@@ -103,7 +103,6 @@ var containerAppsEnvironmentName = 'cae-${namePrefix}-${ingressModeCode}-${locat
 var apiAppName = 'ca-${shortNamePrefix}-api-${ingressModeCode}-${regionCode}'
 var adminAppName = 'ca-${shortNamePrefix}-admin-${ingressModeCode}-${regionCode}'
 var toolGatewayAppName = 'ca-${shortNamePrefix}-tools-${ingressModeCode}-${regionCode}'
-var serviceBusNamespaceName = 'sb-${namePrefix}-${take(unique, 4)}'
 var cosmosAccountName = 'cosmos-${namePrefix}-${take(unique, 4)}'
 var managedIdentityName = 'id-${namePrefix}-apps-${location}'
 var artifactsContainerName = 'artifacts'
@@ -123,8 +122,6 @@ var acrPullRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/ro
 var storageBlobDelegatorRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'db58b8e5-c6ad-4a2a-8342-4190687cbf4a')
 // Storage Blob Data Contributor — required for blob read/write operations
 var storageBlobDataContributorRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
-// Azure Service Bus Data Sender — required to enqueue job messages
-var serviceBusDataSenderRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '69a216fc-b8fb-44d8-bc22-1f3c2cd27a39')
 var adminEasyAuthConfigured = enableAdminEasyAuth && !empty(adminAuthClientId) && !empty(adminAuthClientSecret) && !empty(adminAuthEncryptionSecret) && !empty(adminAuthIssuer)
 var apiInternalAuthConfigured = !empty(apiInternalAuthSecret)
 var gatewayApiAudience = empty(apiAllowedAudiences) ? '' : replace(split(apiAllowedAudiences, ',')[0], ' ', '')
@@ -360,14 +357,6 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'FARSIGHT_COSMOS_DEVICES_CONTAINER'
               value: 'devices'
-            }
-            {
-              name: 'FARSIGHT_SERVICE_BUS_NAMESPACE'
-              value: serviceBus.name
-            }
-            {
-              name: 'FARSIGHT_SERVICE_BUS_JOBS_QUEUE'
-              value: 'jobs'
             }
             {
               name: 'FARSIGHT_BLOB_ACCOUNT_URL'
@@ -635,34 +624,6 @@ resource toolGatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-resource serviceBus 'Microsoft.ServiceBus/namespaces@2024-01-01' = {
-  name: serviceBusNamespaceName
-  location: location
-  tags: tags
-  sku: {
-    name: enablePrivateEndpoints ? 'Premium' : 'Standard'
-    tier: enablePrivateEndpoints ? 'Premium' : 'Standard'
-    capacity: enablePrivateEndpoints ? 1 : null
-  }
-  properties: {
-    minimumTlsVersion: '1.2'
-    publicNetworkAccess: publicNetworkAccess
-    disableLocalAuth: true
-  }
-}
-
-resource jobsQueue 'Microsoft.ServiceBus/namespaces/queues@2024-01-01' = {
-  name: 'jobs'
-  parent: serviceBus
-  properties: {
-    requiresSession: true
-    lockDuration: 'PT5M'
-    maxDeliveryCount: 5
-    deadLetteringOnMessageExpiration: true
-    defaultMessageTimeToLive: 'PT1H'
-  }
-}
-
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
   name: cosmosAccountName
   location: location
@@ -719,17 +680,6 @@ resource appIdentityStorageBlobDataContributor 'Microsoft.Authorization/roleAssi
     principalId: appIdentity.properties.principalId
     principalType: 'ServicePrincipal'
     description: 'Allow FarSight API to read/write artifact blobs for commit validation.'
-  }
-}
-
-resource appIdentityServiceBusSender 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(serviceBus.id, appIdentity.id, 'servicebus-data-sender')
-  scope: serviceBus
-  properties: {
-    roleDefinitionId: serviceBusDataSenderRoleDefinitionId
-    principalId: appIdentity.properties.principalId
-    principalType: 'ServicePrincipal'
-    description: 'Allow FarSight API to enqueue job messages on the Service Bus jobs queue.'
   }
 }
 
@@ -955,43 +905,6 @@ resource acrPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZo
   }
 }
 
-resource serviceBusPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = if (enablePrivateEndpoints) {
-  name: '${privateEndpointNamePrefix}-sb'
-  location: location
-  tags: tags
-  properties: {
-    subnet: {
-      id: networking!.outputs.privateEndpointsSubnetId
-    }
-    privateLinkServiceConnections: [
-      {
-        name: 'servicebus-namespace'
-        properties: {
-          privateLinkServiceId: serviceBus.id
-          groupIds: [
-            'namespace'
-          ]
-        }
-      }
-    ]
-  }
-}
-
-resource serviceBusPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-07-01' = if (enablePrivateEndpoints) {
-  parent: serviceBusPrivateEndpoint
-  name: 'default'
-  properties: {
-    privateDnsZoneConfigs: [
-      {
-        name: 'serviceBus'
-        properties: {
-          privateDnsZoneId: networking!.outputs.privateDnsZoneIds.serviceBus
-        }
-      }
-    ]
-  }
-}
-
 resource cosmosPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = if (enablePrivateEndpoints) {
   name: '${privateEndpointNamePrefix}-cosmos'
   location: location
@@ -1185,7 +1098,6 @@ output adminContainerAppName string = adminApp.name
 output agentToolGatewayName string = toolGatewayApp.name
 output storageAccountName string = storage.name
 output cosmosAccountName string = cosmos.name
-output serviceBusNamespaceName string = serviceBus.name
 output keyVaultName string = keyVault.name
 output appConfigurationName string = appConfig.name
 output acrName string = acr.name

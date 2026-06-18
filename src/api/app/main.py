@@ -28,7 +28,6 @@ from .dependencies import (
     get_devices_container,
     get_investigations_container,
     get_jobs_container,
-    get_jobs_queue_sender,
 )
 from .models import (
     AuditEvent,
@@ -491,28 +490,6 @@ def create_job(
         container.upsert_item(item)
     else:
         jobs[job_id] = job
-
-    # Enqueue a session message on the Service Bus jobs queue so the job is
-    # durably tracked per device (deviceId = session ID). The collector
-    # discovers jobs via checkin; SB provides ordering and at-least-once
-    # delivery guarantees across API restarts.
-    sender = get_jobs_queue_sender()
-    if sender is not None:
-        import json as _json
-        from azure.servicebus import ServiceBusMessage
-        try:
-            with sender:
-                msg = ServiceBusMessage(
-                    body=_json.dumps({"jobId": job_id, "deviceId": request.device_id, "taskType": request.task_type}),
-                    session_id=request.device_id,
-                    content_type="application/json",
-                    subject="farsight.job.queued",
-                )
-                sender.send_messages(msg)
-        except Exception:
-            # Non-fatal: job is already persisted in Cosmos; SB failure does
-            # not prevent the collector from picking up the job via checkin.
-            pass
 
     return job
 
