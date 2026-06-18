@@ -22,7 +22,7 @@ The current implementation is still early. Production use requires completed ide
 | Admin BFF to control API | Managed identity or Entra service token | The BFF forwards the authenticated actor and uses a service identity for API calls. |
 | Azure SRE Agent to tool gateway | Managed identity / Entra workload identity | The SRE Agent calls only published FarSight tools through an authenticated service path. |
 | Tool gateway to control API | Managed identity plus AGT policy evaluation | Tool calls are evaluated by AGT before any FarSight API request is made. |
-| FarSight apps to Azure resources | Managed identities and Azure RBAC | Cosmos DB, Storage, Key Vault, ACR, App Configuration, Service Bus, and monitoring access use least-privilege RBAC where supported. |
+| FarSight apps to Azure resources | Managed identities and Azure RBAC | Cosmos DB, Storage, Key Vault, ACR, App Configuration, and monitoring access use least-privilege RBAC where supported. |
 | Public network to FarSight apps | Ingress mode, private endpoints, private DNS | Production deployments should use internal Container Apps ingress and private endpoints unless public development access is explicitly approved. |
 
 ## Device and collector authentication
@@ -121,7 +121,7 @@ FarSight apps use managed identities for Azure resource access.
 Current intended assignments include:
 
 - Container Apps identities receive ACR pull permissions for the provisioned registry.
-- API and tool gateway identities receive only the Cosmos DB, Service Bus, Storage, Key Vault, App Configuration, and monitoring permissions they require.
+- API and tool gateway identities receive only the Cosmos DB, Storage, Key Vault, App Configuration, and monitoring permissions they require.
 - Admin web/BFF identity receives only permissions needed to call the control API and read public UI configuration.
 - SRE Agent package identities receive only the Microsoft Graph, Key Vault, and FarSight permissions required by their tools.
 
@@ -135,7 +135,7 @@ FarSight supports two independent network decisions: whether Azure dependencies 
 
 - Public Container Apps ingress for FarSight API, admin web, and tool gateway when clients or administrators must reach the solution over the internet.
 - Internal Container Apps ingress for hybrid/private deployments where clients and administrators use VPN, ExpressRoute, peering, private DNS, or another approved private path.
-- Private endpoints for Storage, Key Vault, ACR, Cosmos DB, Service Bus, App Configuration, monitoring, and other supported dependencies, regardless of whether solution ingress is public or internal.
+- Private endpoints for Storage, Key Vault, ACR, Cosmos DB, App Configuration, monitoring, and other supported dependencies, regardless of whether solution ingress is public or internal.
 - Private DNS zones linked only to VNets that have working private routes to the target private endpoints.
 - Approved hub, VPN, ExpressRoute, firewall, or private resolver paths for managed endpoints and operators.
 - No public RDP for lab VMs except explicitly approved short-lived break-glass scenarios.

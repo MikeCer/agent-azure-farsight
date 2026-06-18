@@ -24,7 +24,6 @@ flowchart LR
         Api["Control API<br/>Container Apps + FastAPI"]
         Admin["Admin and monitoring web app<br/>React + FastAPI BFF"]
         Gateway["AGT-governed<br/>FarSight tool gateway"]
-        SB["Service Bus<br/>session-enabled jobs queue"]
         Cosmos["Cosmos DB<br/>jobs, devices, approvals, policies"]
         Blob["Blob Storage<br/>diagnostic artifacts"]
         LA["Log Analytics<br/>custom tables"]
@@ -42,7 +41,6 @@ flowchart LR
     Gateway -->|managed identity| Api
     Admin --> Api
     Api --> Cosmos
-    Api --> SB
     Api --> Blob
     Api --> LA
     Api --> KV
@@ -65,7 +63,6 @@ sequenceDiagram
     participant API as FarSight Control API
     participant Approvals as Approval API and Teams hook
     participant Cosmos as Cosmos DB
-    participant SB as Service Bus jobs queue
     participant Collector as Endpoint collector
     participant Blob as Blob Storage
     participant LA as Log Analytics
@@ -84,7 +81,6 @@ sequenceDiagram
     end
     AGT->>API: Create bounded diagnostic job
     API->>Cosmos: Persist job Queued
-    API->>SB: Enqueue metadata with sessionId=deviceId
     Collector->>API: Check in over mTLS
     API->>Cosmos: Verify device, policy, pending job
     API-->>Collector: Return one leased job
@@ -160,7 +156,7 @@ flowchart TB
             ACA1["Container Apps env"]
             APIApp["ca-farsight-api"]
             AdminApp["ca-farsight-admin"]
-            Data["Cosmos DB, Service Bus,<br/>Storage, Key Vault, App Config"]
+            Data["Cosmos DB,<br/>Storage, Key Vault, App Config"]
             Monitor["Log Analytics, App Insights,<br/>DCR/DCE, alerts"]
             Optional["Optional APIM, VNet,<br/>private endpoints"]
         end

@@ -9,7 +9,6 @@ For a production-style private deployment, start with the [greenfield Azure depl
 - Italy North collector/control-plane resources:
   - Azure Container Apps environment and apps for API, admin web, and AGT tool gateway.
   - Azure Container Registry.
-  - Service Bus Standard namespace with session-enabled `jobs` queue.
   - Cosmos DB for NoSQL database and state containers.
   - Storage account and private artifacts container with lifecycle deletion.
   - Log Analytics and workspace-based Application Insights.
@@ -21,7 +20,7 @@ For a production-style private deployment, start with the [greenfield Azure depl
 
 - Azure CLI and Azure Developer CLI installed.
 - `azd auth login` completed.
-- Subscription access to deploy Container Apps, Cosmos DB, Service Bus, Storage, Key Vault, App Configuration, and monitoring resources.
+- Subscription access to deploy Container Apps, Cosmos DB, Storage, Key Vault, App Configuration, and monitoring resources.
 - Region availability confirmed for the collector/control-plane location.
 
 ## Configure and preview
@@ -38,7 +37,7 @@ azd env set FARSIGHT_ENABLE_APIM false
 azd provision --preview
 ```
 
-`azure.yaml` runs `scripts/register-resource-providers.sh` before provisioning. The hook registers missing Azure resource providers such as `Microsoft.App`, `Microsoft.ContainerRegistry`, `Microsoft.ServiceBus`, and `Microsoft.DocumentDB` in the selected subscription.
+`azure.yaml` runs `scripts/register-resource-providers.sh` before provisioning. The hook registers missing Azure resource providers such as `Microsoft.App`, `Microsoft.ContainerRegistry`, and `Microsoft.DocumentDB` in the selected subscription.
 
 `FARSIGHT_ENABLE_PRIVATE_ENDPOINTS` and `FARSIGHT_ENABLE_PUBLIC_INGRESS` are independent:
 
@@ -46,7 +45,7 @@ azd provision --preview
 - `FARSIGHT_ENABLE_PUBLIC_INGRESS=true` exposes the FarSight API, admin web, and AGT tool gateway over public Container Apps ingress.
 - `FARSIGHT_ENABLE_PUBLIC_INGRESS=false` makes the Container Apps environment internal-only for hybrid/private access paths.
 
-> **Application Insights and Log Analytics are an exception: they always use public ingestion/query and are never placed behind Azure Monitor Private Link (AMPLS) or a monitor private endpoint**, even when `FARSIGHT_ENABLE_PRIVATE_ENDPOINTS=true`. This keeps the workspace queryable by Azure portal monitoring experiences (and avoids `PrivateOnly` query 403s). All other dependencies (Storage, Key Vault, ACR, Cosmos DB, Service Bus, App Configuration) still honor the private-endpoint flag.
+> **Application Insights and Log Analytics are an exception: they always use public ingestion/query and are never placed behind Azure Monitor Private Link (AMPLS) or a monitor private endpoint**, even when `FARSIGHT_ENABLE_PRIVATE_ENDPOINTS=true`. This keeps the workspace queryable by Azure portal monitoring experiences (and avoids `PrivateOnly` query 403s). All other dependencies (Storage, Key Vault, ACR, Cosmos DB, App Configuration) still honor the private-endpoint flag.
 
 Container Apps environment network mode is treated as creation-time behavior. Bicep includes `pub` or `int` in the Container Apps environment and app names so changing public ingress creates a compatible replacement set instead of mutating an internal environment. The final topology uses one Container Apps delegated subnet; when switching modes, delete the old Container Apps environment and wait for Azure to release the subnet before reprovisioning.
 
@@ -138,7 +137,7 @@ If the final Container App URL is not known yet, provision once with Easy Auth d
 - Do not replace service images manually in Bicep for AZD-managed services. Keep the `azd-service-name` tags aligned with `azure.yaml`.
 - Private endpoint and APIM support are parameterized but intentionally skeletal for early implementation.
 - VNet child operations are serialized in the networking module: subnets are ordered before private DNS VNet links, and DNS links run one at a time. This avoids Microsoft.Network `AnotherOperationInProgress` conflicts when several operations update the same VNet.
-- Service Bus uses Premium SKU when private endpoints are enabled because private endpoint connections are not supported on Standard namespaces.
+- Service Bus has been removed from the deployment. Job delivery uses Cosmos DB exclusively. If durable ordered delivery is needed at higher scale, Service Bus can be restored.
 - App Configuration local authentication is disabled. Do not seed key-values through ARM/Bicep local-auth mode; write settings through application code or pass-through identity-aware tooling after deployment.
 - NAT Gateway is optional and disabled by default to avoid extra cost. The shared networking module does not associate NAT Gateway to Container Apps infrastructure subnets; use it only for supported non-Container-Apps subnets such as optional APIM. Use `infra-test/` NAT Gateway for Windows client lab outbound internet.
 - Container App resource names use compact environment and region tokens to stay within the Azure Container Apps 32-character name limit.
