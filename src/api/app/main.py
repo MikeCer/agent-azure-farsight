@@ -1053,10 +1053,130 @@ def delete_policy_version(
 # Telemetry and admin (stubs — Phase 4/5)
 # ---------------------------------------------------------------------------
 
+@app.post("/api/v1/telemetry/tool-calls", status_code=status.HTTP_202_ACCEPTED)
+def ingest_tool_call_event(
+    event: dict[str, Any],
+    _: WorkloadCaller = Depends(require_workload_caller),
+) -> dict[str, str]:
+    """Receive a tool-call audit event from the AGT tool gateway."""
+    container = get_audit_events_container()
+    if container is not None:
+        # Ensure required Cosmos fields.
+        if "id" not in event:
+            event["id"] = f"tc-{uuid4()}"
+        if "correlationId" not in event:
+            event["correlationId"] = event.get("actorId", "unknown")
+        event["eventType"] = "tool-call"
+        try:
+            container.upsert_item(event)
+        except Exception:
+            pass  # Non-fatal: telemetry loss is acceptable
+    else:
+        # In-memory fallback for local dev.
+        audit_events.append(AuditEvent(
+            id=event.get("id", f"tc-{uuid4()}"),
+            event_type="tool-call",
+            action=event.get("toolName", "unknown"),
+            actor_id=event.get("actorId", "unknown"),
+            actor_name=event.get("actorAppId"),
+            target=event.get("toolName", "unknown"),
+            decision=event.get("decision", "unknown"),
+            reason=event.get("reason"),
+            correlation_id=event.get("correlationId"),
+        ))
+    return {"status": "accepted"}
+
+
 @app.get("/api/v1/telemetry/tool-calls/summary", response_model=ToolCallTelemetrySummary)
 def get_tool_call_summary() -> ToolCallTelemetrySummary:
-    # TODO (Phase 4): Query AGT/tool gateway audit events from Log Analytics / App Insights.
-    return ToolCallTelemetrySummary()
+    """Aggregate tool-call audit events from the last 24h."""
+    from collections import defaultdict
+
+    container = get_audit_events_container()
+    events: list[dict[str, Any]] = []
+
+    if container is not None:
+        cutoff = (_utc_now() - timedelta(hours=24)).isoformat()
+        try:
+            events = list(container.query_items(
+                query="SELECT * FROM c WHERE c.eventType = 'tool-call' AND c.timestampUtc >= @cutoff ORDER BY c.timestampUtc DESC",
+                parameters=[{"name": "@cutoff", "value": cutoff}],
+                enable_cross_partition_query=True,
+            ))
+        except Exception:
+            events = []
+    else:
+        # In-memory fallback: use audit_events list.
+        cutoff_dt = _utc_now() - timedelta(hours=24)
+        events = [
+            {"toolName": e.action, "decision": e.decision, "actorId": e.actor_id,
+             "timestampUtc": e.created_at_utc.isoformat(), "correlationId": e.correlation_id,
+             "policyName": None, "policyVersion": None, "jobId": None}
+            for e in audit_events
+            if e.event_type == "tool-call" and e.created_at_utc >= cutoff_dt
+        ]
+
+    # Aggregate.
+    total = len(events)
+    allowed = sum(1 for e in events if e.get("decision") == "allow")
+    denied = sum(1 for e in events if e.get("decision") == "deny")
+    approval_required = sum(1 for e in events if e.get("decision") == "require_approval")
+    failed = total - allowed - denied - approval_required
+
+    by_tool_map: dict[str, dict[str, Any]] = defaultdict(lambda: {
+        "totalCalls": 0, "allowedCalls": 0, "deniedCalls": 0,
+        "approvalRequiredCalls": 0, "failedCalls": 0, "lastSeenUtc": None,
+    })
+    for e in events:
+        tool = e.get("toolName", "unknown")
+        entry = by_tool_map[tool]
+        entry["totalCalls"] += 1
+        decision = e.get("decision", "")
+        if decision == "allow":
+            entry["allowedCalls"] += 1
+        elif decision == "deny":
+            entry["deniedCalls"] += 1
+        elif decision == "require_approval":
+            entry["approvalRequiredCalls"] += 1
+        else:
+            entry["failedCalls"] += 1
+        ts = e.get("timestampUtc")
+        if ts and (entry["lastSeenUtc"] is None or ts > entry["lastSeenUtc"]):
+            entry["lastSeenUtc"] = ts
+
+    from .models import ToolCallByTool, RecentToolCall
+    by_tool = [
+        ToolCallByTool(toolName=name, **counts)
+        for name, counts in sorted(by_tool_map.items(), key=lambda x: x[1]["totalCalls"], reverse=True)
+    ]
+
+    recent = [
+        RecentToolCall(
+            timestampUtc=e.get("timestampUtc", _utc_now().isoformat()),
+            toolName=e.get("toolName", "unknown"),
+            decision=e.get("decision", "unknown"),
+            actor=e.get("actorId"),
+            actorAppId=e.get("actorAppId"),
+            policyId=e.get("policyName"),
+            policyVersion=e.get("policyVersion"),
+            ruleName=e.get("ruleName"),
+            reason=e.get("reason"),
+            jobId=e.get("jobId"),
+            correlationId=e.get("correlationId"),
+        )
+        for e in events[:50]  # Most recent 50
+    ]
+
+    return ToolCallTelemetrySummary(
+        window="24h",
+        totalCalls=total,
+        allowedCalls=allowed,
+        deniedCalls=denied,
+        approvalRequiredCalls=approval_required,
+        failedCalls=failed,
+        byTool=by_tool,
+        recent=recent,
+    )
 
 
 @app.get("/api/v1/admin/config")

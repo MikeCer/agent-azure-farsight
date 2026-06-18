@@ -144,14 +144,11 @@ Policy repository operations use Cosmos DB when `FARSIGHT_COSMOS_ENDPOINT` is co
 
 ## Tool-call telemetry
 
-The initial telemetry endpoint returns an empty, stable shape:
+The AGT tool gateway emits a structured audit event to the FarSight API (`POST /api/v1/telemetry/tool-calls`) after every tool execution. Each event records the tool name, policy decision (allow/deny/require_approval), policy version, actor identity, job ID, correlation ID, and timestamp. Events are persisted in the `auditEvents` Cosmos container with `eventType=tool-call`.
 
-- `window`
-- aggregate counts for total, allowed, denied, approval-required, and failed calls;
-- `byTool` rows;
-- `recent` tool-call rows.
+The admin console Tool-call monitoring view queries `GET /api/v1/telemetry/tool-calls/summary` which aggregates the last 24 hours of events into total/allowed/denied/approval-required/failed counts, per-tool breakdowns, and the 50 most recent calls. The endpoint is read-only and must not be used as an authorization control.
 
-Future implementations should populate this from AGT/tool gateway audit events in Log Analytics, Application Insights, or Cosmos DB. The endpoint is read-only and must not be used as an authorization control.
+Telemetry emission is fire-and-forget from the gateway — a failure to post an audit event does not block or fail the tool call itself. This keeps gateway latency predictable while accepting occasional telemetry loss under transient API failures.
 
 ## Known gaps
 

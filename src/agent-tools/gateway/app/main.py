@@ -1,8 +1,14 @@
+import asyncio
+import logging
+from datetime import datetime, timezone
+from uuid import uuid4
+
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
 from .auth import WorkloadCaller, require_workload_caller
+from .clients import FarSightApiClient
 from .models import (
     ApprovalToolRequest,
     ArtifactContentRequest,
@@ -25,6 +31,8 @@ from .tools import (
     retrieve_artifact_metadata,
 )
 
+logger = logging.getLogger("farsight.gateway")
+
 app = FastAPI(title="FarSight AGT Tool Gateway", version="0.1.0")
 
 
@@ -39,7 +47,29 @@ async def policy_configuration_error_handler(request: Request, exc: PolicyConfig
         },
     )
 
-app = FastAPI(title="FarSight AGT Tool Gateway", version="0.1.0")
+
+async def _emit_tool_call_event(response: ToolResponse, caller: WorkloadCaller) -> None:
+    """Fire-and-forget: post a tool-call audit event to the FarSight API."""
+    try:
+        event = {
+            "id": f"tc-{uuid4()}",
+            "eventType": "tool-call",
+            "toolName": response.tool_name,
+            "decision": response.policy.outcome.value,
+            "policyName": response.policy.policy_name,
+            "policyVersion": response.policy.policy_version,
+            "ruleName": response.policy.rule_name,
+            "reason": response.policy.reason,
+            "actorId": caller.object_id,
+            "actorAppId": caller.app_id,
+            "jobId": response.data.get("jobId"),
+            "correlationId": response.data.get("correlationId"),
+            "timestampUtc": datetime.now(timezone.utc).isoformat(),
+        }
+        client = FarSightApiClient()
+        await client.request("POST", "/api/v1/telemetry/tool-calls", json=event)
+    except Exception as exc:
+        logger.warning("Failed to emit tool-call telemetry: %s", exc)
 
 
 @app.get("/health")
@@ -50,62 +80,78 @@ def health() -> dict[str, str]:
 @app.post("/tools/create_diagnostic_job", response_model=ToolResponse)
 async def create_diagnostic_job_endpoint(
     request: DiagnosticJobRequest,
-    _caller: WorkloadCaller = Depends(require_workload_caller),
+    caller: WorkloadCaller = Depends(require_workload_caller),
 ) -> ToolResponse:
-    return await create_diagnostic_job(request)
+    response = await create_diagnostic_job(request)
+    asyncio.ensure_future(_emit_tool_call_event(response, caller))
+    return response
 
 
 @app.post("/tools/get_job_status", response_model=ToolResponse)
 async def get_job_status_endpoint(
     request: JobLookupRequest,
-    _caller: WorkloadCaller = Depends(require_workload_caller),
+    caller: WorkloadCaller = Depends(require_workload_caller),
 ) -> ToolResponse:
-    return await get_job_status(request)
+    response = await get_job_status(request)
+    asyncio.ensure_future(_emit_tool_call_event(response, caller))
+    return response
 
 
 @app.post("/tools/get_job_result_summary", response_model=ToolResponse)
 async def get_job_result_summary_endpoint(
     request: JobLookupRequest,
-    _caller: WorkloadCaller = Depends(require_workload_caller),
+    caller: WorkloadCaller = Depends(require_workload_caller),
 ) -> ToolResponse:
-    return await get_job_result_summary(request)
+    response = await get_job_result_summary(request)
+    asyncio.ensure_future(_emit_tool_call_event(response, caller))
+    return response
 
 
 @app.post("/tools/retrieve_artifact_metadata", response_model=ToolResponse)
 async def retrieve_artifact_metadata_endpoint(
     request: ArtifactMetadataRequest,
-    _caller: WorkloadCaller = Depends(require_workload_caller),
+    caller: WorkloadCaller = Depends(require_workload_caller),
 ) -> ToolResponse:
-    return await retrieve_artifact_metadata(request)
+    response = await retrieve_artifact_metadata(request)
+    asyncio.ensure_future(_emit_tool_call_event(response, caller))
+    return response
 
 
 @app.post("/tools/request_follow_up_module_execution", response_model=ToolResponse)
 async def request_follow_up_module_execution_endpoint(
     request: FollowUpRequest,
-    _caller: WorkloadCaller = Depends(require_workload_caller),
+    caller: WorkloadCaller = Depends(require_workload_caller),
 ) -> ToolResponse:
-    return await request_follow_up_module_execution(request)
+    response = await request_follow_up_module_execution(request)
+    asyncio.ensure_future(_emit_tool_call_event(response, caller))
+    return response
 
 
 @app.post("/tools/request_approval_for_action", response_model=ToolResponse)
 async def request_approval_for_action_endpoint(
     request: ApprovalToolRequest,
-    _caller: WorkloadCaller = Depends(require_workload_caller),
+    caller: WorkloadCaller = Depends(require_workload_caller),
 ) -> ToolResponse:
-    return await request_approval_for_action(request)
+    response = await request_approval_for_action(request)
+    asyncio.ensure_future(_emit_tool_call_event(response, caller))
+    return response
 
 
 @app.post("/tools/query_device_investigation_history", response_model=ToolResponse)
 async def query_device_investigation_history_endpoint(
     request: InvestigationHistoryRequest,
-    _caller: WorkloadCaller = Depends(require_workload_caller),
+    caller: WorkloadCaller = Depends(require_workload_caller),
 ) -> ToolResponse:
-    return await query_device_investigation_history(request)
+    response = await query_device_investigation_history(request)
+    asyncio.ensure_future(_emit_tool_call_event(response, caller))
+    return response
 
 
 @app.post("/tools/retrieve_artifact_content", response_model=ToolResponse)
 async def retrieve_artifact_content_endpoint(
     request: ArtifactContentRequest,
-    _caller: WorkloadCaller = Depends(require_workload_caller),
+    caller: WorkloadCaller = Depends(require_workload_caller),
 ) -> ToolResponse:
-    return await retrieve_artifact_content(request)
+    response = await retrieve_artifact_content(request)
+    asyncio.ensure_future(_emit_tool_call_event(response, caller))
+    return response

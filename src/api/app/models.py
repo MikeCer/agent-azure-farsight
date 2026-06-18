@@ -274,8 +274,11 @@ class RecentToolCall(CamelModel):
     tool_name: str = Field(alias="toolName")
     decision: str
     actor: str | None = None
+    actor_app_id: str | None = Field(default=None, alias="actorAppId")
     policy_id: str | None = Field(default=None, alias="policyId")
     policy_version: str | None = Field(default=None, alias="policyVersion")
+    rule_name: str | None = Field(default=None, alias="ruleName")
+    reason: str | None = None
     job_id: str | None = Field(default=None, alias="jobId")
     correlation_id: str | None = Field(default=None, alias="correlationId")
 

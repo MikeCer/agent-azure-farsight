@@ -44,10 +44,13 @@ type RecentToolCall = {
   toolName: string;
   decision: string;
   actor?: string | null;
+  actorAppId?: string | null;
   policyId?: string | null;
   policyVersion?: string | null;
   jobId?: string | null;
   correlationId?: string | null;
+  reason?: string | null;
+  ruleName?: string | null;
 };
 
 type ToolCallTelemetrySummary = {
@@ -242,6 +245,11 @@ function App() {
   const [deviceConfig, setDeviceConfig] = useState<DeviceConfig>({});
   const [deviceConfigLoading, setDeviceConfigLoading] = useState(false);
   const [deviceConfigSaving, setDeviceConfigSaving] = useState(false);
+
+  // Tool-call monitoring paging and detail
+  const [byToolPage, setByToolPage] = useState(0);
+  const [recentPage, setRecentPage] = useState(0);
+  const [selectedCall, setSelectedCall] = useState<RecentToolCall | null>(null);
 
   // Shared status
   const [message, setMessage] = useState("");
@@ -611,65 +619,153 @@ function App() {
 
   function renderToolCallMonitoring() {
     const summary = toolCallSummary;
+    const PAGE_SIZE = 10;
+
+    function actorLabel(call: RecentToolCall): string {
+      if (call.actorAppId) return `SRE Agent (${call.actorAppId.slice(0, 8)}…)`;
+      if (call.actor && call.actor !== "unknown" && call.actor !== "workload-auth-disabled") return `Agent (${call.actor.slice(0, 8)}…)`;
+      if (call.actor === "workload-auth-disabled") return "Local dev (auth disabled)";
+      return "Unknown caller";
+    }
+
+    const byToolItems = summary?.byTool ?? [];
+    const byToolTotal = byToolItems.length;
+    const byToolPaged = byToolItems.slice(byToolPage * PAGE_SIZE, (byToolPage + 1) * PAGE_SIZE);
+    const byToolPages = Math.ceil(byToolTotal / PAGE_SIZE);
+
+    const recentItems = summary?.recent ?? [];
+    const recentTotal = recentItems.length;
+    const recentPaged = recentItems.slice(recentPage * PAGE_SIZE, (recentPage + 1) * PAGE_SIZE);
+    const recentPages = Math.ceil(recentTotal / PAGE_SIZE);
+
     return (
-      <section className="feature-panel">
-        <div className="feature-heading">
-          <p className="eyebrow">Tool-call monitoring</p>
-          <h2>AGT gateway activity</h2>
-          <p>Read-only view for tool execution volume, policy decisions, and recent SRE Agent gateway activity.</p>
-        </div>
-        <div className="metric-grid">
-          <article><span>Total calls</span><strong>{summary?.totalCalls ?? 0}</strong></article>
-          <article><span>Allowed</span><strong>{summary?.allowedCalls ?? 0}</strong></article>
-          <article><span>Denied</span><strong>{summary?.deniedCalls ?? 0}</strong></article>
-          <article><span>Approval required</span><strong>{summary?.approvalRequiredCalls ?? 0}</strong></article>
-          <article><span>Failed</span><strong>{summary?.failedCalls ?? 0}</strong></article>
-        </div>
-        <div className="table-panel">
-          <div className="panel-header">
-            <h3>Calls by tool</h3>
+      <>
+        {selectedCall && (
+          <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setSelectedCall(null); }}>
+            <div className="job-detail-panel">
+              <div className="panel-header">
+                <h3>Tool call detail</h3>
+                <button onClick={() => setSelectedCall(null)}>✕ Close</button>
+              </div>
+              <div className="panel-body">
+                <dl className="job-dl">
+                  <dt>Tool</dt><dd><strong>{selectedCall.toolName}</strong></dd>
+                  <dt>Decision</dt><dd><StatusBadge status={selectedCall.decision} /></dd>
+                  <dt>Actor</dt><dd>{actorLabel(selectedCall)}</dd>
+                  <dt>Actor ID</dt><dd className="mono">{selectedCall.actor ?? "—"}</dd>
+                  <dt>App ID</dt><dd className="mono">{selectedCall.actorAppId ?? "—"}</dd>
+                  <dt>Timestamp</dt><dd>{formatTimestamp(selectedCall.timestampUtc)}</dd>
+                  <dt>Policy</dt><dd>{selectedCall.policyId ?? "—"} @ {selectedCall.policyVersion ?? "—"}</dd>
+                  <dt>Rule</dt><dd>{selectedCall.ruleName ?? "—"}</dd>
+                  <dt>Reason</dt><dd>{selectedCall.reason ?? "—"}</dd>
+                  <dt>Job ID</dt><dd className="mono">{selectedCall.jobId ?? "—"}</dd>
+                  <dt>Correlation</dt><dd className="mono">{selectedCall.correlationId ?? "—"}</dd>
+                </dl>
+                {selectedCall.jobId && (
+                  <div className="job-section">
+                    <button className="primary" onClick={() => {
+                      const filterValue = selectedCall.correlationId || selectedCall.jobId || "";
+                      setSelectedCall(null);
+                      setDeviceIdInput("");
+                      setJobFilter(filterValue);
+                      navigateFeature("jobs");
+                      loadJobs().catch(() => {});
+                    }}>View related jobs →</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        <section className="feature-panel">
+          <div className="feature-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <p className="eyebrow">Tool-call monitoring</p>
+              <h2>AGT gateway activity</h2>
+              <p>Read-only view for tool execution volume, policy decisions, and recent SRE Agent gateway activity.</p>
+            </div>
             <button onClick={() => loadToolCallSummary().catch((err) => setError(err.message))}>
-              {toolCallLoading ? "Refreshing…" : "Refresh"}
+              {toolCallLoading ? "Refreshing…" : "↻ Refresh"}
             </button>
           </div>
-          {!summary || summary.byTool.length === 0 ? (
-            <p className="empty-state">No tool-call telemetry available yet. Future versions will populate this from AGT/tool gateway audit events.</p>
-          ) : (
-            <table>
-              <thead><tr><th>Tool</th><th>Total</th><th>Allowed</th><th>Denied</th><th>Approval</th><th>Failed</th><th>Last seen</th></tr></thead>
-              <tbody>
-                {summary.byTool.map((tool) => (
-                  <tr key={tool.toolName}>
-                    <td>{tool.toolName}</td><td>{tool.totalCalls}</td><td>{tool.allowedCalls}</td>
-                    <td>{tool.deniedCalls}</td><td>{tool.approvalRequiredCalls}</td><td>{tool.failedCalls}</td>
-                    <td>{formatTimestamp(tool.lastSeenUtc)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-        <div className="table-panel">
-          <h3>Recent calls</h3>
-          {!summary || summary.recent.length === 0 ? (
-            <p className="empty-state">No recent tool calls found for the current window ({summary?.window ?? "24h"}).</p>
-          ) : (
-            <table>
-              <thead><tr><th>Time</th><th>Tool</th><th>Decision</th><th>Actor</th><th>Policy</th><th>Correlation</th></tr></thead>
-              <tbody>
-                {summary.recent.map((call) => (
-                  <tr key={`${call.timestampUtc}-${call.toolName}-${call.correlationId ?? ""}`}>
-                    <td>{formatTimestamp(call.timestampUtc)}</td><td>{call.toolName}</td><td>{call.decision}</td>
-                    <td>{call.actor ?? "unknown"}</td>
-                    <td>{call.policyId ? `${call.policyId}@${call.policyVersion ?? "?"}` : "unknown"}</td>
-                    <td>{call.correlationId ?? call.jobId ?? "none"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </section>
+          <div className="metric-grid">
+            <article><span>Total calls</span><strong>{summary?.totalCalls ?? 0}</strong></article>
+            <article><span>Allowed</span><strong>{summary?.allowedCalls ?? 0}</strong></article>
+            <article><span>Denied</span><strong>{summary?.deniedCalls ?? 0}</strong></article>
+            <article><span>Approval required</span><strong>{summary?.approvalRequiredCalls ?? 0}</strong></article>
+            <article><span>Failed</span><strong>{summary?.failedCalls ?? 0}</strong></article>
+          </div>
+          <div className="table-panel">
+            <div className="panel-header">
+              <h3>Calls by tool</h3>
+              {byToolPages > 1 && (
+                <span className="jobs-count">Page {byToolPage + 1}/{byToolPages}</span>
+              )}
+            </div>
+            {byToolTotal === 0 ? (
+              <p className="empty-state">No tool-call telemetry available yet. Once the SRE Agent invokes FarSight diagnostic tools through the AGT gateway, activity will appear here.</p>
+            ) : (
+              <>
+                <table>
+                  <thead><tr><th>Tool</th><th>Total</th><th>Allowed</th><th>Denied</th><th>Approval</th><th>Failed</th><th>Last seen</th></tr></thead>
+                  <tbody>
+                    {byToolPaged.map((tool) => (
+                      <tr key={tool.toolName}>
+                        <td>{tool.toolName}</td><td>{tool.totalCalls}</td><td>{tool.allowedCalls}</td>
+                        <td>{tool.deniedCalls}</td><td>{tool.approvalRequiredCalls}</td><td>{tool.failedCalls}</td>
+                        <td>{formatTimestamp(tool.lastSeenUtc)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {byToolPages > 1 && (
+                  <div className="paging-controls">
+                    <button disabled={byToolPage === 0} onClick={() => setByToolPage(byToolPage - 1)}>← Prev</button>
+                    <button disabled={byToolPage >= byToolPages - 1} onClick={() => setByToolPage(byToolPage + 1)}>Next →</button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <div className="table-panel">
+            <div className="panel-header">
+              <h3>Recent calls</h3>
+              {recentPages > 1 && (
+                <span className="jobs-count">Page {recentPage + 1}/{recentPages}</span>
+              )}
+            </div>
+            {recentTotal === 0 ? (
+              <p className="empty-state">No recent tool calls found for the current window ({summary?.window ?? "24h"}).</p>
+            ) : (
+              <>
+                <table className="jobs-table">
+                  <thead><tr><th>Time</th><th>Tool</th><th>Decision</th><th>Actor</th><th>Policy</th><th>Correlation</th><th></th></tr></thead>
+                  <tbody>
+                    {recentPaged.map((call) => (
+                      <tr key={`${call.timestampUtc}-${call.toolName}-${call.correlationId ?? ""}`}
+                        onClick={() => setSelectedCall(call)} style={{ cursor: "pointer" }}>
+                        <td>{formatTimestamp(call.timestampUtc)}</td>
+                        <td>{call.toolName}</td>
+                        <td><StatusBadge status={call.decision} /></td>
+                        <td>{actorLabel(call)}</td>
+                        <td>{call.policyId ? `${call.policyId}@${call.policyVersion ?? "?"}` : "—"}</td>
+                        <td className="mono truncate">{call.correlationId ?? call.jobId ?? "—"}</td>
+                        <td><button className="row-action" onClick={(e) => { e.stopPropagation(); setSelectedCall(call); }}>Details →</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {recentPages > 1 && (
+                  <div className="paging-controls">
+                    <button disabled={recentPage === 0} onClick={() => setRecentPage(recentPage - 1)}>← Prev</button>
+                    <button disabled={recentPage >= recentPages - 1} onClick={() => setRecentPage(recentPage + 1)}>Next →</button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+      </>
     );
   }
 

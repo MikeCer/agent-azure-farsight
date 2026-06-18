@@ -38,7 +38,7 @@ The gateway currently evaluates one configured policy ID, `farsight-tool-policy`
 
 ## Tool-call monitoring
 
-The admin console includes a Tool-call monitoring page backed by `GET /api/v1/telemetry/tool-calls/summary`. The initial implementation returns an empty summary. Future gateway work should emit AGT decision events with tool name, actor, policy ID/version, decision, correlation ID, job ID, and timestamp so the API can aggregate calls by tool and decision.
+The admin console includes a Tool-call monitoring page backed by `GET /api/v1/telemetry/tool-calls/summary`. The AGT tool gateway emits a structured audit event (`POST /api/v1/telemetry/tool-calls`) after every tool execution. Each event includes: tool name, policy decision (allow/deny/require_approval), policy name/version, rule name, actor identity (object ID and app ID), job ID, correlation ID, and UTC timestamp. Events are persisted in the `auditEvents` Cosmos container and aggregated by the summary endpoint over a 24-hour window.
 
 ## Approval behavior
 
