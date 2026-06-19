@@ -138,6 +138,9 @@ foreach ($metadataFile in $metadataFiles) {
         continue
     }
 
+    # Intune requires non-empty stdout alongside exit 0 to mark as "Detected".
+    # An exit 0 with empty stdout is treated as "Not Detected".
+    Write-Output "FarSight Collector installed at $installRoot"
     exit 0
 }
 

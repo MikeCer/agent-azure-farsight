@@ -19,8 +19,9 @@ Always align to live tool parameter names:
 5. Present findings from `monitor_farsight_job.summary` to the user.
 6. `retrieve_artifact_metadata` — list artifacts for a job.
 7. `retrieve_artifact_content(job_id, artifact_id)` — download the artifact content (JSON/text, ≤256 KB) for analysis. If too large or binary → `request_follow_up_module_execution` for a smaller slice.
-8. `request_follow_up_module_execution` only for bounded evidence gaps.
-9. `request_approval_for_action` when a separate approval request is needed before creating a higher-risk action.
+8. `extract_zip_artifact_entry(job_id, artifact_id, file_path?)` — for ZIP artifacts (e.g., Get-AppLogBundle output). Call without `file_path` to list ZIP contents, then call again with a specific `file_path` to extract that file's text content.
+9. `request_follow_up_module_execution` only for bounded evidence gaps.
+10. `request_approval_for_action` when a separate approval request is needed before creating a higher-risk action.
 
 > Use `get_job_status` and `get_job_result_summary` only to recover an old job or when the monitor timed out.
 
@@ -121,6 +122,18 @@ The `get_job_status` and `get_job_result_summary` tools each have a 60-second to
 Note: `app_id` is **not required** for `Get-ServiceStatusSnapshot`, `Get-ConfigEvidence`, `Test-AppConnectivity`, or `Get-AppDiskEvidence`. Only provide it for `Get-AppLogBundle` and `Get-AppHealthSnapshot`.
 
 **`Get-AppLogBundle` requires `log_path_folder`** — the local path where the application stores logs on the target device (e.g. `C:\ProgramData\Contoso\Logs`). The folder must be under an approved root in the module's app-profiles. `start_time_utc` and `end_time_utc` are optional (defaults to all recent files within profile caps).
+
+## Extracting files from ZIP artifacts
+
+`Get-AppLogBundle` produces a ZIP artifact. Use `extract_zip_artifact_entry` to inspect its contents:
+
+```
+1. retrieve_artifact_metadata(job_id="job-abc123") → artifact list includes ZIP file
+2. extract_zip_artifact_entry(job_id="job-abc123", artifact_id="art-xyz") → { "mode": "list", "entries": [...] }
+3. extract_zip_artifact_entry(job_id="job-abc123", artifact_id="art-xyz", file_path="logs/app-2026-06-19.log") → { "mode": "extract", "content": "..." }
+```
+
+Use the list step to identify the relevant log file by name/size, then extract only what you need for diagnosis. Do not attempt to use `retrieve_artifact_content` on ZIP artifacts — it will return HTTP 415 (unsupported content type).
 
 ## Polling example flow
 

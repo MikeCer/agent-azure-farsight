@@ -17,6 +17,7 @@ from .models import (
     PolicyDecision,
     PolicyOutcome,
     ToolResponse,
+    ZipArtifactEntryRequest,
 )
 from .policy import PolicyConfigurationError, evaluate_policy
 
@@ -52,9 +53,9 @@ def _eval_policy(tool_name: str, risk_level=None, payload=None) -> PolicyDecisio
         return _policy_error(tool_name, str(exc))
 
 
-async def _call_api(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+async def _call_api(method: str, path: str, payload: dict[str, Any] | None = None, params: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
-        return await FarSightApiClient().request(method, path, json=payload)
+        return await FarSightApiClient().request(method, path, json=payload, params=params)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail={"error": "configuration_error", "message": str(exc)}) from exc
     except httpx.HTTPStatusError as exc:
@@ -229,5 +230,23 @@ async def retrieve_artifact_content(request: ArtifactContentRequest) -> ToolResp
     data = await _call_api(
         "GET",
         f"/api/v1/jobs/{request.job_id}/artifacts/{request.artifact_id}/content",
+    )
+    return ToolResponse(toolName=tool_name, policy=policy, data=data)
+
+
+async def extract_zip_artifact_entry(request: ZipArtifactEntryRequest) -> ToolResponse:
+    tool_name = "extract_zip_artifact_entry"
+    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True, mode="json"))
+    if isinstance(policy, ToolResponse):
+        return policy
+    if policy.outcome != PolicyOutcome.allow:
+        return _blocked(tool_name, policy)
+    params = {}
+    if request.file_path:
+        params["file_path"] = request.file_path
+    data = await _call_api(
+        "GET",
+        f"/api/v1/jobs/{request.job_id}/artifacts/{request.artifact_id}/zip-entry",
+        params=params,
     )
     return ToolResponse(toolName=tool_name, policy=policy, data=data)

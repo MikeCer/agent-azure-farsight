@@ -38,10 +38,10 @@ class FarSightApiClient:
             scope=scope,
         )
 
-    async def request(self, method: str, path: str, json: dict | None = None) -> dict:
+    async def request(self, method: str, path: str, json: dict | None = None, params: dict | None = None) -> dict:
         headers = {"Authorization": f"Bearer {self.auth.bearer_token()}"}
         async with httpx.AsyncClient(base_url=self.base_url, timeout=10.0) as client:
-            response = await client.request(method, path, json=json, headers=headers)
+            response = await client.request(method, path, json=json, params=params, headers=headers)
             response.raise_for_status()
             if not response.content:
                 return {}

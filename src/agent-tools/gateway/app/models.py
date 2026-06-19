@@ -82,6 +82,12 @@ class ArtifactContentRequest(CamelModel):
     artifact_id: str = Field(alias="artifactId")
 
 
+class ZipArtifactEntryRequest(CamelModel):
+    job_id: str = Field(alias="jobId")
+    artifact_id: str = Field(alias="artifactId")
+    file_path: str | None = Field(default=None, alias="filePath")
+
+
 class InvestigationHistoryRequest(CamelModel):
     device_id: str = Field(alias="deviceId")
     incident_id: str | None = Field(default=None, alias="incidentId")

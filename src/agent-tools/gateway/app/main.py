@@ -18,6 +18,7 @@ from .models import (
     InvestigationHistoryRequest,
     JobLookupRequest,
     ToolResponse,
+    ZipArtifactEntryRequest,
 )
 from .policy import PolicyConfigurationError
 from .tools import (
@@ -29,6 +30,7 @@ from .tools import (
     request_follow_up_module_execution,
     retrieve_artifact_content,
     retrieve_artifact_metadata,
+    extract_zip_artifact_entry,
 )
 
 logger = logging.getLogger("farsight.gateway")
@@ -153,5 +155,15 @@ async def retrieve_artifact_content_endpoint(
     caller: WorkloadCaller = Depends(require_workload_caller),
 ) -> ToolResponse:
     response = await retrieve_artifact_content(request)
+    asyncio.ensure_future(_emit_tool_call_event(response, caller))
+    return response
+
+
+@app.post("/tools/extract_zip_artifact_entry", response_model=ToolResponse)
+async def extract_zip_artifact_entry_endpoint(
+    request: ZipArtifactEntryRequest,
+    caller: WorkloadCaller = Depends(require_workload_caller),
+) -> ToolResponse:
+    response = await extract_zip_artifact_entry(request)
     asyncio.ensure_future(_emit_tool_call_event(response, caller))
     return response

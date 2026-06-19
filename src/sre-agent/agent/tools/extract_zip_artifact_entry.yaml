@@ -1,0 +1,50 @@
+name: extract_zip_artifact_entry
+type: PythonFunctionTool
+description: >
+  List files inside a ZIP artifact or extract a specific file's content for
+  agent analysis. Use this tool when a FarSight diagnostic module (e.g.,
+  Get-AppLogBundle) produces a ZIP archive as its output artifact. First call
+  without file_path to list the ZIP contents, then call again with file_path
+  to retrieve the text content of a specific log or config file. Content is
+  capped at 256 KB per entry. ZIP archives up to 50 MB are supported.
+code_file: extract_zip_artifact_entry.py
+parameters:
+  - name: job_id
+    type: string
+    required: true
+    description: FarSight job id that produced the ZIP artifact.
+  - name: artifact_id
+    type: string
+    required: true
+    description: Artifact id from retrieve_artifact_metadata output.
+  - name: file_path
+    type: string
+    required: false
+    description: >
+      Path of the file to extract from the ZIP. If omitted, returns a listing
+      of all files in the archive with their paths and sizes. Use the exact path
+      value from the listing to extract a specific file.
+  - name: api_base_url
+    type: string
+    required: false
+    description: Optional AGT gateway base URL. Defaults to SRE_AGENT_TOOL_ENDPOINT_URL.
+  - name: auth_mode
+    type: string
+    required: false
+    description: Authentication mode for the AGT gateway. Defaults to default (managed identity).
+  - name: api_scope
+    type: string
+    required: false
+    description: Optional token scope. Defaults to SRE_AGENT_TOOL_ENDPOINT_SCOPE.
+  - name: timeout_seconds
+    type: int
+    required: false
+    description: HTTP timeout in seconds, capped at 120. Defaults to 60.
+dependencies:
+  - azure-identity
+auth_enabled: true
+auth_scopes: []
+connector: null
+attributes: []
+timeout_seconds: 90
+tool_mode: Auto

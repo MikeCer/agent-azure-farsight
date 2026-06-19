@@ -19,7 +19,7 @@ rules:
     description: "Redaction cannot be disabled for application log collection in production."
 
   - name: allow-read-only-lookups
-    condition: "tool_name in ['get_job_status', 'get_job_result_summary', 'retrieve_artifact_metadata', 'retrieve_artifact_content', 'query_device_investigation_history']"
+    condition: "tool_name in ['get_job_status', 'get_job_result_summary', 'retrieve_artifact_metadata', 'retrieve_artifact_content', 'extract_zip_artifact_entry', 'query_device_investigation_history']"
     action: allow
     description: "Read-only FarSight lookup tools are allowed."
 

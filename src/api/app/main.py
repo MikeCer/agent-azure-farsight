@@ -752,6 +752,139 @@ def get_artifact_content(
         "sizeBytes": size_bytes,
         "content": content,
     }
+
+
+@app.get("/api/v1/jobs/{jobId}/artifacts/{artifactId}/zip-entry")
+def get_zip_artifact_entry(
+    jobId: str,
+    artifactId: str,
+    file_path: str | None = None,
+    _: WorkloadCaller = Depends(require_workload_caller),
+) -> dict[str, object]:
+    """List ZIP contents or extract a specific file from a ZIP artifact.
+
+    If file_path is not provided, returns the list of entries in the ZIP archive.
+    If file_path is provided, extracts and returns that file's text content
+    (capped at FARSIGHT_ARTIFACT_MAX_CONTENT_BYTES, default 256 KB).
+    """
+    import io
+    import zipfile
+    import json as _json
+
+    max_bytes = int(os.getenv("FARSIGHT_ARTIFACT_MAX_CONTENT_BYTES", str(256 * 1024)))
+    max_zip_bytes = int(os.getenv("FARSIGHT_ARTIFACT_MAX_ZIP_BYTES", str(50 * 1024 * 1024)))  # 50 MB
+    blob_client = get_blob_service_client()
+    if blob_client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Artifact retrieval requires Blob Storage (FARSIGHT_BLOB_ACCOUNT_URL not configured).",
+        )
+
+    # Resolve blob name from artifact index
+    ai_container = get_artifact_index_container()
+    blob_name: str | None = None
+    artifact_file_name: str | None = None
+    if ai_container is not None:
+        try:
+            item = ai_container.read_item(item=f"{jobId}:{artifactId}", partition_key=jobId)
+            blob_name = item.get("blobName")
+            artifact_file_name = item.get("name")
+        except Exception:
+            pass
+
+    container_name = os.getenv("FARSIGHT_BLOB_ARTIFACTS_CONTAINER", "artifacts")
+    if not blob_name:
+        if artifact_file_name:
+            blob_name = f"{jobId}/{artifactId}/{artifact_file_name}"
+        else:
+            blob_name = f"{jobId}/{artifactId}"
+
+    try:
+        blob = blob_client.get_blob_client(container=container_name, blob=blob_name)
+        props = blob.get_blob_properties()
+        size_bytes = props.size
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Artifact blob not found: {exc}") from exc
+
+    if size_bytes > max_zip_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"ZIP artifact size {size_bytes} bytes exceeds the maximum allowed {max_zip_bytes} bytes.",
+        )
+
+    try:
+        raw = blob.download_blob().readall()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to download artifact: {exc}") from exc
+
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(raw))
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(status_code=422, detail=f"Artifact is not a valid ZIP file: {exc}") from exc
+
+    # List mode: return file entries
+    if not file_path:
+        entries = []
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            entries.append({
+                "path": info.filename,
+                "sizeBytes": info.file_size,
+                "compressedBytes": info.compress_size,
+            })
+        return {
+            "jobId": jobId,
+            "artifactId": artifactId,
+            "mode": "list",
+            "entryCount": len(entries),
+            "entries": entries,
+        }
+
+    # Extract mode: return specific file content
+    matching = [info for info in zf.infolist() if info.filename == file_path]
+    if not matching:
+        # Try case-insensitive match
+        matching = [info for info in zf.infolist() if info.filename.lower() == file_path.lower()]
+    if not matching:
+        available = [info.filename for info in zf.infolist() if not info.is_dir()]
+        raise HTTPException(
+            status_code=404,
+            detail=f"File '{file_path}' not found in ZIP. Available entries: {available[:20]}",
+        )
+
+    entry = matching[0]
+    if entry.file_size > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Entry '{file_path}' size {entry.file_size} bytes exceeds max {max_bytes} bytes for agent context.",
+        )
+
+    try:
+        entry_bytes = zf.read(entry.filename)
+        text = entry_bytes.decode("utf-8", errors="replace")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read ZIP entry: {exc}") from exc
+
+    # Try JSON parse
+    try:
+        content = _json.loads(text)
+        content_format = "json"
+    except _json.JSONDecodeError:
+        content = text
+        content_format = "text"
+
+    return {
+        "jobId": jobId,
+        "artifactId": artifactId,
+        "mode": "extract",
+        "filePath": entry.filename,
+        "contentFormat": content_format,
+        "sizeBytes": entry.file_size,
+        "content": content,
+    }
+
+
 @app.post("/api/v1/artifacts/prepare", status_code=status.HTTP_201_CREATED)
 def prepare_artifact_upload(request: ArtifactPrepareRequest, _: AzureClients = Depends(get_azure_clients)) -> ArtifactPrepareResponse:
     blob_client = get_blob_service_client()
