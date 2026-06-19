@@ -15,6 +15,7 @@ This directory is the user-facing documentation set for FarSight. It explains th
 9. [Operations](operations/README.md) - dashboards, alerts, KQL examples, runbooks, backup/restore, and incident response.
 10. [Development](development/README.md) - local setup, [Azure lab setup](development/setup-lab.md), coding standards, testing, CI/CD, and release notes.
 11. [Extension guide](extension-guide/README.md) - walkthroughs for adding safe modules and matching agent tools.
+12. [Evolution](evolution/README.md) - future collector module ideas and product evolution notes.
 
 ## Start here by role
 
