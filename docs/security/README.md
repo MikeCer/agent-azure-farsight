@@ -110,9 +110,9 @@ Expected controls:
 - Gateways load the active version and cache it for a short, bounded interval.
 - The default `farsight-tool-policy` is seeded from the canonical gateway policy bundle. The repository can store additional policy IDs and versions, but a gateway only evaluates the policy ID it is configured to load.
 - Policy changes are audited with actor, timestamp, version, diff metadata, and validation result.
-- Higher-risk actions can require secondary approval before job creation.
+- Higher-risk actions can require secondary approval before endpoint execution. Approval-gated jobs are created as `waiting_approval` and cannot be leased by collectors until an administrator approves them.
 
-Approval policy can consider module risk, target device sensitivity, target group size, artifact size, execution window, actor identity, and recent activity. Expired, missing, or mismatched approvals must fail closed.
+Approval policy can consider module risk, target device sensitivity, target group size, artifact size, execution window, actor identity, and recent activity. Expired, missing, denied, or mismatched approvals must fail closed and keep linked jobs unavailable to collector polling.
 
 ## Azure resource access
 

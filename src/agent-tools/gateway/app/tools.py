@@ -1,4 +1,6 @@
+from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 import httpx
 from fastapi import HTTPException
@@ -77,6 +79,53 @@ async def _call_api(method: str, path: str, payload: dict[str, Any] | None = Non
         ) from exc
 
 
+async def _create_waiting_approval_job(
+    *,
+    tool_name: str,
+    payload: dict[str, Any],
+    policy: PolicyDecision,
+    followup_parent_job_id: str | None = None,
+) -> ToolResponse:
+    approval_id = f"approval-{uuid4()}"
+    requested_by = payload.get("requestedBy") or {}
+    if isinstance(requested_by, dict):
+        requested_by_text = requested_by.get("identityObjectId") or requested_by.get("toolName") or requested_by.get("kind") or "azure-sre-agent"
+    else:
+        requested_by_text = str(requested_by or "azure-sre-agent")
+
+    approval_payload = {
+        "approvalId": approval_id,
+        "correlationId": payload.get("correlationId") or f"corr-{uuid4()}",
+        "requestedAction": f"{tool_name}:{payload.get('taskType', 'unknown')}",
+        "riskLevel": payload.get("riskLevel", "sensitive-diagnostic"),
+        "requestedBy": requested_by_text,
+        "reason": policy.reason,
+        "expiresAtUtc": payload.get("expiresAtUtc"),
+        "deviceId": payload.get("deviceId"),
+        "taskType": payload.get("taskType"),
+        "status": "pending",
+        "createdAtUtc": datetime.now(timezone.utc).isoformat(),
+    }
+    await _call_api("POST", "/api/v1/approvals", approval_payload)
+
+    job_payload = {
+        **payload,
+        "approvalRequired": True,
+        "approvalStatus": "pending",
+        "approvalId": approval_id,
+        "status": "waiting_approval",
+    }
+    if followup_parent_job_id:
+        data = await _call_api("POST", f"/api/v1/jobs/{followup_parent_job_id}/followups", job_payload)
+    else:
+        data = await _call_api("POST", "/api/v1/jobs", job_payload)
+    data["status"] = "approval_required"
+    data["approvalId"] = approval_id
+    data["approvalStatus"] = "pending"
+    data["message"] = "This diagnostic job is waiting for administrator approval before collector polling can lease it."
+    return ToolResponse(toolName=tool_name, policy=policy, data=data)
+
+
 async def create_diagnostic_job(request: DiagnosticJobRequest) -> ToolResponse:
     tool_name = "create_diagnostic_job"
     payload = request.model_dump(by_alias=True, mode="json")
@@ -86,7 +135,7 @@ async def create_diagnostic_job(request: DiagnosticJobRequest) -> ToolResponse:
     if policy.outcome == PolicyOutcome.deny:
         return _blocked(tool_name, policy)
     if policy.outcome == PolicyOutcome.require_approval:
-        return _blocked(tool_name, policy)
+        return await _create_waiting_approval_job(tool_name=tool_name, payload=payload, policy=policy)
     data = await _call_api("POST", "/api/v1/jobs", payload)
     return ToolResponse(toolName=tool_name, policy=policy, data=data)
 
@@ -132,8 +181,16 @@ async def request_follow_up_module_execution(request: FollowUpRequest) -> ToolRe
     policy = _eval_policy(tool_name, request.risk_level, payload)
     if isinstance(policy, ToolResponse):
         return policy
-    if policy.outcome != PolicyOutcome.allow:
+    if policy.outcome == PolicyOutcome.deny:
         return _blocked(tool_name, policy)
+    if policy.outcome == PolicyOutcome.require_approval:
+        parent_job_id = payload.pop("parentJobId")
+        return await _create_waiting_approval_job(
+            tool_name=tool_name,
+            payload=payload,
+            policy=policy,
+            followup_parent_job_id=parent_job_id,
+        )
     parent_job_id = payload.pop("parentJobId")
     data = await _call_api("POST", f"/api/v1/jobs/{parent_job_id}/followups", payload)
     return ToolResponse(toolName=tool_name, policy=policy, data=data)

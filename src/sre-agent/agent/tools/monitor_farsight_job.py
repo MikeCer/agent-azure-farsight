@@ -24,6 +24,7 @@ _TERMINAL_STATUSES = {"Succeeded", "Failed", "Expired", "Cancelled"}
 
 # Non-terminal statuses the tool expects while waiting.
 _ACTIVE_STATUSES = {"Queued", "Leased", "Running"}
+_APPROVAL_WAIT_STATUSES = {"waiting_approval", "WaitingApproval"}
 
 # Poll interval (seconds) per status — tuned to collector check-in schedule.
 _POLL_INTERVALS: dict[str, int] = {
@@ -246,6 +247,23 @@ def main(
         job_status = str(response_data.get("status") or response_data.get("jobStatus") or "unknown")
         last_status = job_status
         last_response = response_data
+
+        if job_status in _APPROVAL_WAIT_STATUSES:
+            return {
+                "status": "approval_required",
+                "action": "monitor_farsight_job",
+                "job_id": job_id,
+                "job_status": job_status,
+                "approval_id": response_data.get("approvalId"),
+                "approval_status": response_data.get("approvalStatus"),
+                "poll_count": poll_count,
+                "elapsed_seconds": round(time.monotonic() - start),
+                "status_response": response_data,
+                "message": (
+                    f"FarSight job {job_id} is waiting for administrator approval. "
+                    "Do not keep polling synchronously; schedule a follow-up check and notify via Outlook when it completes, is denied, or expires."
+                ),
+            }
 
         if job_status in _TERMINAL_STATUSES:
             result: dict[str, Any] = {

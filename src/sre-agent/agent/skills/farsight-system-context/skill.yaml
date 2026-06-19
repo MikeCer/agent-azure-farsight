@@ -1,7 +1,11 @@
 name: farsight-system-context
 description: >
-  Use for FarSight domain understanding: module catalog and purpose, policy and
-  approval model, trust boundaries, and evidence strategy before selecting tools.
+  Use for FarSight domain reasoning before tool execution: understanding the
+  diagnostic module catalog and what each module collects, selecting the right
+  module for a given symptom, deciding between Intune-native evidence and
+  FarSight endpoint diagnostics, and applying policy/approval boundaries.
+  Trigger this skill when the user describes a Windows endpoint problem and
+  you need to decide which FarSight module (or Intune path) to use.
 files:
   - SKILL.md
 parameters:

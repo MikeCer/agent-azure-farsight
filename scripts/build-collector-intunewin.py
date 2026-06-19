@@ -174,21 +174,23 @@ def ensure_clean_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def copy_collector_runtime(install_root: str) -> None:
+def copy_collector_runtime(install_root: str, task_name: str) -> None:
     target = PACKAGE_ROOT / "collector"
     target.mkdir(parents=True, exist_ok=True)
 
     # Scripts that contain the generic Company\SreCollector fallback path.
     # Replace it with the real install root so manual test runs work without -InstallRoot.
     _PLACEHOLDER = r"$env:ProgramData\Company\SreCollector"
-    # Double-backslash for PS string literal embedded in Python raw string
-    _replacement = install_root.replace("\\", "\\\\")
+    # Generic task name default in bootstrap.ps1 that must be replaced with the real company task name.
+    _TASK_NAME_PLACEHOLDER = "Company FarSight Collector"
 
     for name in ("bootstrap.ps1", "collector.ps1", "common.psm1", "healthcheck.ps1", "repair.ps1"):
         src = COLLECTOR_SRC / name
         content = src.read_text(encoding="utf-8")
         if _PLACEHOLDER in content:
             content = content.replace(_PLACEHOLDER, install_root)
+        if _TASK_NAME_PLACEHOLDER in content:
+            content = content.replace(_TASK_NAME_PLACEHOLDER, task_name)
         (target / name).write_text(content, encoding="utf-8")
 
     shutil.copytree(COLLECTOR_SRC / "schemas", target / "schemas", dirs_exist_ok=True)
@@ -200,6 +202,12 @@ def copy_module_source(module_name: str) -> None:
         raise FileNotFoundError(f"Module source folder not found: {source}")
     destination = PACKAGE_ROOT / "modules" / module_name
     shutil.copytree(source, destination, dirs_exist_ok=True, ignore=shutil.ignore_patterns("tests"))
+    
+    # Rename app-profiles.sample.json to app-profiles.json for production distribution
+    sample_profiles = destination / "app-profiles.sample.json"
+    if sample_profiles.exists():
+        profiles = destination / "app-profiles.json"
+        sample_profiles.rename(profiles)
 
 
 def write_json(path: Path, data: object) -> None:
@@ -472,6 +480,15 @@ def make_install_script(install_root: str, task_name: str) -> str:
 
         & (Join-Path $InstallRoot 'bootstrap.ps1') -InstallRoot $InstallRoot -TaskName $TaskName
 
+        # Remove any stale generic-named task from a previous install before registering
+        # the correctly named one. This prevents duplicates in Task Scheduler.
+        $staleTaskNames = @('Company FarSight Collector', 'FarSight Collector')
+        foreach ($staleName in $staleTaskNames) {
+            if ($staleName -ne $TaskName -and (Get-ScheduledTask -TaskName $staleName -ErrorAction SilentlyContinue)) {
+                Unregister-ScheduledTask -TaskName $staleName -Confirm:$false -ErrorAction SilentlyContinue
+            }
+        }
+
         $collectorScript = Join-Path $InstallRoot 'collector.ps1'
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$collectorScript`" -InstallRoot `"$InstallRoot`""
         $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Minutes 5)
@@ -583,7 +600,7 @@ def main() -> int:
     (PACKAGE_ROOT / "collector" / "config").mkdir(parents=True, exist_ok=True)
     (PACKAGE_ROOT / "modules").mkdir(parents=True, exist_ok=True)
 
-    copy_collector_runtime(install_root)
+    copy_collector_runtime(install_root, task_name)
     for module_name in selected_modules:
         copy_module_source(module_name)
     write_json(PACKAGE_ROOT / "collector" / "config" / "config.json", config)

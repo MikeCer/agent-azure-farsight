@@ -8,6 +8,8 @@ The FarSight control API is an early FastAPI implementation. Contracts below des
 - `GET /api/v1/jobs/{jobId}` returns job status.
 - `POST /api/v1/devices/checkin` lets collectors request pending work.
 - `POST /api/v1/jobs/{jobId}/results` submits redacted result envelopes.
+- `GET /api/v1/admin/approvals` lists approval requests for the admin console.
+- `POST /api/v1/approvals/{approvalId}/decision` approves or denies a pending request and updates linked jobs.
 - `GET /api/v1/policies` lists AGT policy documents and versions.
 - `GET /api/v1/policies/{policyId}` returns the active AGT policy.
 - `POST /api/v1/policies/{policyId}/validate` validates AGT YAML before save or activation.
@@ -92,6 +94,14 @@ Cosmos container name env vars (all default to the container names above):
 - `FARSIGHT_COSMOS_AUDIT_EVENTS_CONTAINER`
 - `FARSIGHT_COSMOS_INVESTIGATIONS_CONTAINER`
 - `FARSIGHT_COSMOS_POLICIES_CONTAINER`
+
+## Approval-gated jobs
+
+AGT policy can return `require_approval` for sensitive diagnostics or broad read-only collection. In that case, the gateway creates an approval record and a linked job with `status=waiting_approval`, `approvalRequired=true`, `approvalStatus=pending`, and `approvalId=<approval-id>`.
+
+Collectors only lease `Queued` jobs during `/api/v1/devices/checkin`, so `waiting_approval` jobs are not visible to endpoint polling until an administrator approves them. Approval from the admin console changes linked jobs to `Queued`; denial changes linked jobs to `Cancelled` with `approvalStatus=denied`.
+
+Job summary/status responses include approval metadata so SRE tools can stop synchronous waits and schedule follow-up notification.
 
 ## Service Bus job queuing (removed)
 

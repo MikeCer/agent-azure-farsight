@@ -621,6 +621,23 @@ th {
 }
 .device-config-form input[type="number"]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .config-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 1rem; margin-top: 0.25rem; }
+.approval-comment {
+  width: 100%;
+  min-height: 90px;
+  background: var(--card);
+  border: 1px solid var(--field-border);
+  color: var(--text);
+  padding: 0.6rem;
+  resize: vertical;
+}
+.danger-button {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  cursor: pointer;
+  padding: 6px 14px;
+}
+.danger-button:hover { background: var(--danger); color: #fff; }
 
 .row-action-config { color: var(--accent) !important; }
 .config-section { border-top: 2px solid var(--accent); margin-top: 1.25rem; padding-top: 1rem; }

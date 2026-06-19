@@ -61,6 +61,15 @@ Use the admin web policy repository page to edit AGT policies. Recommended workf
 
 If a policy blocks expected diagnostics, reactivate the previous known-good version and investigate the changed rule.
 
+## Approval operations
+
+Use the admin web Approvals page to handle AGT `require_approval` outcomes:
+
+1. Review pending approval details, including requested action, device, module/task type, risk, requester, reason, expiry, and linked job.
+2. Approve only when the request scope is bounded and justified. Approval releases linked `waiting_approval` jobs to `Queued` so the collector can lease them on its next check-in.
+3. Deny requests that are too broad, unapproved, expired, or insufficiently justified. Denial marks linked jobs `Cancelled`.
+4. After deciding, monitor the related job in Diagnostic jobs and rely on SRE Agent scheduled follow-up/Outlook notification for the requester.
+
 ## Admin console navigation
 
 - Each data-rich blade in the admin console includes a refresh action so operators can pull the latest server state without reloading the page.

@@ -568,8 +568,6 @@ def _build_job_payload(
         err = _validate_text(action, field, value, required=False, max_len=128)
         if err:
             return err
-    if risk_level == "sensitive-diagnostic" and not approval_id:
-        return _approval_required(action, "sensitive-diagnostic risk requires approval_id before job creation.")
     parameters = _build_module_parameters(
         action,
         task_type,

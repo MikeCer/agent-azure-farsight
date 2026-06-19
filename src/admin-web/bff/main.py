@@ -184,6 +184,29 @@ async def requeue_job(job_id: str, current_admin: dict[str, Any] = Depends(get_c
     return {"ok": True}
 
 
+@app.get("/api/bff/approvals")
+async def list_approvals(status_filter: str = "pending", current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    """Return approval records for the admin console."""
+    return await _control_api_admin("GET", f"/api/v1/admin/approvals?status_filter={status_filter}", current_admin=current_admin)
+
+
+@app.get("/api/bff/approvals/{approval_id}")
+async def get_approval(approval_id: str, current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    return await _control_api_admin("GET", f"/api/v1/admin/approvals/{approval_id}", current_admin=current_admin)
+
+
+@app.post("/api/bff/approvals/{approval_id}/decision", status_code=200)
+async def decide_approval(approval_id: str, body: dict[str, Any], current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    payload = {
+        "approvalId": approval_id,
+        "decision": body.get("decision"),
+        "decidedBy": str(current_admin["id"]),
+        "decidedAtUtc": body.get("decidedAtUtc"),
+        "comment": body.get("comment"),
+    }
+    return await _control_api_admin("POST", f"/api/v1/approvals/{approval_id}/decision", current_admin=current_admin, json=payload)
+
+
 @app.get("/api/bff/devices")
 async def list_devices(current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
     return await _control_api_admin("GET", "/api/v1/devices", current_admin=current_admin)

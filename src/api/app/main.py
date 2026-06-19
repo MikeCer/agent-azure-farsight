@@ -33,6 +33,7 @@ from .models import (
     AuditEvent,
     ApprovalDecision,
     ApprovalRequest,
+    ApprovalStatus,
     ArtifactCommitRequest,
     ArtifactPrepareRequest,
     ArtifactPrepareResponse,
@@ -466,6 +467,12 @@ def create_job(
             return JobDocument.model_validate(existing_items[0])
 
     job_id = f"job-{uuid4()}"
+    initial_status = request.status or (
+        JobStatus.waiting_approval if request.approval_required or request.approval_status == ApprovalStatus.pending else JobStatus.queued
+    )
+    if initial_status == JobStatus.waiting_approval and not request.approval_id:
+        raise HTTPException(status_code=400, detail="approvalId is required for waiting_approval jobs.")
+
     job = JobDocument(
         id=job_id,
         jobId=job_id,
@@ -475,9 +482,10 @@ def create_job(
         taskType=request.task_type,
         parameters=request.parameters,
         riskLevel=request.risk_level,
-        approvalRequired=False,
-        approvalStatus="not-required",
-        status=JobStatus.queued,
+        approvalRequired=request.approval_required,
+        approvalStatus=request.approval_status,
+        approvalId=request.approval_id,
+        status=initial_status,
         policyVersion=POLICY_VERSION,
         manifestVersion=MANIFEST_VERSION,
         expiresAtUtc=request.expires_at_utc,
@@ -521,12 +529,23 @@ def get_job_summary(jobId: str, _: WorkloadCaller = Depends(require_workload_cal
         return {
             "jobId": jobId,
             "status": item.get("status"),
+            "approvalRequired": item.get("approvalRequired", False),
+            "approvalStatus": item.get("approvalStatus"),
+            "approvalId": item.get("approvalId"),
             "summary": item.get("resultSummary") or {},
         }
     if jobId not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     result = results.get(jobId)
-    return {"jobId": jobId, "status": jobs[jobId].status, "summary": result.summary if result else {}}
+    job = jobs[jobId]
+    return {
+        "jobId": jobId,
+        "status": job.status,
+        "approvalRequired": job.approval_required,
+        "approvalStatus": job.approval_status,
+        "approvalId": job.approval_id,
+        "summary": result.summary if result else {},
+    }
 
 
 @app.get("/api/v1/jobs/{jobId}/results")
@@ -886,6 +905,7 @@ def decide_approval(
     approvalId: str,
     decision: ApprovalDecision,
     _: AzureClients = Depends(get_azure_clients),
+    __: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, str]:
     if approvalId != decision.approval_id:
         raise HTTPException(status_code=400, detail="Path approvalId must match decision approvalId")
@@ -901,17 +921,95 @@ def decide_approval(
         if item.get("decidedBy"):
             raise HTTPException(status_code=409, detail="Approval has already been decided.")
         item.update(decision.model_dump(by_alias=True, mode="json"))
+        item["status"] = decision.decision.value
         container.replace_item(item=approvalId, body=item)
 
         # Release blocked jobs when approved.
         if decision.decision.value == "approved":
             _release_jobs_for_approval(approvalId)
+        elif decision.decision.value == "denied":
+            _deny_jobs_for_approval(approvalId, decision.comment)
     else:
         if approvalId not in approvals:
             raise HTTPException(status_code=404, detail="Approval not found")
+        approval = approvals[approvalId]
+        if approval.decided_by:
+            raise HTTPException(status_code=409, detail="Approval has already been decided.")
+        approval.status = decision.decision  # type: ignore[misc]
+        approval.decided_by = decision.decided_by
+        approval.decided_at_utc = decision.decided_at_utc
+        approval.comment = decision.comment
         if decision.decision.value == "approved":
             _release_jobs_for_approval(approvalId)
+        elif decision.decision.value == "denied":
+            _deny_jobs_for_approval(approvalId, decision.comment)
     return {"status": "accepted", "decision": decision.decision.value}
+
+
+@app.get("/api/v1/admin/approvals")
+def admin_list_approvals(
+    status_filter: str = "pending",
+    limit: int = 100,
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, object]:
+    """Return approvals for the admin console."""
+    limit = max(1, min(limit, 500))
+    container = get_approvals_container()
+    if container is not None:
+        if status_filter == "all":
+            items = list(container.query_items(
+                query="SELECT * FROM c ORDER BY c.createdAtUtc DESC OFFSET 0 LIMIT @limit",
+                parameters=[{"name": "@limit", "value": limit}],
+                enable_cross_partition_query=True,
+            ))
+        else:
+            items = list(container.query_items(
+                query="SELECT * FROM c WHERE c.status = @status ORDER BY c.createdAtUtc DESC OFFSET 0 LIMIT @limit",
+                parameters=[
+                    {"name": "@status", "value": status_filter},
+                    {"name": "@limit", "value": limit},
+                ],
+                enable_cross_partition_query=True,
+            ))
+        return {"approvals": items, "total": len(items)}
+
+    items = [item for item in approvals.values() if status_filter == "all" or item.status.value == status_filter]
+    items.sort(key=lambda item: item.created_at_utc, reverse=True)
+    return {"approvals": [item.model_dump(by_alias=True, mode="json") for item in items[:limit]], "total": len(items)}
+
+
+@app.get("/api/v1/admin/approvals/{approvalId}")
+def admin_get_approval(
+    approvalId: str,
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, object]:
+    container = get_approvals_container()
+    if container is not None:
+        try:
+            item = container.read_item(item=approvalId, partition_key=approvalId)
+        except Exception as exc:
+            if "NotFound" in type(exc).__name__:
+                raise HTTPException(status_code=404, detail="Approval not found") from exc
+            raise
+        jobs_container = get_jobs_container()
+        linked_jobs: list[dict[str, Any]] = []
+        if jobs_container is not None:
+            linked_jobs = list(jobs_container.query_items(
+                query="SELECT * FROM c WHERE c.approvalId = @approvalId ORDER BY c.createdAtUtc DESC",
+                parameters=[{"name": "@approvalId", "value": approvalId}],
+                enable_cross_partition_query=True,
+            ))
+        return {"approval": item, "jobs": linked_jobs}
+
+    approval = approvals.get(approvalId)
+    if approval is None:
+        raise HTTPException(status_code=404, detail="Approval not found")
+    linked_jobs = [
+        job.model_dump(by_alias=True, mode="json")
+        for job in jobs.values()
+        if job.approval_id == approvalId
+    ]
+    return {"approval": approval.model_dump(by_alias=True, mode="json"), "jobs": linked_jobs}
 
 
 def _release_jobs_for_approval(approval_id: str) -> None:
@@ -930,8 +1028,29 @@ def _release_jobs_for_approval(approval_id: str) -> None:
     else:
         for job in jobs.values():
             if getattr(job, "approval_id", None) == approval_id:
-                job.approval_status = "approved"  # type: ignore[assignment]
+                job.approval_status = ApprovalStatus.approved
                 job.status = JobStatus.queued
+
+
+def _deny_jobs_for_approval(approval_id: str, comment: str | None = None) -> None:
+    """Mark approval-linked jobs as cancelled when an admin denies approval."""
+    jobs_container = get_jobs_container()
+    if jobs_container is not None:
+        blocked = list(jobs_container.query_items(
+            query="SELECT * FROM c WHERE c.approvalId = @approvalId AND c.approvalStatus = 'pending'",
+            parameters=[{"name": "@approvalId", "value": approval_id}],
+            enable_cross_partition_query=True,
+        ))
+        for item in blocked:
+            item["approvalStatus"] = "denied"
+            item["status"] = JobStatus.cancelled.value
+            item["cancelledReason"] = comment or "Approval denied by administrator."
+            jobs_container.replace_item(item=item["id"], body=item)
+    else:
+        for job in jobs.values():
+            if job.approval_id == approval_id and job.approval_status == ApprovalStatus.pending:
+                job.approval_status = ApprovalStatus.denied
+                job.status = JobStatus.cancelled
 
 
 # ---------------------------------------------------------------------------

@@ -228,6 +228,13 @@ def resolve_endpoint(resource_group: str, agent_name: str, subscription: str | N
         args += ["--subscription", subscription]
 
     props = json.loads(az(*args))
+    power_state = str(props.get("powerState") or "").strip()
+    running_state = str(props.get("runningState") or "").strip()
+    if power_state and power_state.lower() == "stopped":
+        raise RuntimeError(
+            f"SRE Agent '{agent_name}' is stopped (powerState={power_state}, runningState={running_state or 'unknown'}). "
+            "Start the SRE Agent before running deploy.py; stopped agents return HTTP 404 on data-plane routes."
+        )
     endpoint = props.get("endpoint") or props.get("agentEndpoint")
     if not endpoint or endpoint in ("None", "null"):
         raise RuntimeError(
@@ -639,7 +646,7 @@ def tool_yaml_to_api_body(tool_yaml_path: Path) -> dict[str, Any]:
     }
 
 
-def upload_kb(endpoint: str, token: str, dry_run: bool) -> None:
+def upload_kb(endpoint: str, token: str, dry_run: bool, require_kb: bool = False) -> None:
     print("\nUploading knowledge base files...")
     missing = [path for path in KB_FILES if not path.exists()]
     if missing:
@@ -656,10 +663,32 @@ def upload_kb(endpoint: str, token: str, dry_run: bool) -> None:
         text_fields={},
         files=[("files", path.name, content_type_for(path), path.read_bytes()) for path in KB_FILES],
     )
-    status, response = http_call("POST", f"{endpoint}/api/v1/agentmemory/upload?triggerIndexing=true", token, body, content_type)
-    if status not in (200, 201, 202):
-        raise RuntimeError(f"KB upload failed: HTTP {status}\n{response[:500].decode(errors='replace')}")
-    print(f"  uploaded {len(KB_FILES)} file(s), HTTP {status}")
+    candidate_paths = [
+        "/api/v1/agentmemory/upload?triggerIndexing=true",
+        "/api/v2/agentmemory/upload?triggerIndexing=true",
+        "/api/v2/extendedAgent/agentmemory/upload?triggerIndexing=true",
+        "/api/v2/extendedAgent/knowledge/upload?triggerIndexing=true",
+    ]
+    response = b""
+    selected_path = ""
+    for path in candidate_paths:
+        status, response = http_call("POST", f"{endpoint}{path}", token, body, content_type)
+        if status in (200, 201, 202):
+            selected_path = path
+            break
+        if status != 404:
+            raise RuntimeError(f"KB upload failed: HTTP {status}\n{response[:500].decode(errors='replace')}")
+    else:
+        message = (
+            "KB upload skipped: every known AgentMemory upload endpoint returned HTTP 404. "
+            f"Tried: {', '.join(candidate_paths)}"
+        )
+        if require_kb:
+            raise RuntimeError(f"{message}\n{response[:500].decode(errors='replace')}")
+        print(f"  warning: {message}")
+        print("  continuing with tool, skill, and agent deployment")
+        return
+    print(f"  uploaded {len(KB_FILES)} file(s), HTTP {status} via {selected_path}")
     try:
         result = json.loads(response or b"{}")
     except json.JSONDecodeError:
@@ -670,9 +699,22 @@ def upload_kb(endpoint: str, token: str, dry_run: bool) -> None:
 
 
 def verify_kb_indexing(endpoint: str, token: str) -> None:
-    status, response = http_call("GET", f"{endpoint}/api/v1/agentmemory/indexer-status", token)
-    if status != 200:
-        print(f"  could not check KB indexer status: HTTP {status}")
+    candidate_paths = [
+        "/api/v1/agentmemory/indexer-status",
+        "/api/v2/agentmemory/indexer-status",
+        "/api/v2/extendedAgent/agentmemory/indexer-status",
+        "/api/v2/extendedAgent/knowledge/indexer-status",
+    ]
+    response = b""
+    for path in candidate_paths:
+        status, response = http_call("GET", f"{endpoint}{path}", token)
+        if status == 200:
+            break
+        if status != 404:
+            print(f"  could not check KB indexer status: HTTP {status}")
+            return
+    else:
+        print("  could not check KB indexer status: no known AgentMemory status endpoint was found")
         return
 
     data = json.loads(response)
@@ -823,6 +865,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resource-group", "-g", default=None, help="Resource group containing the SRE Agent. Falls back to AZURE_RESOURCE_GROUP.")
     parser.add_argument("--subscription", "-s", default=None, help="Azure subscription ID. Falls back to AZURE_SUBSCRIPTION_ID.")
     parser.add_argument("--skip-kb", action="store_true", help="Skip knowledge base upload.")
+    parser.add_argument("--require-kb", action="store_true", help="Fail deployment if AgentMemory upload endpoints are unavailable.")
     parser.add_argument("--skip-tools", action="store_true", help="Skip Python tool deployment.")
     parser.add_argument("--skip-skills", action="store_true", help="Skip Skill Builder skill deployment.")
     parser.add_argument("--dry-run", action="store_true", help="Print planned actions without API calls.")
@@ -915,7 +958,7 @@ def main() -> None:
         print("  token obtained")
 
     if not args.skip_kb:
-        upload_kb(endpoint, token, args.dry_run)
+        upload_kb(endpoint, token, args.dry_run, require_kb=args.require_kb)
     else:
         print("\nKB upload skipped")
 

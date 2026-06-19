@@ -73,14 +73,15 @@ sequenceDiagram
     alt Policy denies
         AGT-->>SRE: GovernanceDenied + audit id
     else Policy requires approval
-        AGT->>API: Create approval request
-        API->>Cosmos: Store approval
-        API->>Approvals: Notify Teams
-        Approvals->>API: Approve or deny
-        API->>Cosmos: Persist decision
+        AGT->>API: Create approval + waiting_approval job
+        API->>Cosmos: Store approval and blocked job
+        API-->>SRE: Return approvalId and jobId
+        Approvals->>API: Admin approves or denies
+        API->>Cosmos: Release job to Queued or cancel it
+    else Policy allows
+        AGT->>API: Create bounded diagnostic job
+        API->>Cosmos: Persist job Queued
     end
-    AGT->>API: Create bounded diagnostic job
-    API->>Cosmos: Persist job Queued
     Collector->>API: Check in over mTLS
     API->>Cosmos: Verify device, policy, pending job
     API-->>Collector: Return one leased job

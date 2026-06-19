@@ -103,7 +103,8 @@ function Test-IsPathApproved {
     param([string]$ResolvedPath, [string[]]$ApprovedRoots)
     foreach ($root in $ApprovedRoots) {
         try {
-            $resolvedRoot = (Resolve-Path -LiteralPath $root -ErrorAction SilentlyContinue)?.Path
+            $pathObj = Resolve-Path -LiteralPath $root -ErrorAction SilentlyContinue
+            $resolvedRoot = if ($null -ne $pathObj) { $pathObj.Path } else { $null }
             if ($null -eq $resolvedRoot) { continue }
             if ($ResolvedPath.StartsWith($resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
                 return $true

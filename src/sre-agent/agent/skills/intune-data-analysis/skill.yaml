@@ -1,11 +1,12 @@
 name: intune-data-analysis
 description: >
-  Use when analyzing JSON output from the Windows Client Intune SRE diagnostics
-  collector packaged as the intune_diagnostics_tool Python tool in
-  src/sre-agent/intune-collector/. Covers client performance, bottlenecks,
-  health, security/compliance posture, app reliability, restart events,
-  timeline context, and prioritized remediation or next diagnostic actions using
-  Intune/Graph evidence only.
+  Use when analyzing output from the Intune diagnostics collector
+  (intune_diagnostics_tool), Endpoint Analytics evidence, Intune health and
+  compliance data, app reliability data, restart/shutdown events, or device
+  timeline events. Trigger strongly when the user asks to analyze Intune JSON,
+  diagnose a Windows client, check performance/bottlenecks, review health,
+  or produce a remediation plan from Intune/Graph evidence. Also use when the
+  user says "act as SRE agent" or "why is this device slow/broken".
 files:
   - SKILL.md
 parameters:

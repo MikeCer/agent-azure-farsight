@@ -330,6 +330,7 @@ def _build_module_parameters(
     justification: str | None,
     app_id: str | None,
     path_profile: str | None,
+    log_path_folder: str | None,
     start_time_utc: str | None,
     end_time_utc: str | None,
     tail_lines: int | None,
@@ -365,31 +366,40 @@ def _build_module_parameters(
         return err
 
     if task_type == "Get-AppLogBundle":
-        for field, value in {"app_id": app_id, "path_profile": path_profile}.items():
-            err = _validate_text(action, field, value, required=True, max_len=128)
-            if err:
-                return err
+        err = _validate_text(action, "app_id", app_id, required=True, max_len=128)
+        if err:
+            return err
+        err = _validate_text(action, "log_path_folder", log_path_folder, required=True, max_len=260)
+        if err:
+            return err
         for field, value in {"start_time_utc": start_time_utc, "end_time_utc": end_time_utc}.items():
-            err = _validate_iso8601(action, field, value, required=True)
+            err = _validate_iso8601(action, field, value, required=False)
             if err:
                 return err
         include_patterns = _csv_list(action, "include_patterns_csv", include_patterns_csv, max_items=20)
         exclude_patterns = _csv_list(action, "exclude_patterns_csv", exclude_patterns_csv, max_items=20)
-        tail = _bounded_int(action, "tail_lines", tail_lines, default=1000, min_value=1, max_value=10000)
+        tail = _bounded_int(action, "tail_lines", tail_lines, default=1000, min_value=1, max_value=20000)
         bytes_limit = _bounded_int(action, "max_bytes", max_bytes, default=10485760, min_value=1024, max_value=52428800)
         for value in (include_patterns, exclude_patterns, tail, bytes_limit):
             if isinstance(value, dict):
                 return value
-        return _with_common_job_parameters({
+        params: dict[str, Any] = {
             "appId": app_id,
-            "pathProfile": path_profile,
-            "startTime": start_time_utc,
-            "endTime": end_time_utc,
+            "logPathFolder": log_path_folder,
             "tailLines": tail,
             "maxBytes": bytes_limit,
-            "includePatterns": include_patterns,
-            "excludePatterns": exclude_patterns,
-        }, justification, approval_id)
+        }
+        if include_patterns:
+            params["includeFilters"] = include_patterns
+        if exclude_patterns:
+            params["excludeFilters"] = exclude_patterns
+        if start_time_utc:
+            params["startTimeUtc"] = start_time_utc
+        if end_time_utc:
+            params["endTimeUtc"] = end_time_utc
+        if redaction_profile:
+            params["redactionProfile"] = redaction_profile
+        return _with_common_job_parameters(params, justification, approval_id)
 
     if task_type == "Get-AppEventSlice":
         err = _validate_text(action, "log_name", log_name, required=True, max_len=128)
@@ -530,6 +540,7 @@ def _build_job_payload(
     requested_by_tool_name: str | None,
     app_id: str | None,
     path_profile: str | None,
+    log_path_folder: str | None,
     start_time_utc: str | None,
     end_time_utc: str | None,
     tail_lines: int | None,
@@ -572,8 +583,6 @@ def _build_job_payload(
         err = _validate_text(action, field, value, required=False, max_len=128)
         if err:
             return err
-    if risk_level == "sensitive-diagnostic" and not approval_id:
-        return _approval_required(action, "sensitive-diagnostic risk requires approval_id before job creation.")
     parameters = _build_module_parameters(
         action,
         task_type,
@@ -581,6 +590,7 @@ def _build_job_payload(
         justification,
         app_id,
         path_profile,
+        log_path_folder,
         start_time_utc,
         end_time_utc,
         tail_lines,
@@ -647,6 +657,7 @@ def main(
     requested_by_tool_name: str | None = None,
     app_id: str | None = None,
     path_profile: str | None = None,
+    log_path_folder: str | None = None,
     start_time_utc: str | None = None,
     end_time_utc: str | None = None,
     tail_lines: int | None = None,
@@ -698,6 +709,7 @@ def main(
         requested_by_tool_name=requested_by_tool_name,
         app_id=app_id,
         path_profile=path_profile,
+        log_path_folder=log_path_folder,
         start_time_utc=start_time_utc,
         end_time_utc=end_time_utc,
         tail_lines=tail_lines,

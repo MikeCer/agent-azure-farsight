@@ -58,7 +58,11 @@ parameters:
 - name: path_profile
   type: string
   required: false
-  description: Approved path profile for Get-AppLogBundle.
+  description: Approved path profile for Get-AppLogBundle (legacy; prefer log_path_folder).
+- name: log_path_folder
+  type: string
+  required: false
+  description: Local folder path where the application stores logs on the target device. Required for Get-AppLogBundle. Must be under an approved root defined in the module app-profiles.
 - name: start_time_utc
   type: string
   required: false

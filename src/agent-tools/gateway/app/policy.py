@@ -104,6 +104,22 @@ def build_policy_context(
     payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload = payload or {}
+    parameters = payload.get("parameters") if isinstance(payload.get("parameters"), dict) else {}
+    max_bytes = parameters.get("maxBytes") or parameters.get("max_bytes") or 0
+    max_files = parameters.get("maxFiles") or parameters.get("max_files") or 0
+    redaction_profile = parameters.get("redactionProfile") or parameters.get("redaction_profile") or ""
+    approved_app_log_path = bool(parameters.get("approvedAppLogPath") or parameters.get("approved_app_log_path"))
+    time_window_hours = parameters.get("timeWindowHours") or parameters.get("time_window_hours") or 0
+    def _int_or_zero(value: Any) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+    def _float_or_zero(value: Any) -> float:
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
     return {
         "tool_name": tool_name,
         "action": {
@@ -114,6 +130,11 @@ def build_policy_context(
         "task_type": _extract_task_type(payload),
         "requested_action": str(payload.get("requestedAction") or payload.get("requested_action") or ""),
         "contains_dangerous_input": _contains_dangerous_input(payload),
+        "max_bytes": _int_or_zero(max_bytes),
+        "max_files": _int_or_zero(max_files),
+        "time_window_hours": _float_or_zero(time_window_hours),
+        "redaction_profile": str(redaction_profile or ""),
+        "approved_app_log_path": approved_app_log_path,
         "payload": payload,
     }
 

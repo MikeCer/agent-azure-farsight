@@ -15,6 +15,7 @@ class RiskLevel(str, Enum):
 
 
 class JobStatus(str, Enum):
+    waiting_approval = "waiting_approval"
     queued = "Queued"
     leased = "Leased"
     running = "Running"
@@ -113,6 +114,7 @@ class JobDocument(CamelModel):
     risk_level: RiskLevel = Field(default=RiskLevel.read_only, alias="riskLevel")
     approval_required: bool = Field(default=False, alias="approvalRequired")
     approval_status: ApprovalStatus = Field(default=ApprovalStatus.not_required, alias="approvalStatus")
+    approval_id: str | None = Field(default=None, alias="approvalId")
     status: JobStatus = JobStatus.queued
     policy_version: str = Field(alias="policyVersion")
     manifest_version: str = Field(alias="manifestVersion")
@@ -130,6 +132,10 @@ class JobCreateRequest(CamelModel):
     task_type: str = Field(alias="taskType")
     parameters: dict[str, Any] = Field(default_factory=dict)
     risk_level: RiskLevel = Field(default=RiskLevel.read_only, alias="riskLevel")
+    approval_required: bool = Field(default=False, alias="approvalRequired")
+    approval_status: ApprovalStatus = Field(default=ApprovalStatus.not_required, alias="approvalStatus")
+    approval_id: str | None = Field(default=None, alias="approvalId")
+    status: JobStatus | None = None
     expires_at_utc: datetime = Field(alias="expiresAtUtc")
     requested_by: RequestedBy = Field(alias="requestedBy")
 
@@ -204,6 +210,14 @@ class ApprovalRequest(CamelModel):
     requested_by: str = Field(alias="requestedBy")
     reason: str
     expires_at_utc: datetime = Field(alias="expiresAtUtc")
+    status: ApprovalStatus = ApprovalStatus.pending
+    job_id: str | None = Field(default=None, alias="jobId")
+    device_id: str | None = Field(default=None, alias="deviceId")
+    task_type: str | None = Field(default=None, alias="taskType")
+    created_at_utc: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="createdAtUtc")
+    decided_by: str | None = Field(default=None, alias="decidedBy")
+    decided_at_utc: datetime | None = Field(default=None, alias="decidedAtUtc")
+    comment: str | None = None
 
 
 class ApprovalDecision(CamelModel):

@@ -1,8 +1,10 @@
 name: farsight-tool-orchestration
 description: >
   Use for concrete FarSight tool execution sequencing and parameter mapping:
-  create/poll/summarize jobs, retrieve artifact metadata, request follow-up
-  modules, and request approvals using current tool contracts.
+  create/poll/summarize jobs, retrieve artifact metadata and content, request
+  follow-up modules, handle approval-required waiting jobs, and request approvals.
+  Trigger when you know which module to use and need exact tool call syntax,
+  parameter values, polling behavior, or approval-flow handling.
 files:
   - SKILL.md
 parameters:
@@ -19,18 +21,27 @@ parameters:
     - approval_id
     - requested_action
     - reason
-    - app_id  # Only for Get-AppLogBundle and Get-AppHealthSnapshot
+    - app_id
+    - log_path_folder
     - service_names_csv
     - include_startup_type
     - include_service_account
     - include_artifact
     - max_services
+    - include_patterns_csv
+    - exclude_patterns_csv
+    - start_time_utc
+    - end_time_utc
+    - tail_lines
+    - max_bytes
+    - redaction_profile
 tools:
   - create_diagnostic_job
   - monitor_farsight_job
   - get_job_status
   - get_job_result_summary
   - retrieve_artifact_metadata
+  - retrieve_artifact_content
   - request_follow_up_module_execution
   - request_approval_for_action
   - query_device_investigation_history

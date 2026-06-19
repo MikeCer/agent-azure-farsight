@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import Editor from "@monaco-editor/react";
 import "./styles.css";
 
-type FeatureId = "overview" | "policies" | "tool-calls" | "jobs" | "devices";
+type FeatureId = "overview" | "policies" | "tool-calls" | "approvals" | "jobs" | "devices";
 type Theme = "light" | "dark";
 
 type ValidationResult = {
@@ -76,8 +76,35 @@ type JobSummary = {
   createdAtUtc?: string;
   expiresAtUtc?: string;
   requestedBy?: { kind: string; toolName?: string };
+  parameters?: Record<string, unknown>;
   resultSummary?: Record<string, unknown>;
   resultFindings?: Array<{ severity: string; code: string; message: string }>;
+  approvalRequired?: boolean;
+  approvalStatus?: string;
+  approvalId?: string;
+};
+
+type ApprovalRecord = {
+  approvalId: string;
+  correlationId?: string;
+  requestedAction: string;
+  riskLevel: string;
+  requestedBy: string;
+  reason: string;
+  expiresAtUtc: string;
+  status?: string;
+  jobId?: string | null;
+  deviceId?: string | null;
+  taskType?: string | null;
+  createdAtUtc?: string;
+  decidedBy?: string | null;
+  decidedAtUtc?: string | null;
+  comment?: string | null;
+};
+
+type ApprovalDetail = {
+  approval: ApprovalRecord;
+  jobs: JobSummary[];
 };
 
 type ArtifactMetadata = {
@@ -141,6 +168,10 @@ const STATUS_COLORS: Record<string, string> = {
   failed: "status-error",
   Expired: "status-error",
   expired: "status-error",
+  waiting_approval: "status-warning",
+  pending: "status-warning",
+  approved: "status-success",
+  denied: "status-error",
   Running: "status-running",
   running: "status-running",
   Leased: "status-running",
@@ -155,6 +186,7 @@ const features: Array<{ id: FeatureId; label: string; icon: string; description:
   { id: "overview", label: "Overview", icon: "⌁", description: "Operational landing page and deployment health." },
   { id: "policies", label: "Policy repository", icon: "◇", description: "Version and activate AGT governance policies." },
   { id: "tool-calls", label: "Tool-call monitoring", icon: "↯", description: "Monitor SRE Agent and gateway tool activity." },
+  { id: "approvals", label: "Approvals", icon: "✓", description: "Approve or deny human-gated diagnostic requests." },
   { id: "jobs", label: "Diagnostic jobs", icon: "▣", description: "Track diagnostic job lifecycle and outcomes." },
   { id: "devices", label: "Devices", icon: "◌", description: "Monitor collector heartbeats and device check-in status." },
 ];
@@ -227,6 +259,14 @@ function App() {
   const [toolCallSummary, setToolCallSummary] = useState<ToolCallTelemetrySummary | null>(null);
   const [toolCallLoading, setToolCallLoading] = useState(false);
 
+  // Approval state
+  const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
+  const [approvalsLoading, setApprovalsLoading] = useState(false);
+  const [approvalStatusFilter, setApprovalStatusFilter] = useState("pending");
+  const [approvalPage, setApprovalPage] = useState(0);
+  const [selectedApproval, setSelectedApproval] = useState<ApprovalDetail | null>(null);
+  const [approvalDecisionComment, setApprovalDecisionComment] = useState("");
+
   // Jobs state
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -261,6 +301,7 @@ function App() {
     setSelectedJob(null);
     setJobArtifacts([]);
     setSelectedDevice(null);
+    setSelectedApproval(null);
     window.history.pushState({ feature }, "", window.location.href);
   }
 
@@ -350,6 +391,42 @@ function App() {
     } finally {
       setToolCallLoading(false);
     }
+  }
+
+  async function loadApprovals(status = approvalStatusFilter) {
+    setApprovalsLoading(true); setError("");
+    try {
+      const data = await api<{ approvals: ApprovalRecord[]; total: number }>(`/api/bff/approvals?status_filter=${encodeURIComponent(status)}`);
+      setApprovals(data.approvals ?? []);
+      setApprovalPage(0);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setApprovalsLoading(false);
+    }
+  }
+
+  async function loadApprovalDetail(approval: ApprovalRecord) {
+    setError("");
+    const detail = await api<ApprovalDetail>(`/api/bff/approvals/${encodeURIComponent(approval.approvalId)}`);
+    setSelectedApproval(detail);
+    setApprovalDecisionComment("");
+  }
+
+  async function decideApproval(approvalId: string, decision: "approved" | "denied") {
+    setError(""); setMessage("");
+    await api<{ status: string; decision: string }>(`/api/bff/approvals/${encodeURIComponent(approvalId)}/decision`, {
+      method: "POST",
+      body: JSON.stringify({
+        decision,
+        decidedAtUtc: new Date().toISOString(),
+        comment: approvalDecisionComment || undefined,
+      }),
+    });
+    setMessage(`Approval ${decision}.`);
+    setSelectedApproval(null);
+    await loadApprovals();
+    await loadJobs().catch(() => {});
   }
 
   // ── Jobs functions ──────────────────────────────────────────────────────────
@@ -455,6 +532,9 @@ function App() {
     if (activeFeature === "jobs" && jobs.length === 0 && !jobsLoading) {
       loadJobs().catch((err) => setError(err.message));
     }
+    if (activeFeature === "approvals" && approvals.length === 0 && !approvalsLoading) {
+      loadApprovals().catch((err) => setError(err.message));
+    }
     if (activeFeature === "devices" && devices.length === 0 && !devicesLoading) {
       loadDevices().catch((err) => setError(err.message));
     }
@@ -464,6 +544,7 @@ function App() {
     setSelectedJob(null);
     setJobArtifacts([]);
     setSelectedDevice(null);
+    setSelectedApproval(null);
   }, [activeFeature]);
 
   // ── Filtered jobs ───────────────────────────────────────────────────────────
@@ -793,6 +874,19 @@ function App() {
             <dt>Expires</dt><dd>{formatTimestamp(job.expiresAtUtc)}</dd>
             <dt>Policy</dt><dd>{job.policyVersion ?? "—"}</dd>
           </dl>
+          {job.parameters && Object.keys(job.parameters).length > 0 && (
+            <div className="job-section">
+              <h4>Parameters</h4>
+              <table><tbody>
+                {Object.entries(job.parameters).map(([k, v]) => (
+                  <tr key={k}>
+                    <td className="summary-key">{k}</td>
+                    <td className="mono">{typeof v === "object" ? JSON.stringify(v) : String(v ?? "—")}</td>
+                  </tr>
+                ))}
+              </tbody></table>
+            </div>
+          )}
           {(job.status === "Leased" || job.status === "Queued") && (
             <div className="job-section">
               <button className="requeue-btn" onClick={async () => {
@@ -1148,10 +1242,163 @@ function App() {
     );
   }
 
+  function renderApprovals() {
+    const PAGE_SIZE = 10;
+    const counts = {
+      pending: approvals.filter((item) => (item.status ?? "pending") === "pending").length,
+      approved: approvals.filter((item) => item.status === "approved").length,
+      denied: approvals.filter((item) => item.status === "denied").length,
+      total: approvals.length,
+    };
+    const totalPages = Math.ceil(approvals.length / PAGE_SIZE);
+    const paged = approvals.slice(approvalPage * PAGE_SIZE, (approvalPage + 1) * PAGE_SIZE);
+    const approval = selectedApproval?.approval;
+
+    return (
+      <>
+        {approval && (
+          <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setSelectedApproval(null); }}>
+            <div className="job-detail-panel">
+              <div className="panel-header">
+                <h3>Approval detail</h3>
+                <button onClick={() => setSelectedApproval(null)}>✕ Close</button>
+              </div>
+              <div className="panel-body">
+                <dl className="job-dl">
+                  <dt>Approval ID</dt><dd className="mono">{approval.approvalId}</dd>
+                  <dt>Status</dt><dd><StatusBadge status={approval.status ?? "pending"} /></dd>
+                  <dt>Requested action</dt><dd>{approval.requestedAction}</dd>
+                  <dt>Task type</dt><dd>{approval.taskType ?? "—"}</dd>
+                  <dt>Device</dt><dd className="mono">{approval.deviceId ?? "—"}</dd>
+                  <dt>Risk</dt><dd>{approval.riskLevel}</dd>
+                  <dt>Requested by</dt><dd>{approval.requestedBy}</dd>
+                  <dt>Created</dt><dd>{formatTimestamp(approval.createdAtUtc)}</dd>
+                  <dt>Expires</dt><dd>{formatTimestamp(approval.expiresAtUtc)}</dd>
+                  <dt>Reason</dt><dd>{approval.reason}</dd>
+                  <dt>Correlation</dt><dd className="mono">{approval.correlationId ?? "—"}</dd>
+                  <dt>Linked jobs</dt><dd>{selectedApproval?.jobs?.length ?? 0}</dd>
+                </dl>
+                {selectedApproval?.jobs && selectedApproval.jobs.length > 0 && (
+                  <div className="job-section">
+                    <h4>Linked jobs</h4>
+                    <table>
+                      <thead><tr><th>Status</th><th>Job ID</th><th>Task</th><th>Device</th></tr></thead>
+                      <tbody>
+                        {selectedApproval.jobs.map((job) => (
+                          <tr key={job.jobId}>
+                            <td><StatusBadge status={job.status} /></td>
+                            <td className="mono">{job.jobId}</td>
+                            <td>{job.taskType}</td>
+                            <td className="mono">{job.deviceId}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {(approval.status ?? "pending") === "pending" && (
+                  <div className="job-section">
+                    <h4>Decision</h4>
+                    <textarea
+                      className="approval-comment"
+                      placeholder="Optional decision comment"
+                      value={approvalDecisionComment}
+                      onChange={(e) => setApprovalDecisionComment(e.target.value)}
+                    />
+                    <div className="config-actions">
+                      <button className="requeue-btn" onClick={() => decideApproval(approval.approvalId, "approved").catch((err) => setError(err.message))}>Approve</button>
+                      <button className="danger-button" onClick={() => decideApproval(approval.approvalId, "denied").catch((err) => setError(err.message))}>Deny</button>
+                    </div>
+                  </div>
+                )}
+                {selectedApproval?.jobs?.[0] && (
+                  <div className="job-section">
+                    <button className="primary" onClick={() => {
+                      const jobId = selectedApproval.jobs[0].jobId;
+                      setSelectedApproval(null);
+                      setJobFilter(jobId);
+                      navigateFeature("jobs");
+                      loadJobs().catch(() => {});
+                    }}>View related job →</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        <section className="feature-panel">
+          <div className="feature-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <p className="eyebrow">Human-in-the-loop governance</p>
+              <h2>Approval queue</h2>
+              <p>Approve or deny diagnostic requests that AGT policy requires a human to review before collector polling can lease the job.</p>
+            </div>
+            <button onClick={() => loadApprovals().catch((err) => setError(err.message))}>
+              {approvalsLoading ? "Refreshing…" : "↻ Refresh"}
+            </button>
+          </div>
+          <div className="metric-grid">
+            <article><span>Total shown</span><strong>{counts.total}</strong></article>
+            <article><span>Pending</span><strong>{counts.pending}</strong></article>
+            <article><span>Approved</span><strong>{counts.approved}</strong></article>
+            <article><span>Denied</span><strong>{counts.denied}</strong></article>
+          </div>
+          <div className="jobs-toolbar">
+            <select value={approvalStatusFilter} onChange={(e) => { setApprovalStatusFilter(e.target.value); loadApprovals(e.target.value).catch((err) => setError(err.message)); }}>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="denied">Denied</option>
+              <option value="all">All</option>
+            </select>
+            <span className="jobs-count">{approvals.length} approval{approvals.length !== 1 ? "s" : ""}</span>
+          </div>
+          {error && <p className="error">{error}</p>}
+          {message && <p className="message">{message}</p>}
+          {approvalsLoading ? (
+            <p className="empty-state">Loading approvals…</p>
+          ) : approvals.length === 0 ? (
+            <p className="empty-state">No approvals found for the selected filter.</p>
+          ) : (
+            <div className="table-panel">
+              <div className="panel-header">
+                <h3>Approval requests</h3>
+                {totalPages > 1 && <span className="jobs-count">Page {approvalPage + 1}/{totalPages}</span>}
+              </div>
+              <table className="jobs-table">
+                <thead><tr><th>Status</th><th>Action</th><th>Task</th><th>Device</th><th>Risk</th><th>Requested by</th><th>Expires</th><th></th></tr></thead>
+                <tbody>
+                  {paged.map((item) => (
+                    <tr key={item.approvalId} onClick={() => loadApprovalDetail(item).catch((err) => setError(err.message))}>
+                      <td><StatusBadge status={item.status ?? "pending"} /></td>
+                      <td>{item.requestedAction}</td>
+                      <td>{item.taskType ?? "—"}</td>
+                      <td className="mono truncate">{item.deviceId ?? "—"}</td>
+                      <td>{item.riskLevel}</td>
+                      <td>{item.requestedBy}</td>
+                      <td>{formatTimestamp(item.expiresAtUtc)}</td>
+                      <td><button className="row-action" onClick={(e) => { e.stopPropagation(); loadApprovalDetail(item).catch((err) => setError(err.message)); }}>Details →</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {totalPages > 1 && (
+                <div className="paging-controls">
+                  <button disabled={approvalPage === 0} onClick={() => setApprovalPage(approvalPage - 1)}>← Prev</button>
+                  <button disabled={approvalPage >= totalPages - 1} onClick={() => setApprovalPage(approvalPage + 1)}>Next →</button>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      </>
+    );
+  }
+
   function renderActiveFeature() {
     if (activeFeature === "overview") return renderOverview();
     if (activeFeature === "policies") return renderPolicyRepository();
     if (activeFeature === "tool-calls") return renderToolCallMonitoring();
+    if (activeFeature === "approvals") return renderApprovals();
     if (activeFeature === "jobs") return renderDiagnosticJobs();
     if (activeFeature === "devices") return renderDevices();
     return null;

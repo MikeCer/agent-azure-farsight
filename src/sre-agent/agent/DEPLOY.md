@@ -32,6 +32,7 @@ This is especially useful when `azd` hook terminal output is cleared by the shel
 | `--subscription` / `-s` | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID. |
 | `--dry-run` | none | Builds and prints planned actions without resolving the endpoint or calling the data plane. |
 | `--skip-kb` | none | Skips AgentMemory knowledge upload. |
+| `--require-kb` | none | Fail deployment if AgentMemory upload routes are unavailable. |
 | `--skip-tools` | none | Skips Python tool deployment. |
 | `--skip-skills` | none | Skips Skill Builder skill deployment. |
 
@@ -62,6 +63,8 @@ az resource show \
 ```
 
 It accepts either `properties.endpoint` or `properties.agentEndpoint`, then removes any trailing slash.
+
+The agent must be running before data-plane deployment calls are made. If the ARM resource reports `powerState=Stopped`, the agent endpoint can still resolve but data-plane routes return `404`. `deploy.py` now detects this state and fails early with a clear message to start the SRE Agent before deploying content.
 
 ### SRE Agent resource shape alignment
 
@@ -140,6 +143,10 @@ Knowledge files are uploaded as multipart form data to:
 ```text
 POST /api/v1/agentmemory/upload?triggerIndexing=true
 ```
+
+Some SRE Agent data-plane revisions expose AgentMemory under a newer `/api/v2/...` route. `deploy.py` first tries the v1 route for backwards compatibility, then falls back to known v2 AgentMemory/knowledge upload paths before failing. Indexer-status verification follows the same fallback pattern.
+
+If all known AgentMemory routes return `404`, the script now logs a warning and continues with tools, skills, and custom-agent deployment. Use `--require-kb` when knowledge upload must be mandatory for a deployment run.
 
 The script sets MIME types based on file extension. Markdown files are uploaded as `text/markdown`.
 

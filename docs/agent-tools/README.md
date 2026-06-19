@@ -25,7 +25,7 @@ Gateway inbound authorization can also enforce workload JWT validation at FastAP
 Evaluate AGT policy before every FarSight API call:
 
 - `allow` - create job immediately.
-- `require_approval` - block immediate execution and route through the approval workflow.
+- `require_approval` - create a linked approval and a `waiting_approval` job; the collector cannot lease it until an administrator approves it.
 - `deny` - do not call the API.
 
 The canonical seed policy lives at `src/api/app/policies/farsight-tool-policy.yaml`. It is seeded into the Cosmos DB policy repository on first deploy and editable via the admin console. The gateway always loads the active policy from the FarSight control API (`GET /api/v1/policies/{policyId}`); if the API is unavailable or returns an empty policy the gateway fails closed with an error. No local policy file or fallback evaluator is used in production.
@@ -42,7 +42,7 @@ The admin console includes a Tool-call monitoring page backed by `GET /api/v1/te
 
 ## Approval behavior
 
-Require approval for broad scope, elevated-risk modules, large artifact requests, or after-hours execution if policy requires it.
+Require approval for broad scope, elevated-risk modules, large artifact requests, or after-hours execution if policy requires it. When a tool response reports `approval_required`, the SRE Agent should not wait synchronously for completion. It should tell the user the request is pending human approval, schedule a later status check on the SRE Agent platform, and use the configured Outlook connector to notify the requester when the job succeeds, is denied/cancelled, fails, or expires.
 
 ## Implementation entry point
 
