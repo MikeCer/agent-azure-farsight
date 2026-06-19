@@ -133,6 +133,12 @@ Note: `app_id` is **not required** for `Get-ServiceStatusSnapshot`, `Get-ConfigE
 3. extract_zip_artifact_entry(job_id="job-abc123", artifact_id="art-xyz", file_path="logs/app-2026-06-19.log") → { "mode": "extract", "content": "..." }
 ```
 
+**For large files (>256 KB):** Use `tail_lines` to read the last N lines without hitting the size cap:
+```
+extract_zip_artifact_entry(job_id="job-abc123", artifact_id="art-xyz", file_path="logs/AppWorkload.log", tail_lines=500)
+→ { "mode": "extract", "truncated": true, "totalLines": 12000, "tailLines": 500, "content": "..." }
+```
+
 Use the list step to identify the relevant log file by name/size, then extract only what you need for diagnosis. Do not attempt to use `retrieve_artifact_content` on ZIP artifacts — it will return HTTP 415 (unsupported content type).
 
 ## Polling example flow

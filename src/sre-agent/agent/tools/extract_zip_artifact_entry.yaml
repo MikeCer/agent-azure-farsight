@@ -24,6 +24,13 @@ parameters:
       Path of the file to extract from the ZIP. If omitted, returns a listing
       of all files in the archive with their paths and sizes. Use the exact path
       value from the listing to extract a specific file.
+  - name: tail_lines
+    type: int
+    required: false
+    description: >
+      Number of lines to return from the end of the file. Use this for large
+      log files that exceed the 256 KB content limit. For example, tail_lines=500
+      returns the last 500 lines. Capped at 10000 lines server-side.
   - name: api_base_url
     type: string
     required: false

@@ -105,6 +105,13 @@ def build_policy_context(
 ) -> dict[str, Any]:
     payload = payload or {}
     parameters = payload.get("parameters") if isinstance(payload.get("parameters"), dict) else {}
+    app_id = (
+        payload.get("appId")
+        or payload.get("app_id")
+        or parameters.get("appId")
+        or parameters.get("app_id")
+        or ""
+    )
     max_bytes = parameters.get("maxBytes") or parameters.get("max_bytes") or 0
     max_files = parameters.get("maxFiles") or parameters.get("max_files") or 0
     redaction_profile = parameters.get("redactionProfile") or parameters.get("redaction_profile") or ""
@@ -128,6 +135,8 @@ def build_policy_context(
         },
         "risk_level": risk_level.value,
         "task_type": _extract_task_type(payload),
+        "appId": str(app_id or ""),
+        "app_id": str(app_id or ""),
         "requested_action": str(payload.get("requestedAction") or payload.get("requested_action") or ""),
         "contains_dangerous_input": _contains_dangerous_input(payload),
         "max_bytes": _int_or_zero(max_bytes),

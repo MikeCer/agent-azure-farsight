@@ -86,6 +86,7 @@ class ZipArtifactEntryRequest(CamelModel):
     job_id: str = Field(alias="jobId")
     artifact_id: str = Field(alias="artifactId")
     file_path: str | None = Field(default=None, alias="filePath")
+    tail_lines: int | None = Field(default=None, alias="tailLines")
 
 
 class InvestigationHistoryRequest(CamelModel):

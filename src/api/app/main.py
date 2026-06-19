@@ -759,6 +759,7 @@ def get_zip_artifact_entry(
     jobId: str,
     artifactId: str,
     file_path: str | None = None,
+    tail_lines: int | None = None,
     _: WorkloadCaller = Depends(require_workload_caller),
 ) -> dict[str, object]:
     """List ZIP contents or extract a specific file from a ZIP artifact.
@@ -766,6 +767,9 @@ def get_zip_artifact_entry(
     If file_path is not provided, returns the list of entries in the ZIP archive.
     If file_path is provided, extracts and returns that file's text content
     (capped at FARSIGHT_ARTIFACT_MAX_CONTENT_BYTES, default 256 KB).
+
+    If tail_lines is provided, only the last N lines of the file are returned,
+    bypassing the size cap. This allows reading the tail of large log files.
     """
     import io
     import zipfile
@@ -854,10 +858,15 @@ def get_zip_artifact_entry(
         )
 
     entry = matching[0]
-    if entry.file_size > max_bytes:
+
+    # If tail_lines is requested, we can read large files but return only the tail
+    if tail_lines is not None:
+        tail_lines = max(1, min(tail_lines, 10000))  # Cap at 10k lines
+    elif entry.file_size > max_bytes:
         raise HTTPException(
             status_code=413,
-            detail=f"Entry '{file_path}' size {entry.file_size} bytes exceeds max {max_bytes} bytes for agent context.",
+            detail=f"Entry '{file_path}' size {entry.file_size} bytes exceeds max {max_bytes} bytes. "
+                   f"Use tail_lines parameter to read the last N lines of large files.",
         )
 
     try:
@@ -865,6 +874,24 @@ def get_zip_artifact_entry(
         text = entry_bytes.decode("utf-8", errors="replace")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to read ZIP entry: {exc}") from exc
+
+    # Apply tail_lines if requested
+    truncated = False
+    total_lines = None
+    if tail_lines is not None:
+        lines = text.splitlines(keepends=True)
+        total_lines = len(lines)
+        if len(lines) > tail_lines:
+            lines = lines[-tail_lines:]
+            truncated = True
+        text = "".join(lines)
+        # Final output size check (tail should fit in context)
+        if len(text.encode("utf-8")) > max_bytes:
+            # Further trim to fit
+            while len(text.encode("utf-8")) > max_bytes and lines:
+                lines.pop(0)
+                truncated = True
+            text = "".join(lines)
 
     # Try JSON parse
     try:
@@ -874,7 +901,7 @@ def get_zip_artifact_entry(
         content = text
         content_format = "text"
 
-    return {
+    result: dict[str, object] = {
         "jobId": jobId,
         "artifactId": artifactId,
         "mode": "extract",
@@ -883,6 +910,11 @@ def get_zip_artifact_entry(
         "sizeBytes": entry.file_size,
         "content": content,
     }
+    if tail_lines is not None:
+        result["tailLines"] = tail_lines
+        result["totalLines"] = total_lines
+        result["truncated"] = truncated
+    return result
 
 
 @app.post("/api/v1/artifacts/prepare", status_code=status.HTTP_201_CREATED)

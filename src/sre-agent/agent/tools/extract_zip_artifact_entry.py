@@ -165,6 +165,7 @@ def main(
     job_id: str,
     artifact_id: str,
     file_path: str | None = None,
+    tail_lines: int | None = None,
     api_base_url: str | None = None,
     auth_mode: str | None = None,
     api_scope: str | None = None,
@@ -178,14 +179,18 @@ def main(
     - Extract mode (file_path provided): Returns the text content of the specified
       file from the ZIP archive for agent analysis.
 
+    For large files (>256 KB), use tail_lines to retrieve only the last N lines.
+    This bypasses the size cap and is ideal for reading recent log entries.
+
     Typical workflow:
     1. Call with file_path=None to list ZIP contents.
     2. Identify the relevant log/config file from the listing.
-    3. Call again with file_path set to retrieve that file's content.
+    3. If file is ≤256 KB, call with file_path to get full content.
+    4. If file is >256 KB, call with file_path and tail_lines (e.g., 500)
+       to get the most recent log entries.
 
-    Content is capped at 256 KB per file entry. ZIP archives up to 50 MB are
-    supported. Only text/UTF-8 entries are returned — binary entries will show
-    replacement characters.
+    Content is capped at 256 KB per file entry unless tail_lines is used.
+    ZIP archives up to 50 MB are supported. Only text/UTF-8 entries are returned.
     """
     for field, value in {"job_id": job_id, "artifact_id": artifact_id}.items():
         err = _validate_text(TOOL_ACTION, field, value, required=True, max_len=128)
@@ -195,6 +200,13 @@ def main(
         err = _validate_text(TOOL_ACTION, "file_path", file_path, required=False, max_len=512)
         if err:
             return err
+    if tail_lines is not None:
+        try:
+            tail_lines = int(tail_lines)
+            if tail_lines < 1:
+                return _error(TOOL_ACTION, "invalid_request", "tail_lines must be a positive integer.")
+        except (TypeError, ValueError):
+            return _error(TOOL_ACTION, "invalid_request", "tail_lines must be a positive integer.")
 
     api_url = _resolve_api_base_url(TOOL_ACTION, api_base_url)
     if isinstance(api_url, dict):
@@ -205,6 +217,8 @@ def main(
     payload: dict[str, Any] = {"jobId": job_id, "artifactId": artifact_id}
     if file_path:
         payload["filePath"] = file_path
+    if tail_lines is not None:
+        payload["tailLines"] = tail_lines
 
     return _http_call(
         TOOL_ACTION,

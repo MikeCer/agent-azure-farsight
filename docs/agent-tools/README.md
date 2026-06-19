@@ -32,6 +32,8 @@ The canonical seed policy lives at `src/api/app/policies/farsight-tool-policy.ya
 
 The default policy module allowlist matches the built-in modules currently implemented under `src/modules`: `Get-AppLogBundle`, `Get-AppEventSlice`, `Get-AppHealthSnapshot`, `Test-AppConnectivity`, `Get-ConfigEvidence`, and `Get-ServiceStatusSnapshot`. Extension sample modules are not enabled by default until they are promoted into the built-in module set.
 
+Policy context includes the diagnostic request fields that the gateway forwards to AGT, including `task_type`, `risk_level`, `appId`, `max_bytes`, `max_files`, `time_window_hours`, `redaction_profile`, and `approved_app_log_path`. Rules can key off `appId` directly for app-specific approval or deny decisions.
+
 Policy authors manage versions through the admin web policy repository page. The lifecycle is draft, active, archived. Only validated policies should be activated.
 
 The gateway currently evaluates one configured policy ID, `farsight-tool-policy` by default. The repository can store multiple policy documents so future deployments can separate tool policies by environment, gateway instance, tenant segment, or specialized diagnostic scope. A new policy is not used by the gateway until the gateway is configured to load that policy ID, for example with `FARSIGHT_POLICY_ID`.
