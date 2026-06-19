@@ -8,7 +8,7 @@ Modules are the only executable diagnostic surface on endpoints. The current cat
 | --- | --- | --- | --- |
 | `Get-AppHealthSnapshot` | Early health snapshot for approved application profiles | Low | Built-in skeleton |
 | `Get-AppEventSlice` | Early bounded event-log slice collection | Low | Built-in skeleton |
-| `Get-AppLogBundle` | Early bounded log bundle collection | Low/Medium by scope | Built-in skeleton |
+| `Get-AppLogBundle` | Collects a bounded, redacted ZIP of custom application logs from an approved folder with include/exclude filters, time window, tail-lines, redaction, and manifest | Low / Medium by scope | Implemented module |
 | `Get-ConfigEvidence` | Early configuration evidence collection | Low | Built-in skeleton |
 | `Test-AppConnectivity` | Early connectivity checks to allowlisted endpoints | Low | Built-in skeleton |
 | `Get-ServiceStatusSnapshot` | Bounded Windows service inventory with runtime status | Low | Built-in implemented module |

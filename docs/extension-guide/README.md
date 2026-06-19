@@ -7,6 +7,8 @@ FarSight extensions add typed collector modules and matching Azure SRE Agent too
 - [Adding a diagnostic module](adding-a-diagnostic-module.md)
 - [Adding an agent tool](adding-an-agent-tool.md)
 
+Coding agents should use the repository skill at `.github/skills/farsight-collector-module-development/` when creating, updating, or reviewing FarSight collector modules.
+
 ## Required checklist
 
 - Schema with bounded and allowlisted inputs.

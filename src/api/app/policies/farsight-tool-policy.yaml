@@ -8,6 +8,16 @@ rules:
     action: deny
     description: "FarSight tools must never accept arbitrary PowerShell, shell commands, script text, encoded commands, or free-form paths."
 
+  - name: deny-app-log-bundle-unapproved-path
+    condition: "task_type == 'Get-AppLogBundle' and approved_app_log_path != true"
+    action: deny
+    description: "Get-AppLogBundle can only collect from app-profile-approved log folders. The SRE tool wrapper must validate the path against the declared app profile before calling the gateway."
+
+  - name: deny-app-log-bundle-redaction-missing
+    condition: "task_type == 'Get-AppLogBundle' and redaction_profile == 'none'"
+    action: deny
+    description: "Redaction cannot be disabled for application log collection in production."
+
   - name: allow-read-only-lookups
     condition: "tool_name in ['get_job_status', 'get_job_result_summary', 'retrieve_artifact_metadata', 'retrieve_artifact_content', 'query_device_investigation_history']"
     action: allow
@@ -22,6 +32,11 @@ rules:
     condition: "risk_level == 'sensitive-diagnostic'"
     action: require_approval
     description: "Sensitive diagnostics require approval before a FarSight job is released."
+
+  - name: require-approval-for-large-app-log-bundle
+    condition: "task_type == 'Get-AppLogBundle' and (max_bytes > 10485760 or max_files > 20 or time_window_hours > 24)"
+    action: require_approval
+    description: "Large or broad application log collection bundles require human approval before the job is dispatched."
 
   - name: allow-read-only-diagnostic-job
     condition: "tool_name == 'create_diagnostic_job' and risk_level == 'read-only' and task_type in ['Get-AppLogBundle', 'Get-AppEventSlice', 'Get-AppHealthSnapshot', 'Test-AppConnectivity', 'Get-ConfigEvidence', 'Get-ServiceStatusSnapshot']"

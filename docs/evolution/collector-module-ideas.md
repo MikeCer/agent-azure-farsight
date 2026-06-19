@@ -14,7 +14,7 @@ This page proposes future local collector modules for Agent-Azure-FarSight. The 
 
 | # | Module | Diagnostic question | Why Intune is not enough | Evidence returned |
 |---|---|---|---|---|
-| 1 | `Collect-ApplicationLog` | What application log evidence exists under an approved local log folder for a specific machine/app/time window? | Intune can collect generic diagnostics, but it does not know each custom app's log folder layout, naming patterns, rotation scheme, or incident-specific filters. | ZIP artifact containing bounded matching log files plus a manifest with included/skipped files, hashes, sizes, timestamps, and redaction summary. |
+| 1 | `Get-AppLogBundle` | What application log evidence exists under an approved local log folder for a specific machine/app/time window? | Intune can collect generic diagnostics, but it does not know each custom app's log folder layout, naming patterns, rotation scheme, or incident-specific filters. | ZIP artifact containing bounded matching log files plus a manifest with included/skipped files, hashes, sizes, timestamps, and redaction summary. |
 | 2 | `Get-AppDependencyGraphSnapshot` | Which local services, processes, files, certs, registry keys, ports, and scheduled tasks appear tied to a target app? | Intune can show installed apps and managed assignments, but not runtime dependency relationships. | Graph summary with nodes/edges, missing dependencies, suspicious drift, optional JSON artifact. |
 | 3 | `Get-ProcessThreadWaitSnapshot` | Is an app hung because of blocked threads, high wait counts, or deadlock-like behavior? | Intune does not inspect live thread/wait state. | Process/thread counts, CPU deltas, wait indicators, top stacks when safe/available, warnings. |
 | 4 | `Get-AppHandlePressureSnapshot` | Is the target process leaking handles or exhausting GDI/user objects? | Intune inventory does not expose resource pressure within processes. | Handle counts by type where available, GDI/user object counts, trend compared with previous local run. |
@@ -39,14 +39,14 @@ This page proposes future local collector modules for Agent-Azure-FarSight. The 
 ## Suggested implementation priority
 
 1. **Authentication/connectivity depth**: `Test-AppDnsResolutionPath`, `Test-AppProxyAndPacResolution`, `Test-AppTlsChainAndRevocation`, `Get-TokenBrokerHealthSnapshot`.
-2. **Application log collection**: `Collect-ApplicationLog` for incident-specific custom app logs when Intune diagnostics are too generic.
+2. **Application log collection**: `Get-AppLogBundle` for incident-specific custom app logs when Intune diagnostics are too generic.
 3. **Runtime health**: `Get-ProcessThreadWaitSnapshot`, `Get-AppHandlePressureSnapshot`, `Get-LocalPortOwnershipSnapshot`.
 4. **Crash and install triage**: `Get-AppCrashTriageBundle`, `Get-InstallerTransactionTrace`, `Get-RebootDebtSnapshot`.
 5. **Configuration and dependency drift**: `Get-AppDependencyGraphSnapshot`, `Get-AppConfigDriftSnapshot`, `Get-LocalCertificateStoreDiff`.
 
-## `Collect-ApplicationLog` module shape
+## `Get-AppLogBundle` module shape
 
-`Collect-ApplicationLog` is a high-value first candidate because it gives the SRE agent targeted application logs without giving it arbitrary file-system access.
+`Get-AppLogBundle` is a high-value first candidate because it gives the SRE agent targeted application logs without giving it arbitrary file-system access.
 
 Recommended parameters:
 
