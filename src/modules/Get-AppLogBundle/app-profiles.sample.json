@@ -1,0 +1,41 @@
+[
+  {
+    "appId": "default",
+    "displayName": "Default application log profile",
+    "comment": "Generic profile for applications that store plain-text logs in a known folder. Replace allowedLogRoots with the real application paths before production use.",
+    "allowedLogRoots": [
+      "C:\\ProgramData"
+    ],
+    "defaultIncludeFilters": ["*.log", "*.txt", "*.jsonl", "*.ndjson"],
+    "defaultExcludeFilters": [
+      "*.dmp", "*.etl", "*.evtx", "*.bak", "*.old",
+      "*secret*", "*token*", "*password*", "*credential*",
+      "*private*key*", "*id_rsa*", "*pfx*", "*p12*"
+    ],
+    "maxBytes": 10485760,
+    "maxFiles": 50,
+    "allowRecursive": true,
+    "maxDepth": 3,
+    "allowBinaryFiles": false,
+    "redactionProfiles": ["default", "strict"]
+  },
+  {
+    "appId": "sample-line-of-business",
+    "displayName": "Sample LOB application log profile",
+    "comment": "Example for a custom LOB application. Adjust paths and filters before deployment.",
+    "allowedLogRoots": [
+      "C:\\Program Files\\SampleApp\\Logs",
+      "C:\\ProgramData\\SampleApp\\Logs"
+    ],
+    "defaultIncludeFilters": ["*.log", "*.jsonl"],
+    "defaultExcludeFilters": [
+      "*.dmp", "*.bak", "*secret*", "*token*", "*password*"
+    ],
+    "maxBytes": 52428800,
+    "maxFiles": 50,
+    "allowRecursive": true,
+    "maxDepth": 2,
+    "allowBinaryFiles": false,
+    "redactionProfiles": ["default", "strict"]
+  }
+]

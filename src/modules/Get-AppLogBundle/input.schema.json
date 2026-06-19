@@ -2,15 +2,87 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.farsight.local/modules/Get-AppLogBundle/input.schema.json",
   "title": "Get-AppLogBundle input",
-  "description": "Collects a bounded bundle of allowlisted application log files.",
+  "description": "Collects a bounded, redacted ZIP artifact of application logs from an approved local folder.",
   "type": "object",
-  "required": ["appId", "pathProfile", "startTime", "endTime", "maxBytes"],
+  "required": ["appId", "logPathFolder"],
   "properties": {
-    "appId": { "type": "string", "minLength": 1 },
-    "pathProfile": { "type": "string", "enum": ["default"] },
-    "startTime": { "type": "string", "format": "date-time" },
-    "endTime": { "type": "string", "format": "date-time" },
-    "maxBytes": { "type": "integer", "minimum": 1, "maximum": 10485760 }
+    "appId": {
+      "type": "string",
+      "description": "Approved application profile name. Must be listed in the module app-profiles.",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "logPathFolder": {
+      "type": "string",
+      "description": "Local folder containing application logs. Must resolve under an approved root for appId.",
+      "minLength": 3,
+      "maxLength": 260
+    },
+    "includeFilters": {
+      "type": "array",
+      "description": "File name or relative-path glob filters to include, e.g. ['*.log', 'app-*.jsonl']. Defaults to app profile filters.",
+      "maxItems": 20,
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+    },
+    "excludeFilters": {
+      "type": "array",
+      "description": "File name or relative-path filters to exclude. Applied after include filters.",
+      "maxItems": 20,
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+    },
+    "startTimeUtc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Include files last-written at or after this UTC timestamp."
+    },
+    "endTimeUtc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Include files last-written before this UTC timestamp. Defaults to now."
+    },
+    "recursive": {
+      "type": "boolean",
+      "description": "Include child folders. Only effective if app profile allows recursion.",
+      "default": true
+    },
+    "maxDepth": {
+      "type": "integer",
+      "description": "Maximum folder depth below logPathFolder when recursive is true.",
+      "minimum": 0,
+      "maximum": 5,
+      "default": 3
+    },
+    "maxFiles": {
+      "type": "integer",
+      "description": "Maximum number of files to include in the ZIP.",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 50
+    },
+    "maxBytes": {
+      "type": "integer",
+      "description": "Maximum total bytes to read before compression (hard cap 50 MB).",
+      "minimum": 1024,
+      "maximum": 52428800,
+      "default": 10485760
+    },
+    "tailLines": {
+      "type": "integer",
+      "description": "Include only the last N lines of each text file. Omit for full file.",
+      "minimum": 1,
+      "maximum": 20000
+    },
+    "redactionProfile": {
+      "type": "string",
+      "description": "Redaction rule set to apply before packaging.",
+      "enum": ["default", "strict"],
+      "default": "default"
+    },
+    "includeManifestOnly": {
+      "type": "boolean",
+      "description": "Return only the file selection manifest without ZIP log content (dry-run mode).",
+      "default": false
+    }
   },
   "additionalProperties": false
 }
