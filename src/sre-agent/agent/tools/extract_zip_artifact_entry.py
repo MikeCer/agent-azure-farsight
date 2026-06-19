@@ -1,26 +1,14 @@
 #!/usr/bin/env python3
-"""Safe Azure SRE Agent PythonFunctionTool wrapper for extracting files from ZIP artifacts."""
+"""Safe Azure SRE Agent PythonFunctionTool for local ZIP workspace extraction."""
 from __future__ import annotations
 
 import os
-import socket
-import urllib.error
-import urllib.parse
-import urllib.request
+import zipfile
+from pathlib import Path
 from typing import Any
 
 _COMMAND_TOKENS = (";", "|", "`", "$(", "\n", "\r", "&&", "||")
-_MAX_TIMEOUT_SECONDS = 120
-_DEFAULT_TIMEOUT_SECONDS = 60
-_DEPLOYED_SRE_TOOL_ENDPOINT_URL = "__SRE_AGENT_TOOL_ENDPOINT_URL__"
-_DEPLOYED_SRE_TOOL_AUTH_MODE = "__SRE_AGENT_TOOL_AUTH_MODE__"
-_DEPLOYED_SRE_TOOL_ENDPOINT_SCOPE = "__SRE_AGENT_TOOL_ENDPOINT_SCOPE__"
-
-
-def _deployment_default(value: str) -> str | None:
-    if not value or value.startswith("__SRE_AGENT_TOOL_"):
-        return None
-    return value
+_DEFAULT_OUTPUT_DIR_NAME = "farsight-extracted"
 
 
 def _error(action: str, code: str, message: str, details: Any | None = None) -> dict:
@@ -30,11 +18,8 @@ def _error(action: str, code: str, message: str, details: Any | None = None) -> 
     return {"status": "error", "action": action, "error": error}
 
 
-def _success(action: str, response: Any, http_status: int | None = None) -> dict:
-    result: dict[str, Any] = {"status": "success", "action": action, "response": response}
-    if http_status is not None:
-        result["http_status"] = http_status
-    return result
+def _success(action: str, response: Any) -> dict:
+    return {"status": "success", "action": action, "response": response}
 
 
 def _has_command_tokens(value: str) -> bool:
@@ -55,178 +40,110 @@ def _validate_text(action: str, field: str, value: str | None, *, required: bool
     return None
 
 
-def _sanitize_timeout(timeout_seconds: int | None) -> int:
-    try:
-        timeout = int(timeout_seconds or _DEFAULT_TIMEOUT_SECONDS)
-    except (TypeError, ValueError):
-        timeout = _DEFAULT_TIMEOUT_SECONDS
-    return max(1, min(timeout, _MAX_TIMEOUT_SECONDS))
+def _normalize_entry_path(value: str) -> str:
+    return value.replace("\\", "/").lstrip("/")
 
 
-def _resolve_api_base_url(action: str, api_base_url: str | None) -> str | dict:
-    base_url = (
-        api_base_url
-        or _deployment_default(_DEPLOYED_SRE_TOOL_ENDPOINT_URL)
-        or os.environ.get("SRE_AGENT_TOOL_ENDPOINT_URL")
-        or ""
-    ).strip().rstrip("/")
-    if not base_url:
-        return _error(action, "configuration_error", "Tool endpoint URL is required via api_base_url or SRE_AGENT_TOOL_ENDPOINT_URL.")
-    parsed = urllib.parse.urlparse(base_url)
-    if parsed.scheme not in {"https", "http"} or not parsed.netloc:
-        return _error(action, "configuration_error", "FarSight API base URL must be an absolute HTTP(S) URL.")
-    if parsed.scheme != "https" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
-        return _error(action, "configuration_error", "FarSight API base URL must use HTTPS except for localhost development.")
-    return base_url
-
-
-def _credential_scope(api_base_url: str, api_scope: str | None) -> str:
-    configured = api_scope or _deployment_default(_DEPLOYED_SRE_TOOL_ENDPOINT_SCOPE) or os.environ.get("SRE_AGENT_TOOL_ENDPOINT_SCOPE")
-    if configured:
-        return configured
-    return f"{api_base_url}/.default"
-
-
-def _auth_headers(action: str, api_base_url: str, auth_mode: str | None, api_scope: str | None) -> dict[str, str] | dict:
-    mode = (
-        auth_mode
-        or _deployment_default(_DEPLOYED_SRE_TOOL_AUTH_MODE)
-        or os.environ.get("SRE_AGENT_TOOL_AUTH_MODE")
-        or "default"
-    ).strip().lower().replace("_", "-")
-    if mode == "auto":
-        mode = "default"
-    if mode not in {"default", "managed-identity"}:
-        return _error(action, "configuration_error", "Unsupported auth_mode. Use default or managed-identity.")
-    scope = _credential_scope(api_base_url, api_scope)
-    try:
-        from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
-        client_id = (
-            _deployment_default(os.environ.get("FARSIGHT_MANAGED_IDENTITY_CLIENT_ID", ""))
-            or os.environ.get("AZURE_CLIENT_ID")
-        )
-        if mode == "managed-identity":
-            cred = ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
-        else:
-            cred = DefaultAzureCredential(exclude_interactive_browser_credential=True)
-        token = cred.get_token(scope).token
-    except Exception as exc:
-        return _error(action, "auth_error", f"Failed to obtain access token: {exc}")
-    return {"Authorization": f"Bearer {token}"}
-
-
-def _http_call(
-    action: str,
-    method: str,
-    api_base_url: str,
-    path: str,
-    payload: dict[str, Any] | None,
-    auth_mode: str | None,
-    api_scope: str | None,
-    timeout_seconds: int,
-) -> dict:
-    import json as _json
-    headers = _auth_headers(action, api_base_url, auth_mode, api_scope)
-    if isinstance(headers, dict) and headers.get("status") == "error":
-        return headers
-    headers["Accept"] = "application/json"
-    body = None
-    if payload is not None:
-        headers["Content-Type"] = "application/json"
-        body = _json.dumps(payload).encode("utf-8")
-    url = api_base_url.rstrip("/") + path
-    req = urllib.request.Request(url, data=body, method=method, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-            status_code = resp.status
-            response_body = _json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        try:
-            err_body = _json.loads(exc.read().decode("utf-8"))
-        except Exception:
-            err_body = {"text": str(exc)}
-        return _error(action, "api_error", f"FarSight API returned HTTP {exc.code}.", {
-            "http_status": exc.code, "response": err_body, "path": path,
-        })
-    except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
-        return _error(action, "network_error", f"FarSight API request failed: {exc}", {"path": path})
-
-    # Unwrap gateway ToolResponse envelope if present
-    if isinstance(response_body, dict) and "data" in response_body:
-        response_body = response_body["data"]
-
-    return _success(action, response_body, status_code)
+def _safe_join(base_dir: Path, relative_path: str) -> Path:
+    candidate = (base_dir / relative_path).resolve()
+    base_resolved = base_dir.resolve()
+    if base_resolved not in candidate.parents and candidate != base_resolved:
+        raise ValueError("entry_path resolves outside the extraction directory.")
+    return candidate
 
 
 TOOL_ACTION = "extract_zip_artifact_entry"
 
 
 def main(
-    job_id: str,
-    artifact_id: str,
-    file_path: str | None = None,
-    tail_lines: int | None = None,
-    api_base_url: str | None = None,
-    auth_mode: str | None = None,
-    api_scope: str | None = None,
-    timeout_seconds: int = 60,
+    zip_path: str,
+    entry_path: str | None = None,
+    output_dir: str | None = None,
 ) -> dict:
-    """Extract a file from a ZIP artifact produced by a FarSight diagnostic module.
+    """List or extract files from a ZIP already present in the SRE Agent workspace.
 
-    Two modes of operation:
-    - List mode (file_path=None): Returns the list of files inside the ZIP with
-      their paths and sizes. Use this first to discover what files are available.
-    - Extract mode (file_path provided): Returns the text content of the specified
-      file from the ZIP archive for agent analysis.
+    Use this tool when a ZIP artifact has already been downloaded locally and you
+    want to inspect a specific file inside it without sending the entire archive
+    through the gateway.
 
-    For large files (>256 KB), use tail_lines to retrieve only the last N lines.
-    This bypasses the size cap and is ideal for reading recent log entries.
-
-    Typical workflow:
-    1. Call with file_path=None to list ZIP contents.
-    2. Identify the relevant log/config file from the listing.
-    3. If file is ≤256 KB, call with file_path to get full content.
-    4. If file is >256 KB, call with file_path and tail_lines (e.g., 500)
-       to get the most recent log entries.
-
-    Content is capped at 256 KB per file entry unless tail_lines is used.
-    ZIP archives up to 50 MB are supported. Only text/UTF-8 entries are returned.
+    Modes:
+    - List mode: omit entry_path to get the ZIP contents and file sizes.
+    - Extract mode: provide entry_path to extract that file to a local directory.
     """
-    for field, value in {"job_id": job_id, "artifact_id": artifact_id}.items():
-        err = _validate_text(TOOL_ACTION, field, value, required=True, max_len=128)
+    err = _validate_text(TOOL_ACTION, "zip_path", zip_path, required=True, max_len=1024)
+    if err:
+        return err
+    if entry_path is not None:
+        err = _validate_text(TOOL_ACTION, "entry_path", entry_path, required=False, max_len=1024)
         if err:
             return err
-    if file_path is not None:
-        err = _validate_text(TOOL_ACTION, "file_path", file_path, required=False, max_len=512)
+    if output_dir is not None:
+        err = _validate_text(TOOL_ACTION, "output_dir", output_dir, required=False, max_len=1024)
         if err:
             return err
-    if tail_lines is not None:
-        try:
-            tail_lines = int(tail_lines)
-            if tail_lines < 1:
-                return _error(TOOL_ACTION, "invalid_request", "tail_lines must be a positive integer.")
-        except (TypeError, ValueError):
-            return _error(TOOL_ACTION, "invalid_request", "tail_lines must be a positive integer.")
 
-    api_url = _resolve_api_base_url(TOOL_ACTION, api_base_url)
-    if isinstance(api_url, dict):
-        return api_url
-    timeout = _sanitize_timeout(timeout_seconds)
+    zip_file = Path(zip_path).expanduser()
+    if not zip_file.exists():
+        return _error(TOOL_ACTION, "not_found", f"ZIP file not found: {zip_file}")
+    if not zip_file.is_file():
+        return _error(TOOL_ACTION, "invalid_request", f"ZIP path is not a file: {zip_file}")
 
-    # Build the request payload for the gateway
-    payload: dict[str, Any] = {"jobId": job_id, "artifactId": artifact_id}
-    if file_path:
-        payload["filePath"] = file_path
-    if tail_lines is not None:
-        payload["tailLines"] = tail_lines
+    try:
+        with zipfile.ZipFile(zip_file) as archive:
+            members = [info for info in archive.infolist() if not info.is_dir()]
 
-    return _http_call(
-        TOOL_ACTION,
-        "POST",
-        api_url,
-        "/tools/extract_zip_artifact_entry",
-        payload,
-        auth_mode,
-        api_scope,
-        timeout,
-    )
+            if entry_path is None:
+                return _success(
+                    TOOL_ACTION,
+                    {
+                        "zipPath": str(zip_file),
+                        "mode": "list",
+                        "entryCount": len(members),
+                        "entries": [
+                            {
+                                "path": info.filename,
+                                "sizeBytes": info.file_size,
+                                "compressedBytes": info.compress_size,
+                            }
+                            for info in members
+                        ],
+                    },
+                )
+
+            normalized = _normalize_entry_path(entry_path)
+            matches = [info for info in members if _normalize_entry_path(info.filename) == normalized]
+            if not matches:
+                matches = [info for info in members if _normalize_entry_path(info.filename).lower() == normalized.lower()]
+            if not matches:
+                return _error(
+                    TOOL_ACTION,
+                    "not_found",
+                    f"Entry '{entry_path}' not found in ZIP.",
+                    {"zipPath": str(zip_file), "availableEntries": [info.filename for info in members[:50]]},
+                )
+
+            member = matches[0]
+            target_root = Path(output_dir).expanduser() if output_dir else zip_file.parent / _DEFAULT_OUTPUT_DIR_NAME / zip_file.stem
+            target_root.mkdir(parents=True, exist_ok=True)
+            extracted_path = _safe_join(target_root, _normalize_entry_path(member.filename))
+            extracted_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with archive.open(member, "r") as src, extracted_path.open("wb") as dst:
+                dst.write(src.read())
+
+            return _success(
+                TOOL_ACTION,
+                {
+                    "zipPath": str(zip_file),
+                    "mode": "extract",
+                    "entryPath": member.filename,
+                    "outputDir": str(target_root),
+                    "extractedPath": str(extracted_path),
+                    "sizeBytes": member.file_size,
+                    "compressedBytes": member.compress_size,
+                },
+            )
+    except zipfile.BadZipFile as exc:
+        return _error(TOOL_ACTION, "invalid_zip", f"Invalid ZIP file: {exc}")
+    except Exception as exc:
+        return _error(TOOL_ACTION, "io_error", f"Failed to process ZIP file: {exc}")

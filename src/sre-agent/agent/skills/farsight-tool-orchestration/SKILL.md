@@ -19,7 +19,7 @@ Always align to live tool parameter names:
 5. Present findings from `monitor_farsight_job.summary` to the user.
 6. `retrieve_artifact_metadata` — list artifacts for a job.
 7. `retrieve_artifact_content(job_id, artifact_id)` — download the artifact content (JSON/text, ≤256 KB) for analysis. If too large or binary → `request_follow_up_module_execution` for a smaller slice.
-8. `extract_zip_artifact_entry(job_id, artifact_id, file_path?)` — for ZIP artifacts (e.g., Get-AppLogBundle output). Call without `file_path` to list ZIP contents, then call again with a specific `file_path` to extract that file's text content.
+8. `extract_zip_artifact_entry(zip_path, entry_path?)` — for ZIP artifacts already downloaded into the SRE Agent workspace. Call without `entry_path` to list ZIP contents, then call again with a specific `entry_path` to extract that file to a local output directory.
 9. `request_follow_up_module_execution` only for bounded evidence gaps.
 10. `request_approval_for_action` when a separate approval request is needed before creating a higher-risk action.
 
@@ -125,21 +125,16 @@ Note: `app_id` is **not required** for `Get-ServiceStatusSnapshot`, `Get-ConfigE
 
 ## Extracting files from ZIP artifacts
 
-`Get-AppLogBundle` produces a ZIP artifact. Use `extract_zip_artifact_entry` to inspect its contents:
+`Get-AppLogBundle` produces a ZIP artifact that should first be downloaded into the SRE Agent workspace. Use `extract_zip_artifact_entry` to inspect its contents locally:
 
 ```
 1. retrieve_artifact_metadata(job_id="job-abc123") → artifact list includes ZIP file
-2. extract_zip_artifact_entry(job_id="job-abc123", artifact_id="art-xyz") → { "mode": "list", "entries": [...] }
-3. extract_zip_artifact_entry(job_id="job-abc123", artifact_id="art-xyz", file_path="logs/app-2026-06-19.log") → { "mode": "extract", "content": "..." }
+2. download the ZIP artifact into the SRE Agent workspace
+3. extract_zip_artifact_entry(zip_path="C:\\...\\AppWorkload.zip") → { "mode": "list", "entries": [...] }
+4. extract_zip_artifact_entry(zip_path="C:\\...\\AppWorkload.zip", entry_path="logs/AppWorkload.log") → { "mode": "extract", "extractedPath": "C:\\...\\farsight-extracted\\AppWorkload\\logs\\AppWorkload.log" }
 ```
 
-**For large files (>256 KB):** Use `tail_lines` to read the last N lines without hitting the size cap:
-```
-extract_zip_artifact_entry(job_id="job-abc123", artifact_id="art-xyz", file_path="logs/AppWorkload.log", tail_lines=500)
-→ { "mode": "extract", "truncated": true, "totalLines": 12000, "tailLines": 500, "content": "..." }
-```
-
-Use the list step to identify the relevant log file by name/size, then extract only what you need for diagnosis. Do not attempt to use `retrieve_artifact_content` on ZIP artifacts — it will return HTTP 415 (unsupported content type).
+Use the list step to identify the relevant log file by name/size, then extract only what you need for diagnosis. Do not attempt to use `retrieve_artifact_content` on ZIP artifacts — use the local ZIP extraction tool instead.
 
 ## Polling example flow
 

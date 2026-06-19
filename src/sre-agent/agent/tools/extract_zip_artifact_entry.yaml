@@ -1,57 +1,32 @@
 name: extract_zip_artifact_entry
 type: PythonFunctionTool
 description: >
-  List files inside a ZIP artifact or extract a specific file's content for
-  agent analysis. Use this tool when a FarSight diagnostic module (e.g.,
-  Get-AppLogBundle) produces a ZIP archive as its output artifact. First call
-  without file_path to list the ZIP contents, then call again with file_path
-  to retrieve the text content of a specific log or config file. Content is
-  capped at 256 KB per entry. ZIP archives up to 50 MB are supported.
+  List files inside a ZIP that has already been downloaded into the SRE Agent
+  workspace, or extract a specific file from it into a local output directory.
+  Use this tool when a FarSight diagnostic module (e.g., Get-AppLogBundle)
+  produces a ZIP archive and you want to inspect one named file locally without
+  sending the whole archive through the gateway.
 code_file: extract_zip_artifact_entry.py
 parameters:
-  - name: job_id
+  - name: zip_path
     type: string
     required: true
-    description: FarSight job id that produced the ZIP artifact.
-  - name: artifact_id
-    type: string
-    required: true
-    description: Artifact id from retrieve_artifact_metadata output.
-  - name: file_path
+    description: Local filesystem path to the ZIP file in the SRE Agent workspace.
+  - name: entry_path
     type: string
     required: false
     description: >
       Path of the file to extract from the ZIP. If omitted, returns a listing
       of all files in the archive with their paths and sizes. Use the exact path
       value from the listing to extract a specific file.
-  - name: tail_lines
-    type: int
-    required: false
-    description: >
-      Number of lines to return from the end of the file. Use this for large
-      log files that exceed the 256 KB content limit. For example, tail_lines=500
-      returns the last 500 lines. Capped at 10000 lines server-side.
-  - name: api_base_url
+  - name: output_dir
     type: string
     required: false
-    description: Optional AGT gateway base URL. Defaults to SRE_AGENT_TOOL_ENDPOINT_URL.
-  - name: auth_mode
-    type: string
-    required: false
-    description: Authentication mode for the AGT gateway. Defaults to default (managed identity).
-  - name: api_scope
-    type: string
-    required: false
-    description: Optional token scope. Defaults to SRE_AGENT_TOOL_ENDPOINT_SCOPE.
-  - name: timeout_seconds
-    type: int
-    required: false
-    description: HTTP timeout in seconds, capped at 120. Defaults to 60.
-dependencies:
-  - azure-identity
-auth_enabled: true
+    description: Optional local directory where extracted files should be written. Defaults to a sibling folder next to the ZIP.
+dependencies: []
+auth_enabled: false
 auth_scopes: []
 connector: null
 attributes: []
-timeout_seconds: 90
+timeout_seconds: 30
 tool_mode: Auto

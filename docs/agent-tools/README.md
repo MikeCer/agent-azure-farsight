@@ -19,6 +19,7 @@ Gateway inbound authorization can also enforce workload JWT validation at FastAP
 - Validate input against the tool schema before API calls.
 - Include module ID, approved parameters, target selector, idempotency key, and justification.
 - Return job metadata and next-step guidance instead of raw sensitive evidence.
+- For ZIP artifacts already downloaded into the SRE Agent workspace, use the local ZIP extraction tool to list contents or extract a named file instead of trying to send the archive through the gateway.
 
 ## AGT policy wrapping
 
