@@ -11,6 +11,7 @@ from .auth import WorkloadCaller, require_workload_caller
 from .clients import FarSightApiClient
 from .models import (
     ApprovalToolRequest,
+    ArtifactDownloadRequest,
     ArtifactContentRequest,
     ArtifactMetadataRequest,
     DiagnosticJobRequest,
@@ -23,6 +24,7 @@ from .models import (
 from .policy import PolicyConfigurationError
 from .tools import (
     create_diagnostic_job,
+    download_artifact_file,
     get_job_result_summary,
     get_job_status,
     query_device_investigation_history,
@@ -145,6 +147,16 @@ async def query_device_investigation_history_endpoint(
     caller: WorkloadCaller = Depends(require_workload_caller),
 ) -> ToolResponse:
     response = await query_device_investigation_history(request)
+    asyncio.ensure_future(_emit_tool_call_event(response, caller))
+    return response
+
+
+@app.post("/tools/download_artifact_file", response_model=ToolResponse)
+async def download_artifact_file_endpoint(
+    request: ArtifactDownloadRequest,
+    caller: WorkloadCaller = Depends(require_workload_caller),
+) -> ToolResponse:
+    response = await download_artifact_file(request)
     asyncio.ensure_future(_emit_tool_call_event(response, caller))
     return response
 

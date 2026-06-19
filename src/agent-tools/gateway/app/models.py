@@ -82,6 +82,11 @@ class ArtifactContentRequest(CamelModel):
     artifact_id: str = Field(alias="artifactId")
 
 
+class ArtifactDownloadRequest(CamelModel):
+    job_id: str = Field(alias="jobId")
+    artifact_id: str = Field(alias="artifactId")
+
+
 class ZipArtifactEntryRequest(CamelModel):
     job_id: str = Field(alias="jobId")
     artifact_id: str = Field(alias="artifactId")

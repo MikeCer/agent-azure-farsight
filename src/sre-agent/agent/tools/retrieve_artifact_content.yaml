@@ -1,12 +1,14 @@
 name: retrieve_artifact_content
 type: PythonFunctionTool
 description: >
-  Download and return the content of a FarSight diagnostic artifact for agent
-  analysis. Only JSON and plain-text artifacts are supported. Content is
-  server-capped at 256 KB. Use this tool when retrieve_artifact_metadata
-  has identified an artifact that contains evidence needed for diagnosis
-  (for example a service snapshot JSON, config evidence, or event log slice).
-  If the artifact exceeds 256 KB or is a binary format, use
+  Download and return the content of a JSON or plain-text FarSight diagnostic
+  artifact for agent analysis. Only JSON and plain-text artifacts are supported
+  (content is server-capped at 256 KB). Do NOT use this tool for ZIP artifacts
+  (for example Get-AppLogBundle output) — it will fail on them. For ZIP
+  artifacts, use download_artifact_file followed by extract_zip_artifact_entry
+  instead. Use this tool only after retrieve_artifact_metadata confirms the
+  artifact is JSON or text (for example a service snapshot JSON, config
+  evidence, or event log slice). If the artifact exceeds 256 KB, use
   request_follow_up_module_execution to produce a smaller evidence slice.
 code_file: retrieve_artifact_content.py
 parameters:

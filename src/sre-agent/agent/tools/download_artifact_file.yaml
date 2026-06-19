@@ -1,0 +1,51 @@
+name: download_artifact_file
+type: PythonFunctionTool
+description: >
+  Download a FarSight artifact into the local SRE Agent workspace so it can be
+  inspected or passed to the local ZIP extraction tool. This is the REQUIRED
+  first step for ZIP artifacts (for example Get-AppLogBundle output): call
+  download_artifact_file first, then call extract_zip_artifact_entry on the
+  returned downloadedPath. Do not use retrieve_artifact_content for ZIP
+  artifacts.
+code_file: download_artifact_file.py
+parameters:
+  - name: job_id
+    type: string
+    required: true
+    description: FarSight job id that produced the artifact.
+  - name: artifact_id
+    type: string
+    required: true
+    description: Artifact id from retrieve_artifact_metadata output.
+  - name: output_path
+    type: string
+    required: false
+    description: Optional exact local file path where the artifact should be written.
+  - name: output_dir
+    type: string
+    required: false
+    description: Optional local directory used when output_path is omitted. Defaults to the current working directory.
+  - name: api_base_url
+    type: string
+    required: false
+    description: Optional AGT gateway base URL. Defaults to SRE_AGENT_TOOL_ENDPOINT_URL.
+  - name: auth_mode
+    type: string
+    required: false
+    description: Authentication mode for the AGT gateway. Defaults to default (managed identity).
+  - name: api_scope
+    type: string
+    required: false
+    description: Optional token scope. Defaults to SRE_AGENT_TOOL_ENDPOINT_SCOPE.
+  - name: timeout_seconds
+    type: int
+    required: false
+    description: HTTP timeout in seconds, capped at 120. Defaults to 60.
+dependencies:
+  - azure-identity
+auth_enabled: true
+auth_scopes: []
+connector: null
+attributes: []
+timeout_seconds: 90
+tool_mode: Auto

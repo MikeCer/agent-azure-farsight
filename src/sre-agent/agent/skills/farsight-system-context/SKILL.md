@@ -64,7 +64,7 @@ Disk artifacts for an app (installed files, cache, package state)
 - Approval-gated jobs enter `waiting_approval` status and are invisible to collector polling until an administrator approves them.
 - When a job is waiting for approval, **do not block the conversation**. Schedule a follow-up check and use the Outlook connector for completion/denial/expiry notification.
 - Use metadata-first artifact handling (`retrieve_artifact_metadata`) before downloading content.
-- For ZIP artifacts (e.g., `Get-AppLogBundle` output), first download the ZIP into the SRE Agent workspace, then use `extract_zip_artifact_entry` to list contents or extract a specific file locally. Do not use `retrieve_artifact_content` on ZIP artifacts.
+- For ZIP artifacts (e.g., `Get-AppLogBundle` output), first use `download_artifact_file` to save the ZIP into the SRE Agent workspace, then use `extract_zip_artifact_entry` to list contents or extract a specific file locally. Do not use `retrieve_artifact_content` on ZIP artifacts.
 
 ## Evidence boundary guidance
 

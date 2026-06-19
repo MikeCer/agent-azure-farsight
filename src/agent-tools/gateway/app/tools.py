@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from .clients import FarSightApiClient
 from .models import (
     ApprovalToolRequest,
+    ArtifactDownloadRequest,
     ArtifactContentRequest,
     ArtifactMetadataRequest,
     DiagnosticJobRequest,
@@ -173,6 +174,17 @@ async def retrieve_artifact_metadata(request: ArtifactMetadataRequest) -> ToolRe
     if policy.outcome != PolicyOutcome.allow:
         return _blocked(tool_name, policy)
     data = await _call_api("GET", f"/api/v1/jobs/{request.job_id}/artifacts")
+    return ToolResponse(toolName=tool_name, policy=policy, data=data)
+
+
+async def download_artifact_file(request: ArtifactDownloadRequest) -> ToolResponse:
+    tool_name = "download_artifact_file"
+    policy = _eval_policy(tool_name, payload=request.model_dump(by_alias=True, mode="json"))
+    if isinstance(policy, ToolResponse):
+        return policy
+    if policy.outcome != PolicyOutcome.allow:
+        return _blocked(tool_name, policy)
+    data = await _call_api("GET", f"/api/v1/jobs/{request.job_id}/artifacts/{request.artifact_id}/download")
     return ToolResponse(toolName=tool_name, policy=policy, data=data)
 
 

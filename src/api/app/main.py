@@ -664,6 +664,73 @@ def request_followup(
 # Artifacts (Phase 3 — Blob SAS)
 # ---------------------------------------------------------------------------
 
+@app.get("/api/v1/jobs/{jobId}/artifacts/{artifactId}/download")
+def download_artifact_file(
+    jobId: str,
+    artifactId: str,
+    _: WorkloadCaller = Depends(require_workload_caller),
+) -> dict[str, object]:
+    """Download an artifact as base64 for agent-side local workspace storage."""
+    max_bytes = int(os.getenv("FARSIGHT_ARTIFACT_MAX_DOWNLOAD_BYTES", str(50 * 1024 * 1024)))
+    blob_client = get_blob_service_client()
+    if blob_client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Artifact download requires Blob Storage (FARSIGHT_BLOB_ACCOUNT_URL not configured).",
+        )
+
+    ai_container = get_artifact_index_container()
+    blob_name: str | None = None
+    artifact_file_name: str | None = None
+    content_type = ""
+    if ai_container is not None:
+        try:
+            item = ai_container.read_item(item=f"{jobId}:{artifactId}", partition_key=jobId)
+            blob_name = item.get("blobName")
+            artifact_file_name = item.get("name")
+            content_type = (item.get("contentType") or "").lower()
+        except Exception:
+            pass
+
+    container_name = os.getenv("FARSIGHT_BLOB_ARTIFACTS_CONTAINER", "artifacts")
+    if not blob_name:
+        if artifact_file_name:
+            blob_name = f"{jobId}/{artifactId}/{artifact_file_name}"
+        else:
+            blob_name = f"{jobId}/{artifactId}"
+
+    try:
+        blob = blob_client.get_blob_client(container=container_name, blob=blob_name)
+        props = blob.get_blob_properties()
+        size_bytes = props.size
+        content_type = (props.content_settings.content_type or content_type or "").lower()
+        if not artifact_file_name:
+            artifact_file_name = blob_name.split("/")[-1] or f"{artifactId}.bin"
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Artifact blob not found: {exc}") from exc
+
+    if size_bytes > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Artifact size {size_bytes} bytes exceeds the maximum allowed {max_bytes} bytes for download.",
+        )
+
+    try:
+        raw = blob.download_blob().readall()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to download artifact: {exc}") from exc
+
+    return {
+        "jobId": jobId,
+        "artifactId": artifactId,
+        "blobName": blob_name,
+        "fileName": artifact_file_name,
+        "contentType": content_type,
+        "sizeBytes": size_bytes,
+        "contentBase64": base64.b64encode(raw).decode("ascii"),
+    }
+
+
 @app.get("/api/v1/jobs/{jobId}/artifacts/{artifactId}/content")
 def get_artifact_content(
     jobId: str,

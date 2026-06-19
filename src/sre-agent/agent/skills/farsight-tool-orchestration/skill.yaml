@@ -41,6 +41,7 @@ tools:
   - get_job_status
   - get_job_result_summary
   - retrieve_artifact_metadata
+  - download_artifact_file
   - retrieve_artifact_content
   - request_follow_up_module_execution
   - request_approval_for_action

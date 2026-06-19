@@ -19,7 +19,7 @@ Gateway inbound authorization can also enforce workload JWT validation at FastAP
 - Validate input against the tool schema before API calls.
 - Include module ID, approved parameters, target selector, idempotency key, and justification.
 - Return job metadata and next-step guidance instead of raw sensitive evidence.
-- For ZIP artifacts already downloaded into the SRE Agent workspace, use the local ZIP extraction tool to list contents or extract a named file instead of trying to send the archive through the gateway.
+- For ZIP artifacts, first use `download_artifact_file` to save the artifact into the SRE Agent workspace, then use the local ZIP extraction tool to list contents or extract a named file instead of trying to send the archive through the gateway.
 
 ## AGT policy wrapping
 
@@ -41,7 +41,9 @@ The gateway currently evaluates one configured policy ID, `farsight-tool-policy`
 
 ## Tool-call monitoring
 
-The admin console includes a Tool-call monitoring page backed by `GET /api/v1/telemetry/tool-calls/summary`. The AGT tool gateway emits a structured audit event (`POST /api/v1/telemetry/tool-calls`) after every tool execution. Each event includes: tool name, policy decision (allow/deny/require_approval), policy name/version, rule name, actor identity (object ID and app ID), job ID, correlation ID, and UTC timestamp. Events are persisted in the `auditEvents` Cosmos container and aggregated by the summary endpoint over a 24-hour window.
+The admin console includes a Tool-call monitoring page backed by `GET /api/v1/telemetry/tool-calls/summary`. The AGT tool gateway emits a structured audit event (`POST /api/v1/telemetry/tool-calls`) after every tool execution. Each event includes: tool name, policy decision (allow/deny/require_approval), policy name/version, rule name, actor identity (object ID and Entra app ID), job ID, correlation ID, and UTC timestamp. Events are persisted in the `auditEvents` Cosmos container and aggregated by the summary endpoint over a 24-hour window.
+
+In the tool-call detail view, this actor field is labelled **Actor App ID (Entra)** to distinguish the SRE Agent's Entra application (client) ID from a diagnostic module's `appId` parameter (an application profile name such as `myapp`). The two are unrelated: AGT policy rules that key off `appId` match the module profile parameter, never the actor's Entra app ID.
 
 ## Approval behavior
 

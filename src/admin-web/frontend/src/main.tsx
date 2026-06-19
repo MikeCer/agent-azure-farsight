@@ -734,7 +734,7 @@ function App() {
                   <dt>Decision</dt><dd><StatusBadge status={selectedCall.decision} /></dd>
                   <dt>Actor</dt><dd>{actorLabel(selectedCall)}</dd>
                   <dt>Actor ID</dt><dd className="mono">{selectedCall.actor ?? "—"}</dd>
-                  <dt>App ID</dt><dd className="mono">{selectedCall.actorAppId ?? "—"}</dd>
+                  <dt>Actor App ID (Entra)</dt><dd className="mono">{selectedCall.actorAppId ?? "—"}</dd>
                   <dt>Timestamp</dt><dd>{formatTimestamp(selectedCall.timestampUtc)}</dd>
                   <dt>Policy</dt><dd>{selectedCall.policyId ?? "—"} @ {selectedCall.policyVersion ?? "—"}</dd>
                   <dt>Rule</dt><dd>{selectedCall.ruleName ?? "—"}</dd>

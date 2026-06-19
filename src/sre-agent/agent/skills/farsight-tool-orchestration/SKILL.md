@@ -17,11 +17,21 @@ Always align to live tool parameter names:
 3. If the response is `approval_required` or the job status is `waiting_approval`, stop synchronous monitoring. Tell the user the job is waiting for admin approval, create a scheduled SRE Agent platform follow-up to check completion later, and use the configured Outlook connector to notify the requester when the job completes, is denied, or expires.
 4. If approval is not required, use **`monitor_farsight_job`** — pass the `jobId` and `task_type` immediately after creation. The tool waits, polls, and returns the terminal state and result summary automatically. **Do not manually poll with `get_job_status` when `monitor_farsight_job` is available.**
 5. Present findings from `monitor_farsight_job.summary` to the user.
-6. `retrieve_artifact_metadata` — list artifacts for a job.
-7. `retrieve_artifact_content(job_id, artifact_id)` — download the artifact content (JSON/text, ≤256 KB) for analysis. If too large or binary → `request_follow_up_module_execution` for a smaller slice.
-8. `extract_zip_artifact_entry(zip_path, entry_path?)` — for ZIP artifacts already downloaded into the SRE Agent workspace. Call without `entry_path` to list ZIP contents, then call again with a specific `entry_path` to extract that file to a local output directory.
-9. `request_follow_up_module_execution` only for bounded evidence gaps.
-10. `request_approval_for_action` when a separate approval request is needed before creating a higher-risk action.
+6. `retrieve_artifact_metadata` — list artifacts for a job. **Always call this first and read each artifact's `contentType` / file extension before deciding how to fetch it.**
+7. **Branch on artifact type (this decision is mandatory — do not skip it):**
+   - **ZIP artifacts** (`contentType` is `application/zip`, or the file name ends in `.zip`, e.g. `Get-AppLogBundle` output): you **must** use the two-step local flow below. `retrieve_artifact_content` does **not** work on ZIP artifacts and will fail — never call it for a ZIP.
+   - **JSON / plain-text artifacts only** (`application/json`, `text/plain`): use `retrieve_artifact_content(job_id, artifact_id)` (≤256 KB). If too large → `request_follow_up_module_execution` for a smaller slice.
+8. `request_follow_up_module_execution` only for bounded evidence gaps.
+9. `request_approval_for_action` when a separate approval request is needed before creating a higher-risk action.
+
+### ZIP artifact handling (mandatory two-step local flow)
+
+For any ZIP artifact, run these two tools in order. There is no single-call shortcut, and `retrieve_artifact_content` is not a fallback.
+
+1. `download_artifact_file(job_id, artifact_id, output_dir?)` — downloads the ZIP into the SRE Agent workspace and returns `downloadedPath`.
+2. `extract_zip_artifact_entry(zip_path, entry_path?)` — pass the `downloadedPath` from step 1 as `zip_path`. Call without `entry_path` to list ZIP contents, then call again with a specific `entry_path` to extract that file locally.
+
+**If `download_artifact_file` returns an error (for example HTTP 404 or 503):** report the error to the user and stop. Do **not** fall back to `retrieve_artifact_content` — that tool cannot read ZIP artifacts and a download error usually means the FarSight API needs the artifact-download endpoint deployed or the artifact is not yet committed. Do not invent or run local helper scripts for this; only use the two tools above.
 
 > Use `get_job_status` and `get_job_result_summary` only to recover an old job or when the monitor timed out.
 
@@ -125,13 +135,13 @@ Note: `app_id` is **not required** for `Get-ServiceStatusSnapshot`, `Get-ConfigE
 
 ## Extracting files from ZIP artifacts
 
-`Get-AppLogBundle` produces a ZIP artifact that should first be downloaded into the SRE Agent workspace. Use `extract_zip_artifact_entry` to inspect its contents locally:
+`Get-AppLogBundle` produces a ZIP artifact that should first be downloaded into the SRE Agent workspace. Use `download_artifact_file` first, then inspect the ZIP locally:
 
 ```
 1. retrieve_artifact_metadata(job_id="job-abc123") → artifact list includes ZIP file
-2. download the ZIP artifact into the SRE Agent workspace
-3. extract_zip_artifact_entry(zip_path="C:\\...\\AppWorkload.zip") → { "mode": "list", "entries": [...] }
-4. extract_zip_artifact_entry(zip_path="C:\\...\\AppWorkload.zip", entry_path="logs/AppWorkload.log") → { "mode": "extract", "extractedPath": "C:\\...\\farsight-extracted\\AppWorkload\\logs\\AppWorkload.log" }
+2. download_artifact_file(job_id="job-abc123", artifact_id="art-xyz", output_dir="C:\\...\\workspace") → { "downloadedPath": "C:\\...\\workspace\\AppWorkload.zip" }
+3. extract_zip_artifact_entry(zip_path="C:\\...\\workspace\\AppWorkload.zip") → { "mode": "list", "entries": [...] }
+4. extract_zip_artifact_entry(zip_path="C:\\...\\workspace\\AppWorkload.zip", entry_path="logs/AppWorkload.log") → { "mode": "extract", "extractedPath": "C:\\...\\farsight-extracted\\AppWorkload\\logs\\AppWorkload.log" }
 ```
 
 Use the list step to identify the relevant log file by name/size, then extract only what you need for diagnosis. Do not attempt to use `retrieve_artifact_content` on ZIP artifacts — use the local ZIP extraction tool instead.
