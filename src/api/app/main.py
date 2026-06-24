@@ -664,14 +664,14 @@ def request_followup(
 # Artifacts (Phase 3 — Blob SAS)
 # ---------------------------------------------------------------------------
 
-@app.get("/api/v1/jobs/{jobId}/artifacts/{artifactId}/download")
-def download_artifact_file(
-    jobId: str,
-    artifactId: str,
-    _: WorkloadCaller = Depends(require_workload_caller),
-) -> dict[str, object]:
-    """Download an artifact as base64 for agent-side local workspace storage."""
-    max_bytes = int(os.getenv("FARSIGHT_ARTIFACT_MAX_DOWNLOAD_BYTES", str(50 * 1024 * 1024)))
+def _load_artifact_blob(jobId: str, artifactId: str, *, max_bytes: int) -> tuple[bytes, str, str, int, str]:
+    """Resolve and download an artifact blob.
+
+    Returns (raw_bytes, file_name, content_type, size_bytes, blob_name).
+    Raises HTTPException on missing storage, missing blob, or oversize.
+    Shared by the workload-caller download endpoint (base64 JSON) and the
+    admin-console download endpoint (binary attachment).
+    """
     blob_client = get_blob_service_client()
     if blob_client is None:
         raise HTTPException(
@@ -720,6 +720,20 @@ def download_artifact_file(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to download artifact: {exc}") from exc
 
+    return raw, artifact_file_name, content_type or "application/octet-stream", size_bytes, blob_name
+
+
+@app.get("/api/v1/jobs/{jobId}/artifacts/{artifactId}/download")
+def download_artifact_file(
+    jobId: str,
+    artifactId: str,
+    _: WorkloadCaller = Depends(require_workload_caller),
+) -> dict[str, object]:
+    """Download an artifact as base64 for agent-side local workspace storage."""
+    max_bytes = int(os.getenv("FARSIGHT_ARTIFACT_MAX_DOWNLOAD_BYTES", str(50 * 1024 * 1024)))
+    raw, artifact_file_name, content_type, size_bytes, blob_name = _load_artifact_blob(
+        jobId, artifactId, max_bytes=max_bytes
+    )
     return {
         "jobId": jobId,
         "artifactId": artifactId,
@@ -1416,32 +1430,67 @@ def ingest_tool_call_event(
 
 
 @app.get("/api/v1/telemetry/tool-calls/summary", response_model=ToolCallTelemetrySummary)
-def get_tool_call_summary() -> ToolCallTelemetrySummary:
-    """Aggregate tool-call audit events from the last 24h."""
+def get_tool_call_summary(window: str = "24h") -> ToolCallTelemetrySummary:
+    """Aggregate tool-call audit events within the specified time window.
+    
+    Args:
+        window: Time window for aggregation. Supported values: "24h", "7d", "30d", "all"
+    """
     from collections import defaultdict
+
+    # Map window parameter to timedelta
+    window_map = {
+        "24h": timedelta(hours=24),
+        "7d": timedelta(days=7),
+        "30d": timedelta(days=30),
+        "all": None,  # No cutoff
+    }
+    
+    # Validate and get the time delta
+    time_delta = window_map.get(window)
+    if time_delta is None and window != "all":
+        # Default to 24h if invalid window provided
+        time_delta = timedelta(hours=24)
+        normalized_window = "24h"
+    else:
+        normalized_window = window
 
     container = get_audit_events_container()
     events: list[dict[str, Any]] = []
 
     if container is not None:
-        cutoff = (_utc_now() - timedelta(hours=24)).isoformat()
-        try:
-            events = list(container.query_items(
-                query="SELECT * FROM c WHERE c.eventType = 'tool-call' AND c.timestampUtc >= @cutoff ORDER BY c.timestampUtc DESC",
-                parameters=[{"name": "@cutoff", "value": cutoff}],
-                enable_cross_partition_query=True,
-            ))
-        except Exception:
-            events = []
+        if normalized_window == "all":
+            # No time cutoff
+            try:
+                events = list(container.query_items(
+                    query="SELECT * FROM c WHERE c.eventType = 'tool-call' ORDER BY c.timestampUtc DESC",
+                    enable_cross_partition_query=True,
+                ))
+            except Exception:
+                events = []
+        else:
+            cutoff = (_utc_now() - time_delta).isoformat()
+            try:
+                events = list(container.query_items(
+                    query="SELECT * FROM c WHERE c.eventType = 'tool-call' AND c.timestampUtc >= @cutoff ORDER BY c.timestampUtc DESC",
+                    parameters=[{"name": "@cutoff", "value": cutoff}],
+                    enable_cross_partition_query=True,
+                ))
+            except Exception:
+                events = []
     else:
         # In-memory fallback: use audit_events list.
-        cutoff_dt = _utc_now() - timedelta(hours=24)
+        if normalized_window == "all":
+            cutoff_dt = None
+        else:
+            cutoff_dt = _utc_now() - time_delta
+        
         events = [
             {"toolName": e.action, "decision": e.decision, "actorId": e.actor_id,
              "timestampUtc": e.created_at_utc.isoformat(), "correlationId": e.correlation_id,
              "policyName": None, "policyVersion": None, "jobId": None}
             for e in audit_events
-            if e.event_type == "tool-call" and e.created_at_utc >= cutoff_dt
+            if e.event_type == "tool-call" and (cutoff_dt is None or e.created_at_utc >= cutoff_dt)
         ]
 
     # Aggregate.
@@ -1496,7 +1545,7 @@ def get_tool_call_summary() -> ToolCallTelemetrySummary:
     ]
 
     return ToolCallTelemetrySummary(
-        window="24h",
+        window=normalized_window,
         totalCalls=total,
         allowedCalls=allowed,
         deniedCalls=denied,
@@ -1574,6 +1623,74 @@ def requeue_job(jobId: str, _: AdminActor = Depends(require_admin_actor)) -> Res
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Cosmos update failed: {exc}") from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get("/api/v1/admin/jobs/{jobId}")
+def admin_get_job(jobId: str, _: AdminActor = Depends(require_admin_actor)) -> dict[str, object]:
+    """Return a single job's detail/summary for the admin console (admin-authenticated)."""
+    container = get_jobs_container()
+    if container is not None:
+        item, _etag = _get_job_from_cosmos(container, jobId)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return {
+            "jobId": jobId,
+            "status": item.get("status"),
+            "approvalRequired": item.get("approvalRequired", False),
+            "approvalStatus": item.get("approvalStatus"),
+            "approvalId": item.get("approvalId"),
+            "summary": item.get("resultSummary") or {},
+        }
+    if jobId not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    result = results.get(jobId)
+    job = jobs[jobId]
+    return {
+        "jobId": jobId,
+        "status": job.status,
+        "approvalRequired": job.approval_required,
+        "approvalStatus": job.approval_status,
+        "approvalId": job.approval_id,
+        "summary": result.summary if result else {},
+    }
+
+
+@app.get("/api/v1/admin/jobs/{jobId}/artifacts")
+def admin_list_job_artifacts(jobId: str, _: AdminActor = Depends(require_admin_actor)) -> dict[str, object]:
+    """Return artifact metadata for a job for the admin console (admin-authenticated)."""
+    jobs_container = get_jobs_container()
+    if jobs_container is not None:
+        item, _etag = _get_job_from_cosmos(jobs_container, jobId)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+    elif jobId not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    ai_container = get_artifact_index_container()
+    if ai_container is not None:
+        artifacts = list(ai_container.query_items(
+            query="SELECT * FROM c WHERE c.jobId = @jobId",
+            parameters=[{"name": "@jobId", "value": jobId}],
+            partition_key=jobId,
+        ))
+        return {"jobId": jobId, "artifacts": artifacts}
+    return {"jobId": jobId, "artifacts": artifact_index.get(jobId, [])}
+
+
+@app.get("/api/v1/admin/jobs/{jobId}/artifacts/{artifactId}/download")
+def admin_download_artifact_file(
+    jobId: str,
+    artifactId: str,
+    _: AdminActor = Depends(require_admin_actor),
+) -> Response:
+    """Stream an artifact as a binary attachment for the admin console."""
+    max_bytes = int(os.getenv("FARSIGHT_ARTIFACT_MAX_DOWNLOAD_BYTES", str(50 * 1024 * 1024)))
+    raw, artifact_file_name, content_type, _size_bytes, _blob_name = _load_artifact_blob(
+        jobId, artifactId, max_bytes=max_bytes
+    )
+    safe_name = artifact_file_name.replace('"', "").replace("\\", "").replace("\r", "").replace("\n", "")
+    headers = {"Content-Disposition": f'attachment; filename="{safe_name}"'}
+    return Response(content=raw, media_type=content_type or "application/octet-stream", headers=headers)
 
 
 @app.put("/api/v1/admin/config", status_code=status.HTTP_204_NO_CONTENT)

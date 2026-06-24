@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 from fastapi import Depends, Header, HTTPException, FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="Agent-Azure-FarSight Admin BFF", version="0.1.0")
@@ -150,8 +150,13 @@ async def delete_policy_version(policy_id: str, version: str, current_admin: dic
 
 
 @app.get("/api/bff/telemetry/tool-calls/summary")
-async def tool_call_summary(current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
-    return await _control_api("GET", "/api/v1/telemetry/tool-calls/summary", actor=str(current_admin["id"]))
+async def tool_call_summary(window: str = "24h", current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
+    """Get telemetry summary for tool calls within a specified time window.
+    
+    Args:
+        window: Time window ("24h", "7d", "30d", "all"). Defaults to "24h".
+    """
+    return await _control_api("GET", f"/api/v1/telemetry/tool-calls/summary?window={window}", actor=str(current_admin["id"]))
 
 
 @app.get("/api/bff/jobs")
@@ -169,12 +174,37 @@ async def list_jobs(device_id: str | None = None, current_admin: dict[str, Any] 
 
 @app.get("/api/bff/jobs/{job_id}")
 async def get_job(job_id: str, current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
-    return await _control_api("GET", f"/api/v1/jobs/{job_id}/summary", actor=str(current_admin["id"]))
+    return await _control_api_admin("GET", f"/api/v1/admin/jobs/{job_id}", current_admin=current_admin)
 
 
 @app.get("/api/bff/jobs/{job_id}/artifacts")
 async def get_job_artifacts(job_id: str, current_admin: dict[str, Any] = Depends(get_current_admin)) -> Any:
-    return await _control_api("GET", f"/api/v1/jobs/{job_id}/artifacts", actor=str(current_admin["id"]))
+    return await _control_api_admin("GET", f"/api/v1/admin/jobs/{job_id}/artifacts", current_admin=current_admin)
+
+
+@app.get("/api/bff/jobs/{job_id}/artifacts/{artifact_id}/download")
+async def download_job_artifact(
+    job_id: str,
+    artifact_id: str,
+    current_admin: dict[str, Any] = Depends(get_current_admin),
+) -> Response:
+    """Stream an artifact binary to the admin browser as a file download."""
+    path = f"/api/v1/admin/jobs/{job_id}/artifacts/{artifact_id}/download"
+    async with httpx.AsyncClient(base_url=control_api_base_url, timeout=120.0) as client:
+        upstream = await client.request("GET", path, headers=_signed_admin_headers(current_admin))
+        if upstream.status_code >= 400:
+            detail = upstream.text
+            try:
+                detail = upstream.json().get("detail", detail)
+            except Exception:
+                pass
+            raise HTTPException(status_code=upstream.status_code, detail=detail)
+        headers = {}
+        disposition = upstream.headers.get("content-disposition")
+        if disposition:
+            headers["Content-Disposition"] = disposition
+        media_type = upstream.headers.get("content-type", "application/octet-stream")
+        return Response(content=upstream.content, media_type=media_type, headers=headers)
 
 
 @app.post("/api/bff/jobs/{job_id}/requeue", status_code=200)

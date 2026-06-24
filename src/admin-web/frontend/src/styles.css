@@ -370,6 +370,18 @@ button {
   font-size: 0.9rem;
 }
 
+.policy-list li.active button {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--accent);
+  border-left: 3px solid var(--accent);
+  font-weight: 500;
+}
+
+.policy-list li.active span {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .toolbar {
   align-items: end;
   display: grid;

@@ -198,10 +198,10 @@ def main(
 
     response = _http_call(
         TOOL_ACTION,
-        "GET",
+        "POST",
         api_url,
-        f"/api/v1/jobs/{job_id}/artifacts/{artifact_id}/download",
-        None,
+        "/tools/download_artifact_file",
+        {"jobId": job_id, "artifactId": artifact_id},
         auth_mode,
         api_scope,
         timeout,

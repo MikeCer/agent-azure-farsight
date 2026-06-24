@@ -258,6 +258,7 @@ function App() {
   // Tool-call telemetry state
   const [toolCallSummary, setToolCallSummary] = useState<ToolCallTelemetrySummary | null>(null);
   const [toolCallLoading, setToolCallLoading] = useState(false);
+  const [telemetryWindow, setTelemetryWindow] = useState("24h");
 
   // Approval state
   const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
@@ -272,6 +273,7 @@ function App() {
   const [jobsLoading, setJobsLoading] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobSummary | null>(null);
   const [jobArtifacts, setJobArtifacts] = useState<ArtifactMetadata[]>([]);
+  const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null);
   const [jobFilter, setJobFilter] = useState("");
   const [jobStatusFilter, setJobStatusFilter] = useState("all");
   const [deviceIdInput, setDeviceIdInput] = useState("");
@@ -384,10 +386,11 @@ function App() {
 
   // ── Tool-call functions ─────────────────────────────────────────────────────
 
-  async function loadToolCallSummary() {
+  async function loadToolCallSummary(window = telemetryWindow) {
     setToolCallLoading(true); setError("");
     try {
-      setToolCallSummary(await api<ToolCallTelemetrySummary>("/api/bff/telemetry/tool-calls/summary"));
+      setToolCallSummary(await api<ToolCallTelemetrySummary>(`/api/bff/telemetry/tool-calls/summary?window=${encodeURIComponent(window)}`));
+      setTelemetryWindow(window);
     } finally {
       setToolCallLoading(false);
     }
@@ -452,10 +455,48 @@ function App() {
         `/api/bff/jobs/${job.jobId}`
       );
       setSelectedJob({ ...job, resultSummary: detail.summary ?? job.resultSummary, status: detail.status ?? job.status });
+    } catch {
+      // detail/summary refresh failure is non-fatal — keep the row data we already have
+    }
+    try {
       const artsData = await api<{ jobId: string; artifacts: ArtifactMetadata[] }>(`/api/bff/jobs/${job.jobId}/artifacts`);
       setJobArtifacts(artsData.artifacts ?? []);
     } catch {
-      // detail fetch failure is non-fatal — show what we have
+      // artifact listing failure is non-fatal — section simply stays hidden
+    }
+  }
+
+  async function downloadArtifact(jobId: string, artifact: ArtifactMetadata) {
+    setDownloadingArtifactId(artifact.artifactId);
+    setError("");
+    try {
+      const response = await fetch(`/api/bff/jobs/${jobId}/artifacts/${encodeURIComponent(artifact.artifactId)}/download`);
+      if (!response.ok) {
+        let detail = `Download failed with HTTP ${response.status}`;
+        try {
+          const parsed = JSON.parse(await response.text()) as { detail?: unknown };
+          if (typeof parsed.detail === "string") detail = parsed.detail;
+        } catch { /* keep default */ }
+        throw new Error(detail);
+      }
+      // Prefer the filename advertised by the server, fall back to artifact metadata.
+      let fileName = artifact.name || `${artifact.artifactId}.bin`;
+      const disposition = response.headers.get("content-disposition");
+      const match = disposition?.match(/filename="?([^"]+)"?/i);
+      if (match?.[1]) fileName = match[1];
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDownloadingArtifactId(null);
     }
   }
 
@@ -646,14 +687,26 @@ function App() {
           <p className="helper">The AGT gateway uses the active version of the configured policy ID.</p>
           {policies.length === 0 ? <p>No policies loaded yet.</p> : (
             <ul className="policy-list">
-              {policies.map((policy) => (
-                <li key={policy.policyId}>
-                  <button className={policy.policyId === selectedPolicyId ? "selected" : ""} onClick={() => loadPolicyDocument(policy)}>
-                    <strong>{policy.policyId}</strong>
-                    <span>Active: {policy.activeVersion ?? "none"}</span>
-                  </button>
-                </li>
-              ))}
+              {policies
+                .sort((a, b) => {
+                  // Active policies first (those with activeVersion)
+                  const aActive = a.activeVersion ? 1 : 0;
+                  const bActive = b.activeVersion ? 1 : 0;
+                  if (aActive !== bActive) return bActive - aActive;
+                  // Then alphabetical by policy ID
+                  return a.policyId.localeCompare(b.policyId);
+                })
+                .map((policy) => {
+                  const isActive = !!policy.activeVersion;
+                  return (
+                    <li key={policy.policyId} className={isActive ? "active" : ""}>
+                      <button className={policy.policyId === selectedPolicyId ? "selected" : ""} onClick={() => loadPolicyDocument(policy)}>
+                        <strong>{policy.policyId}</strong>
+                        <span>{isActive ? `✓ Active: ${policy.activeVersion}` : "Draft"}</span>
+                      </button>
+                    </li>
+                  );
+                })}
             </ul>
           )}
         </aside>
@@ -765,9 +818,33 @@ function App() {
               <h2>AGT gateway activity</h2>
               <p>Read-only view for tool execution volume, policy decisions, and recent SRE Agent gateway activity.</p>
             </div>
-            <button onClick={() => loadToolCallSummary().catch((err) => setError(err.message))}>
-              {toolCallLoading ? "Refreshing…" : "↻ Refresh"}
-            </button>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <div>
+                <label htmlFor="telemetry-window" style={{ marginRight: "6px", fontSize: "0.9em" }}>Time window:</label>
+                <select 
+                  id="telemetry-window"
+                  value={telemetryWindow} 
+                  onChange={(e) => loadToolCallSummary(e.target.value).catch((err) => setError(err.message))}
+                  style={{
+                    padding: "6px 8px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "3px",
+                    backgroundColor: "var(--card)",
+                    color: "var(--text)",
+                    cursor: "pointer",
+                    fontSize: "0.9em"
+                  }}
+                >
+                  <option value="24h">Last 24 hours</option>
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                  <option value="all">All time</option>
+                </select>
+              </div>
+              <button onClick={() => loadToolCallSummary().catch((err) => setError(err.message))}>
+                {toolCallLoading ? "Refreshing…" : "↻ Refresh"}
+              </button>
+            </div>
           </div>
           <div className="metric-grid">
             <article><span>Total calls</span><strong>{summary?.totalCalls ?? 0}</strong></article>
@@ -932,7 +1009,7 @@ function App() {
             <div className="job-section">
               <h4>Artifacts ({jobArtifacts.length})</h4>
               <table>
-                <thead><tr><th>ID</th><th>Kind</th><th>Name</th><th>Size</th></tr></thead>
+                <thead><tr><th>ID</th><th>Kind</th><th>Name</th><th>Size</th><th>Action</th></tr></thead>
                 <tbody>
                   {jobArtifacts.map((a) => (
                     <tr key={a.artifactId}>
@@ -940,6 +1017,15 @@ function App() {
                       <td>{a.kind}</td>
                       <td>{a.name}</td>
                       <td>{(a.sizeBytes / 1024).toFixed(1)} KB</td>
+                      <td>
+                        <button
+                          className="row-action"
+                          disabled={downloadingArtifactId === a.artifactId}
+                          onClick={() => downloadArtifact(job.jobId, a)}
+                        >
+                          {downloadingArtifactId === a.artifactId ? "Downloading…" : "↓ Download"}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
