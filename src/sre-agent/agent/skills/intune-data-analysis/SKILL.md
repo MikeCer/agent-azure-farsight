@@ -56,9 +56,9 @@ Supported Python tool parameters:
 | `azure_ad_device_id` | No | none | Disambiguates duplicate Intune device names by Entra device id. |
 | `serial_number` | No | none | Disambiguates duplicate Intune device names by serial number. |
 | `include_pii` | No | `false` | Includes user and device identifiers that may be PII. Use only when explicitly approved. |
-| `include_beta_endpoint_analytics` | No | `true` | Includes beta Endpoint Analytics evidence. |
-| `max_resolution_pages` | No | `20` | Caps pages used while resolving the device. |
-| `max_optional_pages` | No | `5` | Caps optional collection pages. |
+| `include_beta_endpoint_analytics` | No | `false` | Includes beta Endpoint Analytics evidence. Leave `false` for the first pass: it materially increases output size. Enable only when baseline evidence is insufficient. |
+| `max_resolution_pages` | No | `5` | Caps pages used while resolving the device. |
+| `max_optional_pages` | No | `2` | Caps optional collection pages. Keep small to keep the result compact. |
 
 When `auth_mode` is `client-secret`, credentials can be supplied in one of three ways:
 
@@ -71,6 +71,36 @@ With `auth_mode` set to `auto`, use supplied credentials when all three values a
 If collection returns an ambiguous-device finding, ask the user for one disambiguator or rerun with the available one: `managed_device_id`, `azure_ad_device_id`, or `serial_number`.
 
 Do not set `include_pii` to `true` unless the user explicitly approves PII in the current diagnostic context.
+
+## Handling the tool result (read this before reacting to the output)
+
+`intune_diagnostics_tool` is a built-in PythonFunctionTool that **returns one complete JSON object as its function result**. That returned object is the authoritative, full dataset — it is already in your context as the tool's structured return value. Analyze it directly.
+
+The reasoning/trace view may **preview only the tail** of a large result (you might see `installed_applications`, `app_crashes`, `device_timeline_events`, `security_issues` while the earlier `target`, `assessment`, `issues`, and `performance` sections appear to be "missing"). This is a display preview limit, **not** data loss. The full object is still available to you as the function output — navigate to any section by its key (for example `assessment`, `issues`, `diagnostic_evidence.performance.startup`) and analyze it.
+
+When the output looks truncated, do **not** do any of the following — they waste turns and do not recover anything:
+
+- ❌ Re-running `intune_diagnostics_tool` to "get the full output". A second run returns the same large object and the same preview limit.
+- ❌ Trying to "save the output to a file and read it back".
+- ❌ Looking for a log file that supposedly holds the full JSON. The tool does not persist its result to a separate readable log for you; the return value is the data. The ~20 KB execution log files are runtime traces, not the diagnostic JSON.
+- ❌ Trying to `import` the tool as a Python module or run it through a terminal/shell.
+- ❌ Echoing or printing the entire blob to "see it all" — this just re-triggers the same preview limit.
+
+Instead, the moment the tool returns:
+
+1. Treat the returned object as complete and proceed to analysis.
+2. Pull the high-signal summary sections first — `target`, `assessment`, `issues` — then the specific `diagnostic_evidence.*` paths you need for the question.
+3. Quote exact field paths and values in your findings (for example `diagnostic_evidence.performance.startup.bootScore`).
+
+### Keep the result small enough to avoid the preview limit
+
+Because the head of a large result is what gets dropped from the preview, prefer a compact first-pass collection so the whole object stays small:
+
+- Leave `include_beta_endpoint_analytics` at `false` on the first pass; enable it only if baseline evidence is insufficient.
+- Keep `max_optional_pages` at `2` and `max_resolution_pages` at `5` unless you have a specific reason to widen them.
+- Never set `include_pii` to `true` without explicit approval (it adds identifier fields and size).
+
+Only widen collection (beta EA, more pages) when a specific section you need is empty or clearly incomplete, and explain why you are widening it.
 
 ## Language behavior
 
@@ -120,7 +150,9 @@ Important sections:
 
 ## Analysis workflow
 
-1. **Identify the target**
+Work directly from the JSON object returned by `intune_diagnostics_tool` (or the supplied `collector_json`). Do not re-collect or look for the data elsewhere — see "Handling the tool result" above.
+
+1. **Identify the target** (from `target` and `diagnostic_evidence.device`)
    - Device name
    - Managed device id
    - OS and model

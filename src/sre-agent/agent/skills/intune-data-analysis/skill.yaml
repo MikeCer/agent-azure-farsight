@@ -35,5 +35,9 @@ parameters:
 defaults:
   auth_mode: auto
   time_window: latest_available_collector_data
+  include_beta_endpoint_analytics: false
+  include_pii: false
+  max_resolution_pages: 5
+  max_optional_pages: 2
 tools:
   - intune_diagnostics_tool
