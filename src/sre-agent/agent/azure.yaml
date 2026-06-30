@@ -31,6 +31,12 @@
 #   AZURE_CLIENT_SECRET
 
 name: agent-azure-farsight-sre-agent
+state:
+  remote:
+    backend: AzureBlobStorage
+    config:
+      accountName: mcerretosatoolssync
+      containerName: intune-sre-agent
 metadata:
   template: agent-azure-farsight-sre-agent@0.1.0
 

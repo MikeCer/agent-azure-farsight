@@ -1,4 +1,10 @@
 name: agent-azure-farsight
+state:
+  remote:
+    backend: AzureBlobStorage
+    config:
+      accountName: mcerretosatoolssync
+      containerName: agent-az-farsight
 metadata:
   template: agent-azure-farsight@0.1.0
 infra:
