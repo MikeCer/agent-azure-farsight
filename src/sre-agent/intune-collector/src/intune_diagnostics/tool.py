@@ -38,14 +38,19 @@ def main(
     include_beta_endpoint_analytics: bool = True,
     max_resolution_pages: int = DiagnosticConfig.max_resolution_pages,
     max_optional_pages: int = DiagnosticConfig.max_optional_pages,
+    sections: str = "full",
 ) -> dict[str, Any]:
     """Collect read-only Intune diagnostics for one Windows client device."""
-    config = DiagnosticConfig(
-        include_beta_endpoint_analytics=include_beta_endpoint_analytics,
-        include_pii=include_pii,
-        max_resolution_pages=max_resolution_pages,
-        max_optional_pages=max_optional_pages,
-    )
+    try:
+        config = DiagnosticConfig(
+            include_beta_endpoint_analytics=include_beta_endpoint_analytics,
+            include_pii=include_pii,
+            max_resolution_pages=max_resolution_pages,
+            max_optional_pages=max_optional_pages,
+            sections=sections,
+        )
+    except ValueError as exc:
+        return _error_document(device_name, "invalid_input", str(exc)).to_sre_dict()
     try:
         (
             auth_mode,

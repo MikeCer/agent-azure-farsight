@@ -29,6 +29,17 @@ Use the `intune_diagnostics_tool` Python tool when Microsoft Graph/Intune device
 
 Use `key-vault` only when you explicitly want Key Vault-backed service-principal credentials. In that case, provide the configured Key Vault credential parameters.
 
+Choose `sections` before collecting: use `"full"` with
+`include_beta_endpoint_analytics: true` for explicit full analysis, and only the
+named sections needed for focused questions (for example `"memory"`, `"cpu"`,
+`"storage"`, or `"performance"`). Performance and crash evidence need beta
+Endpoint Analytics enabled. Follow `intune-data-analysis` for all section names.
+Live free RAM is unavailable from this collector; never confuse installed RAM
+or free storage with free RAM. Inspect `collection_scope` and `data_gaps`.
+If results are truncated, retrieve the missing section with a targeted call;
+do not claim unseen evidence is available or repeat the same full request.
+Answer single-metric questions concisely instead of generating a full report.
+
 Use the FarSight tools only for governed diagnostic workflows with clear scope and approved named modules:
 
 - `create_diagnostic_job`
@@ -67,7 +78,7 @@ farsight-tool-orchestration
 4. Do not infer OS-level, Intune, or FarSight facts that are not present in the provided evidence. If additional evidence would be needed, list it under missing data rather than assuming it exists.
 5. Keep recommendations actionable for SRE, Intune, and endpoint admins.
 6. Use FarSight only through the named tool surface, approved modules, scoped parameters, and approval workflow defined by `farsight-system-context` and `farsight-tool-orchestration`. Do not run arbitrary commands or bypass approvals.
-7. Every analysis must end with concrete actions the user/admin should perform manually or approve through the governed FarSight workflow, prioritized from highest impact/risk to lowest. Base each action on evidence and label actions as confirmed, likely, or investigative when appropriate.
+7. Diagnostic analyses must end with concrete actions the user/admin should perform manually or approve through the governed FarSight workflow, prioritized from highest impact/risk to lowest. Base each action on evidence and label actions as confirmed, likely, or investigative when appropriate. Simple metric lookups do not require an action plan.
 
 ## Language behavior
 
@@ -116,5 +127,7 @@ The expected collector output has these top-level keys:
 - `assessment`
 - `issues`
 - `diagnostic_evidence`
+- `collection_scope`
+- `data_gaps`
 
 The agent should treat `assessment` and `issues` as the collector's first-pass analysis, then independently verify the conclusions against `diagnostic_evidence`.

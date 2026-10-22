@@ -19,6 +19,25 @@ intune-diagnostics --device-name WIN-CLIENT-001 --serial-number <serial>
 
 The JSON output is intentionally optimized for the SRE agent context window. It contains one troubleshooting-focused schema with prioritized issues and only diagnostic evidence useful for client health, startup/performance, app reliability, policy/security, update, and management-channel analysis.
 
+### On-demand sections
+
+Use `--sections cpu`, `--sections memory,cpu`, or `--sections performance` to
+collect only the evidence families needed. The Python tool exposes the same
+comma-separated `sections` string, defaulting to `full` for compatibility.
+Targeted calls skip unrelated Graph queries and return only selected evidence,
+plus target identity, scoped assessment/issues, `collection_scope`, and
+`data_gaps`. Invalid sections fail before authentication or Graph calls.
+
+`memory` returns installed RAM and an explicit null for unavailable live free
+RAM; `cpu` returns processor architecture; `storage` returns disk capacity/free
+space. Full mode preserves the existing evidence families and bounded output.
+The deployed tool still defaults beta Endpoint Analytics to false: set it true
+for full performance/crash analysis. The local CLI retains its beta-enabled
+default; `--no-include-beta-endpoint-analytics` disables those sources.
+
+See the [section contract and examples](../../../docs/agent-tools/README.md#intune-on-demand-evidence)
+for the complete allowlist, limitations, validation, and deployment steps.
+
 ## Build a Single Script
 
 To generate one Python entry script that embeds all local `intune_diagnostics` modules and exposes an Azure SRE Agent-compatible `main(...) -> dict` function:

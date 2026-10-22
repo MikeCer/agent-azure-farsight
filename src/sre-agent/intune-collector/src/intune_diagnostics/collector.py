@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import quote
 
-from .config import DiagnosticConfig
+from .config import DiagnosticConfig, HARDWARE_FIELDS
 from .graph_client import GraphError
 from .models import DiagnosticDocument, EndpointResult, Target, redact, utc_now_iso
 from .resolver import _azure_ad_device_id
@@ -57,111 +57,141 @@ def collect_device_diagnostics(
         azure_ad_device_id=_azure_ad_device_id(managed_device) or None,
         user_principal_name=redact(managed_device.get("userPrincipalName"), config.include_pii),
     )
-    document = DiagnosticDocument(target=target, started_at=started_at, tenant_id=tenant_id)
+    document = DiagnosticDocument(
+        target=target, started_at=started_at, tenant_id=tenant_id,
+        requested_sections=config.requested_sections,
+    )
 
     device_id = str(managed_device["id"])
     encoded_device_id = _path_segment(device_id)
-    device_detail = _get_optional(
-        graph,
-        "managed_device",
-        "v1.0",
-        f"/deviceManagement/managedDevices/{encoded_device_id}",
-    )
-    device_health_detail = _collect_device_health_detail(graph, device_id)
-    document.collection_report.append(device_detail.result)
-    document.collection_report.append(device_health_detail.result)
-    device = device_detail.items[0] if device_detail.items else managed_device
+    device = managed_device
+    hardware_only = set(config.requested_sections).issubset(HARDWARE_FIELDS)
+    if not hardware_only:
+        detail = _get_optional(
+            graph, "managed_device", "v1.0",
+            f"/deviceManagement/managedDevices/{encoded_device_id}",
+        )
+        document.collection_report.append(detail.result)
+        device = detail.items[0] if detail.items else managed_device
 
-    compliance = _get_all_optional(
-        graph,
-        "device_compliance_policy_states",
-        "v1.0",
-        f"/deviceManagement/managedDevices/{encoded_device_id}/deviceCompliancePolicyStates",
-        max_pages=config.max_optional_pages,
-    )
-    configuration = _get_all_optional(
-        graph,
-        "device_configuration_states",
-        "v1.0",
-        f"/deviceManagement/managedDevices/{encoded_device_id}/deviceConfigurationStates",
-        max_pages=config.max_optional_pages,
-    )
-    compliance_setting_states, compliance_setting_reports = _collect_nested_setting_states(
-        graph,
-        "device_compliance_policy_setting_states",
-        "v1.0",
-        f"/deviceManagement/managedDevices/{encoded_device_id}/deviceCompliancePolicyStates",
-        compliance.items,
-        config,
-    )
-    configuration_setting_states, configuration_setting_reports = _collect_nested_setting_states(
-        graph,
-        "device_configuration_setting_states",
-        "v1.0",
-        f"/deviceManagement/managedDevices/{encoded_device_id}/deviceConfigurationStates",
-        configuration.items,
-        config,
-    )
-    installed_apps = _collect_installed_apps(graph, device_id, config)
-    app_install_status = _collect_app_install_status_report(graph, device, config)
-    document.collection_report.extend(
-        [
-            compliance.result,
-            configuration.result,
-            installed_apps.result,
-            *compliance_setting_reports,
-            *configuration_setting_reports,
-            app_install_status.result,
-        ]
-    )
+    signals = document.signals
+    if config.includes("device"):
+        signals["inventory"] = _inventory_summary(device, config.include_pii)
 
-    windows_protection = _get_optional(
-        graph,
-        "windows_protection_state",
-        "v1.0",
-        f"/deviceManagement/managedDevices/{encoded_device_id}/windowsProtectionState",
-    )
-    windows_update_status = _collect_filtered_collection(
-        graph,
-        "windows_update_status",
-        "v1.0",
-        "/deviceManagement/windowsUpdateStatus",
-        device,
-        config,
-    )
-    document.collection_report.extend([windows_protection.result, windows_update_status.result])
+    if config.includes("device_health", "memory", "cpu", "storage"):
+        fields = None if config.includes("device_health") else tuple(
+            field for section in config.requested_sections
+            for field in HARDWARE_FIELDS.get(section, ())
+        )
+        health = _collect_device_health_detail(graph, device_id, fields=fields)
+        document.collection_report.append(health.result)
+        health_data = health.items[0] if health.items else {}
+        signals["device_health_detail"] = (
+            {key: value for key, value in health_data.items() if key in fields}
+            if fields is not None else health_data
+        )
+        if fields is not None and health.result.status == "ok":
+            missing = [name for name in fields if health_data.get(name) in (None, "")]
+            if missing:
+                document.warnings.append(
+                    f"device_health_detail: Requested fields were not reported by Intune: {', '.join(missing)}."
+                )
+        if config.includes("device_health"):
+            signals["health_attestation"] = device.get("deviceHealthAttestationState") or {}
+        if "memory" in config.requested_sections:
+            document.warnings.append(
+                "memory: Live free RAM is not available from these Intune/Graph sources; "
+                "physicalMemoryInBytes is installed capacity, not available memory."
+            )
 
-    entra_device = _collect_entra_device(graph, device, config)
-    autopilot_identity = _collect_autopilot_identity(graph, device, config)
-    document.collection_report.extend([entra_device.result, autopilot_identity.result])
-
-    endpoint_security_states, endpoint_security_reports = _collect_policy_object_device_states(
-        graph,
-        "endpoint_security_intent_device_states",
-        "beta",
-        "/deviceManagement/intents",
-        "deviceStates",
-        device,
-        config,
-        beta=True,
-    )
-    remediation_states, remediation_reports = _collect_script_run_states(graph, device, config)
-    document.collection_report.extend([*endpoint_security_reports, *remediation_reports])
-
-    troubleshooting = _collect_troubleshooting_events(graph, device, config)
-    document.collection_report.append(troubleshooting.result)
-    audit_events = _collect_audit_events(graph, device, config)
-    document.collection_report.append(audit_events.result)
-
-    endpoint_analytics: dict[str, Any] = {}
-    if config.include_beta_endpoint_analytics:
-        endpoint_analytics, reports = _collect_endpoint_analytics(graph, device, config)
-        app_crashes = _collect_app_crashes(graph, config)
-        endpoint_analytics["app_crashes"] = app_crashes.items
-        reports.append(app_crashes.result)
+    if config.includes("policy_and_configuration_issues"):
+        for navigation, signal_name, report_name in (
+            ("deviceCompliancePolicyStates", "compliance", "device_compliance_policy"),
+            ("deviceConfigurationStates", "configuration", "device_configuration"),
+        ):
+            path = f"/deviceManagement/managedDevices/{encoded_device_id}/{navigation}"
+            states = _get_all_optional(
+                graph, f"{report_name}_states", "v1.0", path, max_pages=config.max_optional_pages,
+            )
+            settings, reports = _collect_nested_setting_states(
+                graph, f"{report_name}_setting_states", "v1.0", path, states.items, config,
+            )
+            signals[signal_name] = states.items
+            signals[f"{signal_name}_setting_states"] = settings
+            document.collection_report.extend([states.result, *reports])
+        security_states, reports = _collect_policy_object_device_states(
+            graph, "endpoint_security_intent_device_states", "beta",
+            "/deviceManagement/intents", "deviceStates", device, config, beta=True,
+        )
+        signals.setdefault("security", {})["endpoint_security_intent_device_states"] = security_states
         document.collection_report.extend(reports)
-    else:
-        document.warnings.append("Beta Endpoint Analytics collection was disabled.")
+
+    if config.includes("installed_applications"):
+        apps = _collect_installed_apps(graph, device_id, config)
+        signals["installed_apps"] = apps.items
+        document.collection_report.append(apps.result)
+    if config.includes("app_installation_issues"):
+        installs = _collect_app_install_status_report(graph, device, config)
+        signals["app_install_status"] = installs.items
+        document.collection_report.append(installs.result)
+    if config.includes("security_issues"):
+        protection = _get_optional(
+            graph, "windows_protection_state", "v1.0",
+            f"/deviceManagement/managedDevices/{encoded_device_id}/windowsProtectionState",
+        )
+        signals.setdefault("security", {})["windows_protection_state"] = (
+            protection.items[0] if protection.items else {}
+        )
+        document.collection_report.append(protection.result)
+    if config.includes("windows_update_issues"):
+        updates = _collect_filtered_collection(
+            graph, "windows_update_status", "v1.0", "/deviceManagement/windowsUpdateStatus", device, config,
+        )
+        signals["updates"] = {"windows_update_status": updates.items}
+        document.collection_report.append(updates.result)
+    if config.includes("identity_issues"):
+        entra = _collect_entra_device(graph, device, config)
+        autopilot = _collect_autopilot_identity(graph, device, config)
+        signals["identity"] = {
+            "entra_device": entra.items[0] if entra.items else {},
+            "autopilot_identity": autopilot.items,
+        }
+        document.collection_report.extend([entra.result, autopilot.result])
+    if config.includes("management_failures"):
+        remediation, reports = _collect_script_run_states(graph, device, config)
+        signals["management"] = {
+            "device_action_results": device.get("deviceActionResults") or [],
+            "remediation_script_states": remediation,
+        }
+        document.collection_report.extend(reports)
+
+    troubleshooting_items: list[dict[str, Any]] = []
+    if config.includes("troubleshooting_errors", "device_timeline_events"):
+        troubleshooting = _collect_troubleshooting_events(graph, device, config)
+        troubleshooting_items = troubleshooting.items
+        document.collection_report.append(troubleshooting.result)
+        if config.includes("troubleshooting_errors"):
+            signals["troubleshooting_events"] = troubleshooting_items
+    if config.includes("recent_restart_shutdown_events"):
+        signals.setdefault("events", {})["recent_restart_shutdown_events"] = _restart_shutdown_events(device)
+    if config.includes("device_timeline_events"):
+        audit = _collect_audit_events(graph, device, config)
+        document.collection_report.append(audit.result)
+        signals.setdefault("events", {})["device_timeline_events"] = _device_timeline_events(
+            device, troubleshooting_items, audit.items, config,
+        )
+
+    if config.includes("performance", "app_crashes"):
+        if config.include_beta_endpoint_analytics:
+            analytics, reports = _collect_endpoint_analytics(graph, device, config)
+            if config.includes("app_crashes"):
+                crashes = _collect_app_crashes(graph, config)
+                analytics["app_crashes"] = crashes.items
+                reports.append(crashes.result)
+            signals["endpoint_analytics"] = analytics
+            document.collection_report.extend(reports)
+        else:
+            document.warnings.append("endpoint_analytics: Beta Endpoint Analytics collection was disabled.")
 
     for result in document.collection_report:
         if result.warning:
@@ -169,43 +199,14 @@ def collect_device_diagnostics(
             if warning not in document.warnings:
                 document.warnings.append(warning)
 
-    inventory = _inventory_summary(device, config.include_pii)
-    document.signals = {
-        "inventory": inventory,
-        "device_health_detail": device_health_detail.items[0] if device_health_detail.items else {},
-        "compliance": compliance.items,
-        "compliance_setting_states": compliance_setting_states,
-        "configuration": configuration.items,
-        "configuration_setting_states": configuration_setting_states,
-        "installed_apps": installed_apps.items,
-        "app_install_status": app_install_status.items,
-        "health_attestation": device.get("deviceHealthAttestationState") or {},
-        "security": {
-            "windows_protection_state": windows_protection.items[0] if windows_protection.items else {},
-            "endpoint_security_intent_device_states": endpoint_security_states,
-        },
-        "updates": {"windows_update_status": windows_update_status.items},
-        "identity": {
-            "entra_device": entra_device.items[0] if entra_device.items else {},
-            "autopilot_identity": autopilot_identity.items,
-        },
-        "management": {
-            "device_action_results": device.get("deviceActionResults") or [],
-            "remediation_script_states": remediation_states,
-        },
-        "events": {
-            "recent_restart_shutdown_events": _restart_shutdown_events(device),
-            "device_timeline_events": _device_timeline_events(device, troubleshooting.items, audit_events.items, config),
-        },
-        "troubleshooting_events": troubleshooting.items,
-        "endpoint_analytics": endpoint_analytics,
-    }
     document.findings = evaluate(document.signals, config)
     document.completed_at = utc_now_iso()
     return document
 
 
-def _collect_device_health_detail(graph: GraphCollectorClient, device_id: str) -> Collection:
+def _collect_device_health_detail(
+    graph: GraphCollectorClient, device_id: str, *, fields: tuple[str, ...] | None = None,
+) -> Collection:
     encoded_device_id = _path_segment(device_id)
     select = ",".join(
         [
@@ -224,6 +225,8 @@ def _collect_device_health_detail(graph: GraphCollectorClient, device_id: str) -
             "usersLoggedOn",
         ]
     )
+    if fields is not None:
+        select = ",".join(("id", *fields))
     return _get_optional(
         graph,
         "device_health_detail",
@@ -705,6 +708,8 @@ def _collect_endpoint_analytics(
     output: dict[str, Any] = {}
     reports: list[EndpointResult] = []
     for name, (path, filter_value) in definitions.items():
+        if name != "app_health_device_performance" and not config.includes("performance"):
+            continue
         collection = _get_all_optional(
             graph,
             name,

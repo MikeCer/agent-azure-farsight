@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from typing import Any
 import json
 
+from .config import HARDWARE_FIELDS
+
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -116,6 +118,7 @@ class DiagnosticDocument:
     signals: dict[str, Any] = field(default_factory=dict)
     findings: list[Finding] = field(default_factory=list)
     collection_report: list[EndpointResult] = field(default_factory=list)
+    requested_sections: tuple[str, ...] = ("full",)
 
     def to_dict(self) -> dict[str, Any]:
         return self.to_sre_dict()
@@ -125,6 +128,18 @@ class DiagnosticDocument:
         findings = sorted(self.findings, key=lambda item: (severity_order.get(item.severity, 99), item.id))
         compact_findings = [_compact_finding(item) for item in findings]
         diagnostic_evidence = _diagnostic_evidence(self.signals)
+        if self.requested_sections != ("full",):
+            health = diagnostic_evidence.get("device_health", {})
+            for section, fields in HARDWARE_FIELDS.items():
+                if section in self.requested_sections:
+                    diagnostic_evidence[section] = {name: health.get(name) for name in fields}
+                    if section == "memory":
+                        diagnostic_evidence[section]["freeMemoryInBytes"] = None
+                    if section == "storage" and "freeStoragePercent" in health:
+                        diagnostic_evidence[section]["freeStoragePercent"] = health["freeStoragePercent"]
+            diagnostic_evidence = {
+                name: value for name, value in diagnostic_evidence.items() if name in self.requested_sections
+            }
         return {
             "schema_version": "1.0",
             "target": self.target.to_dict(),
@@ -137,6 +152,12 @@ class DiagnosticDocument:
             },
             "issues": compact_findings,
             "diagnostic_evidence": diagnostic_evidence,
+            "collection_scope": {
+                "mode": "full" if self.requested_sections == ("full",) else "targeted",
+                "requested_sections": list(self.requested_sections),
+                "assessment_scope": "Only collected evidence was assessed; omitted sections are not healthy by implication.",
+            },
+            "data_gaps": _compact_data_gaps(self.collection_report, self.warnings),
         }
 
     def to_json(self) -> str:

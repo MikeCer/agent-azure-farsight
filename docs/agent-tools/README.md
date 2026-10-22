@@ -58,3 +58,82 @@ Require approval for broad scope, elevated-risk modules, large artifact requests
 ## Implementation entry point
 
 See `src/agent-tools/gateway/README.md` for local validation, runtime variables, and policy behavior.
+
+## Intune on-demand evidence
+
+The read-only [Intune collector](../../src/sre-agent/intune-collector/README.md)
+queries Microsoft Graph directly, separately from the governed FarSight endpoint
+job gateway. Its `intune_diagnostics_tool` accepts `sections`, a case-sensitive,
+comma-separated string. The default `full` retains broad collection; individual
+names limit both Graph requests and `diagnostic_evidence` output. Do not combine
+`full` with named sections. Empty, unknown, or malformed selections return a
+structured invalid-input finding before authentication or network access.
+
+| Sections | Evidence collected |
+| --- | --- |
+| `memory`, `cpu`, `storage` | Installed RAM, processor architecture, or disk capacity/free bytes. Hardware-only requests use a narrow beta managed-device `$select` after device resolution. |
+| `device`, `device_health` | Inventory/check-in or enriched beta health data. |
+| `performance`, `app_crashes` | Endpoint Analytics startup/resource/reliability or app crash summaries. Require `include_beta_endpoint_analytics: true`. |
+| `installed_applications`, `app_installation_issues` | App inventory or app install status report. |
+| `policy_and_configuration_issues` | Compliance/configuration policy and setting states, endpoint security intent states. |
+| `security_issues`, `windows_update_issues` | Windows protection or update state. |
+| `management_failures`, `identity_issues` | Device action/script failures or Entra/Autopilot identity issues. |
+| `recent_restart_shutdown_events`, `device_timeline_events`, `troubleshooting_errors` | Intune action history, joined audit/troubleshooting timeline, or troubleshooting errors. |
+
+Examples of agent tool arguments:
+
+```json
+{"device_name": "WIN-CLIENT-001", "sections": "cpu"}
+{"device_name": "WIN-CLIENT-001", "sections": "memory,storage"}
+{"device_name": "WIN-CLIENT-001", "sections": "performance", "include_beta_endpoint_analytics": true}
+{"device_name": "WIN-CLIENT-001", "sections": "full", "include_beta_endpoint_analytics": true}
+```
+
+For the local CLI, use `--sections memory,cpu`. The CLI retains beta-enabled
+analytics by default; the deployed PythonFunctionTool retains its beta-disabled
+default. Section selection does not override that flag, authentication, PII
+redaction, existing row/page caps, or Graph permissions.
+
+The original result envelope remains, with two additive fields:
+
+- `collection_scope`: full/targeted mode, requested sections, and an explicit
+  reminder that assessment covers collected evidence only.
+- `data_gaps`: compact failed/skipped source and warning details, including
+  disabled analytics. A missing section or zero issues is not proof of health.
+
+Target identity is always returned. Targeted findings are evaluated from collected
+signals only. Empty evidence can mean no problems were reported; consult gaps
+before distinguishing that from an unavailable source.
+
+### Metric and truncation limitations
+
+Intune/Graph evidence here does not expose live free RAM.
+`diagnostic_evidence.memory.physicalMemoryInBytes` is installed capacity;
+`freeMemoryInBytes` is explicitly null and explained in `data_gaps`. CPU
+architecture is `diagnostic_evidence.cpu.processorArchitecture`, not CPU load.
+Free storage is not free RAM. Endpoint Analytics metrics are historical
+aggregates, not live counters. Existing inventory/event/list caps still apply
+in full mode: full means all evidence families, not an unlimited export.
+
+The [analysis skill](../../src/sre-agent/agent/skills/intune-data-analysis/SKILL.md)
+selects narrow sections for specific questions and full mode for full analysis.
+If the agent runtime truncates a full response, retrieve missing families in
+targeted calls rather than repeating full collection or assuming unseen data is
+accessible. These calls are fresh reads, not a cached snapshot; very large
+individual sections remain subject to runtime and existing collector caps.
+
+### Validation and rollout
+
+From the repository root:
+
+```bash
+PYTHONPATH=src/sre-agent/intune-collector/src python3 -m unittest discover -s src/sre-agent/intune-collector/tests -v
+python3 src/sre-agent/intune-collector/scripts/build_single_script.py
+```
+
+Rebuilding updates the checked-in embedded Python tool. Redeploy the SRE Agent
+package using the [existing deployment workflow](../../src/sre-agent/agent/DEPLOY.md)
+so the tool code, YAML parameter declaration, analysis skill, and agent guidance
+are uploaded together. Local edits do not change an already deployed agent.
+Smoke-test `sections: "cpu"` and a full analysis on a known device after rollout;
+verify selected evidence keys and reported source gaps, not just agent prose.

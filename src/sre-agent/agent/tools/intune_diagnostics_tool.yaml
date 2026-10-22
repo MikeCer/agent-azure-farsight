@@ -6,12 +6,26 @@ description: >
   analysis, including device health, Endpoint Analytics performance, app
   reliability, policy/compliance, security, update, restart, and timeline
   context.
+  Use sections for targeted evidence instead of collecting a full device report.
 code_file: intune_diagnostics_tool.py
 parameters:
   - name: device_name
     type: string
     required: true
     description: Intune deviceName to diagnose.
+  - name: sections
+    type: string
+    required: false
+    description: >
+      Defaults to full (all evidence families). Otherwise a comma-separated
+      allowlist of device, device_health, memory, cpu, storage, performance,
+      installed_applications, app_crashes, recent_restart_shutdown_events,
+      device_timeline_events, policy_and_configuration_issues,
+      app_installation_issues, security_issues, windows_update_issues,
+      management_failures, identity_issues, troubleshooting_errors.
+      Cannot combine full with named sections. memory returns installed RAM;
+      live free RAM is unavailable. cpu returns processorArchitecture.
+      performance and app_crashes require include_beta_endpoint_analytics=true.
   - name: auth_mode
     type: string
     required: false

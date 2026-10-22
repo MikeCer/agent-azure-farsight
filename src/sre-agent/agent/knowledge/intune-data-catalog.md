@@ -2,6 +2,16 @@
 
 This catalog documents the evidence collected by the Intune Diagnostics Collector. The collector is read-only and uses Microsoft Graph/Intune data that already exists in the tenant. It does not connect to the Windows client directly.
 
+Use `sections` (`--sections` in the CLI) to select individual evidence names from
+the common output mapping below; default `full` collects all existing families.
+`memory`, `cpu`, and `storage` are additional targeted views of beta device health,
+not extra full-mode sources. Hardware-only requests select only the relevant
+Graph properties. `memory.freeMemoryInBytes` is null: these sources expose
+installed capacity, not live free RAM. `cpu.processorArchitecture` describes
+architecture, not utilization. Analytics sections still require the beta
+Endpoint Analytics flag. All modes retain existing collection/output caps.
+Inspect `collection_scope` and `data_gaps`; omitted evidence was not assessed.
+
 ## Common Output Mapping
 
 | Output area | Purpose |
@@ -9,6 +19,8 @@ This catalog documents the evidence collected by the Intune Diagnostics Collecto
 | `target` | Input `deviceName` and resolved Intune/Entra identifiers |
 | `assessment` | Generated time, highest severity, issue count, performance status, and top concerns |
 | `issues` | Deterministic rule findings with severity, confidence, compact evidence, and remediation steps |
+| `collection_scope`, `data_gaps` | Requested sections, assessment scope, and source failures/warnings |
+| `diagnostic_evidence.memory`, `diagnostic_evidence.cpu`, `diagnostic_evidence.storage` | Targeted installed RAM, architecture, or disk capacity/free space |
 | `diagnostic_evidence.device` | Minimal device identity, OS, model, compliance, management, enrollment, and sync context |
 | `diagnostic_evidence.device_health` | Enriched Intune beta device health, encryption, storage, memory, malware, and certificate-expiration details |
 | `diagnostic_evidence.performance` | Endpoint Analytics startup, resource, and app reliability metrics useful for performance diagnosis |

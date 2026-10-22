@@ -7,6 +7,8 @@ description: >
   diagnose a Windows client, check performance/bottlenecks, review health,
   or produce a remediation plan from Intune/Graph evidence. Also use when the
   user says "act as SRE agent" or "why is this device slow/broken".
+  Also use for targeted RAM, free memory, CPU architecture, disk space, or
+  individual Intune evidence section questions.
 files:
   - SKILL.md
 parameters:
@@ -15,6 +17,7 @@ parameters:
     - collector_json
     - user_symptom
     - device_name
+    - sections
     - azure_tenant_id
     - azure_client_id
     - azure_client_secret
@@ -34,6 +37,7 @@ parameters:
     - time_window
 defaults:
   auth_mode: auto
+  sections: full
   time_window: latest_available_collector_data
   include_beta_endpoint_analytics: false
   include_pii: false

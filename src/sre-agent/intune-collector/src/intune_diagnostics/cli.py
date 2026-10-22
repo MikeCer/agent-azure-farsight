@@ -11,6 +11,7 @@ from .tool import main as collect_intune_diagnostics
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Collect read-only Intune diagnostics for one Windows client device.")
     parser.add_argument("--device-name", required=True, help="Required Intune deviceName to diagnose.")
+    parser.add_argument("--sections", default="full", help="full or comma-separated evidence section names (for example memory,cpu).")
     parser.add_argument("--auth-mode", choices=["auto", "default", "client-secret"], default="auto")
     parser.add_argument("--tenant-id", help="Optional tenant id metadata to include in output.")
     parser.add_argument("--managed-device-id", help="Optional disambiguator when deviceName matches multiple Intune records.")
@@ -48,6 +49,7 @@ def main(argv: list[str] | None = None) -> int:
         include_beta_endpoint_analytics=config.include_beta_endpoint_analytics,
         max_resolution_pages=config.max_resolution_pages,
         max_optional_pages=config.max_optional_pages,
+        sections=args.sections,
     )
     _write_output(payload, args.output)
     issue_ids = {item.get("id") for item in payload.get("issues", []) if isinstance(item, dict)}

@@ -104,6 +104,7 @@ def main(
     include_beta_endpoint_analytics: bool = False,
     max_resolution_pages: int = 5,
     max_optional_pages: int = 2,
+    sections: str = "full",
 ) -> dict:
     """Collect read-only Intune diagnostics for one Windows client device."""
     default_auth_mode = _default_value(_DEFAULT_AUTH_MODE)
@@ -128,6 +129,7 @@ def main(
         include_beta_endpoint_analytics=include_beta_endpoint_analytics,
         max_resolution_pages=max_resolution_pages,
         max_optional_pages=max_optional_pages,
+        sections=sections,
     )
 
 '''

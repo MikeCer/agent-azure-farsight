@@ -19,6 +19,8 @@ Trigger strongly when the user says things like:
 - "diagnose device WIN-CLIENT-001"
 - "analyze logs for device WIN-CLIENT-001"
 - "what remediation should I do"
+- "how much free RAM does this device have"
+- "what is the CPU architecture"
 
 ## Supported inputs and tool invocation
 
@@ -43,6 +45,7 @@ Supported Python tool parameters:
 | Parameter | Required | Default | Purpose |
 | --- | --- | --- | --- |
 | `device_name` | Yes | none | Intune `deviceName` to diagnose. |
+| `sections` | No | `full` | Comma-separated allowlisted evidence sections. Select only what answers the question; see below. |
 | `auth_mode` | No | `auto` | Authentication mode for Microsoft Graph: `auto`, `default`, or `client-secret`. The deployment defaults to managed identity. |
 | `tenant_id` | No | none | Optional tenant metadata to include in the output. |
 | `azure_tenant_id` | No | none | Optional service-principal tenant id. Use with `azure_client_id` and `azure_client_secret`. |
@@ -72,35 +75,63 @@ If collection returns an ambiguous-device finding, ask the user for one disambig
 
 Do not set `include_pii` to `true` unless the user explicitly approves PII in the current diagnostic context.
 
-## Handling the tool result (read this before reacting to the output)
+## Choose collection scope before calling the tool
 
-`intune_diagnostics_tool` is a built-in PythonFunctionTool that **returns one complete JSON object as its function result**. That returned object is the authoritative, full dataset — it is already in your context as the tool's structured return value. Analyze it directly.
+For an explicit full analysis, use `sections: "full"` and
+`include_beta_endpoint_analytics: true`. Full mode collects every evidence family
+within the existing page, row, and output caps; it is not an uncapped raw dump.
+For a narrow question, choose only the relevant sections. Do not fetch a full
+report first or widen scope without a reason.
 
-The reasoning/trace view may **preview only the tail** of a large result (you might see `installed_applications`, `app_crashes`, `device_timeline_events`, `security_issues` while the earlier `target`, `assessment`, `issues`, and `performance` sections appear to be "missing"). This is a display preview limit, **not** data loss. The full object is still available to you as the function output — navigate to any section by its key (for example `assessment`, `issues`, `diagnostic_evidence.performance.startup`) and analyze it.
+| User question | `sections` | Additional guidance |
+| --- | --- | --- |
+| Installed RAM or free RAM | `memory` | Installed capacity only; live free RAM is unavailable. |
+| CPU physical architecture | `cpu` | Returns `processorArchitecture`, not CPU utilization. |
+| Free disk space | `storage` | Capacity, free bytes, and derived free percentage. |
+| OS, model, enrollment or check-in | `device` | Inventory and management context. |
+| Encryption, malware counts, certificate expiry | `device_health` | Intune beta health fields. |
+| Slow boot, CPU/RAM pressure | `performance` | Set `include_beta_endpoint_analytics: true`. These are historical aggregates, not live counters. |
+| Installed apps | `installed_applications` | Bounded app inventory. |
+| App crashes or hangs | `app_crashes` | Set `include_beta_endpoint_analytics: true`. |
+| Restarts or device timeline | `recent_restart_shutdown_events` or `device_timeline_events` | Intune actions/events, not local Windows Event Logs. |
+| Policy/configuration failures | `policy_and_configuration_issues` | Includes compliance settings and endpoint security intent states. |
+| App installation, Defender, updates | `app_installation_issues`, `security_issues`, or `windows_update_issues` | Select the relevant family. |
+| Management, identity, troubleshooting | `management_failures`, `identity_issues`, or `troubleshooting_errors` | Select the relevant family. |
 
-When the output looks truncated, do **not** do any of the following — they waste turns and do not recover anything:
+Combine names with commas, for example:
 
-- ❌ Re-running `intune_diagnostics_tool` to "get the full output". A second run returns the same large object and the same preview limit.
-- ❌ Trying to "save the output to a file and read it back".
-- ❌ Looking for a log file that supposedly holds the full JSON. The tool does not persist its result to a separate readable log for you; the return value is the data. The ~20 KB execution log files are runtime traces, not the diagnostic JSON.
-- ❌ Trying to `import` the tool as a Python module or run it through a terminal/shell.
-- ❌ Echoing or printing the entire blob to "see it all" — this just re-triggers the same preview limit.
+```json
+{"device_name": "WIN-CLIENT-001", "sections": "memory,cpu", "auth_mode": "default"}
+```
 
-Instead, the moment the tool returns:
+Names are case-sensitive; `full` cannot be combined with individual names.
+The same names appear under `diagnostic_evidence`. Hardware-only requests use a
+narrow Graph `$select` and do not query apps, policies, events, or analytics.
+Device resolution and minimal target identity are always included.
 
-1. Treat the returned object as complete and proceed to analysis.
-2. Pull the high-signal summary sections first — `target`, `assessment`, `issues` — then the specific `diagnostic_evidence.*` paths you need for the question.
-3. Quote exact field paths and values in your findings (for example `diagnostic_evidence.performance.startup.bootScore`).
+For free RAM, report that `diagnostic_evidence.memory.freeMemoryInBytes` is null
+and explain the `data_gaps` entry. Never substitute `physicalMemoryInBytes`,
+`freeStorageSpaceInBytes`, or a RAM spike percentage. Do not automatically launch
+an endpoint job; offer an approved diagnostic capability only if one actually
+provides the missing metric.
 
-### Keep the result small enough to avoid the preview limit
+## Handling the tool result
 
-Because the head of a large result is what gets dropped from the preview, prefer a compact first-pass collection so the whole object stays small:
+Analyze the returned structured JSON directly. Read `collection_scope`,
+`data_gaps`, `target`, `assessment`, and `issues`, then the requested evidence.
+Findings cover only collected evidence. Omitted sections are not evidence of
+health, and zero issues does not mean the entire device is healthy.
 
-- Leave `include_beta_endpoint_analytics` at `false` on the first pass; enable it only if baseline evidence is insufficient.
-- Keep `max_optional_pages` at `2` and `max_resolution_pages` at `5` unless you have a specific reason to widen them.
-- Never set `include_pii` to `true` without explicit approval (it adds identifier fields and size).
+If the runtime reports truncation or required keys are unavailable, do not assume
+the unseen data is accessible. Rerun with the specific named section needed,
+not the same full request. For a full investigation, retrieve missing families
+in separate targeted calls and disclose any remaining gaps. Calls are fresh
+reads, not pages of a cached snapshot.
 
-Only widen collection (beta EA, more pages) when a specific section you need is empty or clearly incomplete, and explain why you are widening it.
+Do not echo the entire blob, search execution logs for missing JSON, or import
+the tool through a shell. Keep page caps small and widen only for a documented
+evidence gap. For a single-metric question, answer briefly with its value, exact
+field path, and limitations rather than producing an unrelated full report.
 
 ## Language behavior
 
@@ -122,7 +153,9 @@ The Intune collector emits a single focused schema:
   "target": {},
   "assessment": {},
   "issues": [],
-  "diagnostic_evidence": {}
+  "diagnostic_evidence": {},
+  "collection_scope": {},
+  "data_gaps": []
 }
 ```
 
@@ -133,6 +166,10 @@ Important sections:
 | `target` | Device name, Intune managed device id, Entra device id, redacted user id |
 | `assessment` | Collector-generated first-pass status and top concerns |
 | `issues` | Collector-generated prioritized findings with evidence and recommended actions |
+| `collection_scope`, `data_gaps` | Requested scope and unavailable/failed/disabled evidence sources |
+| `diagnostic_evidence.memory` | Targeted installed RAM; live free RAM is explicitly unavailable |
+| `diagnostic_evidence.cpu` | Targeted processor architecture |
+| `diagnostic_evidence.storage` | Targeted disk capacity and free space |
 | `diagnostic_evidence.device` | Device OS, model, management/compliance state, enrollment and last sync |
 | `diagnostic_evidence.device_health` | Encryption, storage, memory, malware counts, management certificate expiration |
 | `diagnostic_evidence.performance.startup` | Startup score, boot/login scores, boot timings, restarts, blue screens |
@@ -150,7 +187,10 @@ Important sections:
 
 ## Analysis workflow
 
-Work directly from the JSON object returned by `intune_diagnostics_tool` (or the supplied `collector_json`). Do not re-collect or look for the data elsewhere — see "Handling the tool result" above.
+Work directly from the JSON returned by `intune_diagnostics_tool` (or supplied
+`collector_json`). Follow only steps relevant to the requested scope. Recollect
+only when specific evidence is missing or truncated, using a targeted section
+as described in "Handling the tool result" above.
 
 1. **Identify the target** (from `target` and `diagnostic_evidence.device`)
    - Device name
@@ -192,7 +232,7 @@ Work directly from the JSON object returned by `intune_diagnostics_tool` (or the
    - Missing data last.
 
 8. **Produce mandatory user actions**
-   - Always include a final action plan based on what emerged from the data analysis.
+   - For diagnostic analyses, include a final action plan based on what emerged from the data. Simple metric lookups do not require an action plan.
    - Actions must be for the user/admin to perform manually. Do not execute, trigger, or offer to execute remediation from the agent.
    - Prioritize by severity, user impact, and confidence.
    - For each action, include the evidence or finding it addresses and the intended outcome.
@@ -267,7 +307,10 @@ Recommended language:
 
 ## Output format
 
-Use user-friendly Markdown with clear spacing, compact tables, prioritized lists, and visual glyphs/icons. Use this exact structure:
+For a full diagnostic analysis, use user-friendly Markdown with clear spacing,
+compact tables, prioritized lists, and visual glyphs/icons in the structure below.
+For a single-metric question, give the value, field path, and relevant limitations
+only; do not expand into unrelated performance, health, or remediation sections.
 
 ```markdown
 ## 📌 Executive summary
